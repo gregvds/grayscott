@@ -5,7 +5,7 @@
 import numpy as np
 from numpy.random import rand
 
-from vispy import app, gloo, scene
+from vispy import app, gloo
 from vispy.gloo import gl
 import vispy.color as color
 
@@ -23,7 +23,6 @@ def get_colormap(name, size=256):
         cmap = color.get_colormap(name)
     else:
         try:
-            # mpl_cmap = getattr(cm, name)
             mpl_cmap = plt.get_cmap(name)
         except AttributeError:
             raise KeyError(
@@ -44,12 +43,13 @@ def invertCmapName(cmap):
 
 
 def createAndRegisterCmap(name, cmapNameList, proportions=None):
-    # routine to create custom Matplotlib colormap
+    # routine to create custom Matplotlib colormap and its reversed version
     newColors = []
     newColors_r = []
     if proportions and len(proportions) != len(cmapNameList):
-        print("!!! Name of colormaps list and proportions list differs!!!")
-        return None
+        raise KeyError(
+            f'cmapNameList and proportions for Colormap {name}'
+            'have not the same length.')
     if proportions is None:
         proportions = 32 * np.ones(1, len(cmapNameList))
 
@@ -127,7 +127,7 @@ def setup_grid(rows, cols, blob_scale=0.1):
 
 
 class Canvas(app.Canvas): # originally app.Canvas
-    cwidth, cheight = 300, 300
+    cwidth, cheight = 600, 600
     dt = 3.5                # timestep; original value = 1.5                        lambda_left: 5
     dd = 0.7072             # Distance param for diffusion; original value = 1.5    lambda_left: 0.765
     w, h = cwidth, cheight
@@ -147,7 +147,7 @@ class Canvas(app.Canvas): # originally app.Canvas
         'x': '*xi_left'
     }
 
-    # definition of colormap
+    # definition of some custom colormaps
     bostonCmap = createAndRegisterCmap(
         'Boston', [
             'bone_r',
@@ -167,10 +167,10 @@ class Canvas(app.Canvas): # originally app.Canvas
     colormapDictionnary = {
         '1': 'Boston_r',
         '&': 'Boston',
-        '2': 'twilight',
-        'é': 'twilight_r',
-        '3': 'seattle',
-        '"': 'seattle_r',
+        '2': 'seattle',
+        'é': 'seattle_r',
+        '3': 'twilight',
+        '"': 'twilight_r',
         '4': 'magma',
         '\'': 'magma_r',
         '5': 'bone',
@@ -178,8 +178,8 @@ class Canvas(app.Canvas): # originally app.Canvas
         '6': 'YlOrBr',
         '§': 'YlOrBr_r'
     }
-    cm = get_colormap('Boston_r')
 
+    cm = get_colormap('Boston_r')
     specie = 'alpha_right'
 
     # parameters for du, dv, f, k
@@ -195,7 +195,7 @@ class Canvas(app.Canvas): # originally app.Canvas
     # u, v grid initialization, with central random patch
     UV = np.zeros((h, w, 4), dtype=np.float32)
     UV[:, :, 0:2] = setup_grid(h, w)
-    # UV += np.random.uniform(-0.02, 0.1, (h, w, 4))
+    # UV += np.random.uniform(-0.02, 0.1, (h, w, 4))    # Matbe no more useful since setup_grid add some randomness already
     UV[:, :, 2] = UV[:, :, 0]
     UV[:, :, 3] = UV[:, :, 1]
 
@@ -203,9 +203,11 @@ class Canvas(app.Canvas): # originally app.Canvas
     brush = np.zeros((1, 1, 2), dtype=np.float32)
     mouseDown = False
 
+    mousePressControlPos = [0.0, 0.0]
+
     pingpong = 1
 
-    # program of computation of Gray-Scott reaction-diffusion sim
+    # program for computation of Gray-Scott reaction-diffusion sim
     compute = gloo.Program(vertex_shader, compute_fragment, count=4)
     compute["params"] = P
     compute["texture"] = UV
@@ -220,7 +222,7 @@ class Canvas(app.Canvas): # originally app.Canvas
     compute['pingpong'] = pingpong
     compute['brush'] = brush
 
-    # program of rendering u chemical concentration
+    # program for rendering u or v reagent concentration
     render = gloo.Program(vertex_shader, render_fragment, count=4)
     render["texture"] = compute["texture"]
     render["texture"].interpolation = gl.GL_LINEAR
@@ -237,9 +239,12 @@ class Canvas(app.Canvas): # originally app.Canvas
                                    depth=gloo.RenderBuffer((w, h), format='depth'))
 
     def __init__(self):
-        super().__init__(size=(1024, 1024), title='Gray-Scott Reaction-Diffusion',
+        super().__init__(size=(1024, 1024),
+                         title='Gray-Scott Reaction-Diffusion',
                          keys='interactive',
-                         show=True)
+                         show=True,
+                         resizable=False,
+                         dpi=221)
 
     def on_draw(self, event):
         # toggling between r,g and b,a of texture
@@ -263,41 +268,61 @@ class Canvas(app.Canvas): # originally app.Canvas
         self.update()
 
     def on_mouse_press(self, event):
-        # print('mouse press')
-        # print('Mouse position: %s, %s' % (event.pos[0], event.pos[1]))
         self.mouseDown = True
-        self.compute['brush'] = [event.pos[0]/self.size[0], 1- event.pos[1]/self.size[1]]
-
-    def on_mouse_release(self, event):
-        # print('mouse release')
-        self.mouseDown = False
-        self.compute['brush'] = [0, 0]
+        if len(event.modifiers) == 0:
+            self.compute['brush'] = [event.pos[0]/self.size[0],
+                                     1 - event.pos[1]/self.size[1]]
+        elif 'control' in event.modifiers:
+            self.mousePressControlPos = [event.pos[0]/self.size[0],
+                                         1 - event.pos[1]/self.size[1]]
 
     def on_mouse_move(self, event):
         if(self.mouseDown):
-            # update brush coords here
-            self.compute['brush'] = [event.pos[0]/self.size[0], 1- event.pos[1]/self.size[1]]
+            if len(event.modifiers) == 0:
+                # update brush coords here
+                self.compute['brush'] = [event.pos[0]/self.size[0],
+                                         1 - event.pos[1]/self.size[1]]
+            elif 'control' in event.modifiers:
+                # update f and k values according to the x and y movements
+                fModAmount = event.pos[0]/self.size[0] - self.mousePressControlPos[0]
+                kModAmount = 1 - event.pos[1]/self.size[1] - self.mousePressControlPos[1]
+                f = self.P[0, 0, 2]
+                k = self.P[0, 0, 3]
+                self.P[:, :, 2] = np.clip(f + 0.0015 * fModAmount, 0.0, 0.08)
+                self.P[:, :, 3] = np.clip(k + 0.002 * kModAmount, 0.03, 0.07)
+                self.compute["params"] = self.P
+                print('New feed: %s. New kill: %s' % (self.P[0, 0, 2], self.P[0, 0, 3]))
+
+    def on_mouse_release(self, event):
+        self.mouseDown = False
+        if len(event.modifiers) == 0:
+            self.compute['brush'] = [0, 0]
 
     def on_key_press(self, event):
-        # print(event.text)
         if event.text == ' ':
-            print('Reinitialization of the grid.')
             self.reinitializeGrid()
         if event.text in self.speciesDictionnary.keys():
-            print("Switching to Pearson's pattern %s." % event.text)
             self.switchSpecie(self.speciesDictionnary[event.text])
         if event.text == '*':
             self.switchReagent()
         if event.text in self.colormapDictionnary.keys():
-            print('Using colormap %s.' % self.colormapDictionnary[event.text])
             self.switchColormap(self.colormapDictionnary[event.text])
 
     def reinitializeGrid(self):
+        print('Reinitialization of the grid with')
+        print('Pearson\'s Pattern %s' % self.specie)
+        print('dU, dV, f, k: %s, %s, %s, %s.' % (self.species[self.specie][0],
+                                                 self.species[self.specie][1],
+                                                 self.species[self.specie][2],
+                                                 self.species[self.specie][3]))
+        self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
+        self.P[:, :] = self.species[self.specie][0:4]
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
         self.UV += np.random.uniform(-0.02, 0.1, (self.h, self.w, 4))
         self.UV[:, :, 2] = self.UV[:, :, 0]
         self.UV[:, :, 3] = self.UV[:, :, 1]
+        self.compute["params"] = self.P
         self.compute["texture"] = self.UV
         self.compute["texture"].interpolation = gl.GL_NEAREST
         self.compute["texture"].wrapping = gl.GL_REPEAT
@@ -307,6 +332,11 @@ class Canvas(app.Canvas): # originally app.Canvas
 
     def switchSpecie(self, specie):
         self.specie = specie
+        print('Pearson\'s Pattern %s' % self.specie)
+        print('dU, dV, f, k: %s, %s, %s, %s.' % (self.species[self.specie][0],
+                                                 self.species[self.specie][1],
+                                                 self.species[self.specie][2],
+                                                 self.species[self.specie][3]))
         self.P[:, :] = self.species[specie][0:4]
         self.uScales[:, :] = self.species[specie][4:8]
         self.vScales[:, :] = self.species[specie][8:12]
@@ -317,10 +347,13 @@ class Canvas(app.Canvas): # originally app.Canvas
     def switchReagent(self):
         if self.render["reagent"] == 1:
             self.render["reagent"] = 0
+            print('Displaying V.')
         else:
             self.render["reagent"] = 1
+            print('Displaying U.')
 
     def switchColormap(self, name):
+        print('Using colormap %s.' % name)
         self.cm = get_colormap(name)
         self.render["cmap"] = self.cm.map(np.linspace(0, 1, 256)).astype('float32')
 
