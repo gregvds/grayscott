@@ -134,25 +134,28 @@ void main(void)
     float f  = q.b;          // feed of U
     float k  = q.a;          // kill of V
 
-    float du = ru * lu / dd - uvv + f * (1.0 - u); // Gray-Scott equation
-    float dv = rv * lv / dd + uvv - (f + k) * v;   // diffusion+-reaction
+    float du = ru * lu / dd - uvv + f * (1.0 - u);   // Gray-Scott equation
+    float dv = rv * lv / 2*dd + uvv - (f + k) * v;   // diffusion+-reaction
+    // float du = ru * lu + f * (1.0 - u);
+    // float dv = rv * lv;
 
-    u += du * dt;
-    v += dv * dt;
+    u = u + (du * dt);
+    v = v + (dv * dt);
 
     vec2 diff;
     float dist;
-    // Original way of clamping values
     if( pingpong == 1 ) {
         if (brush.x > 0.0) {
             diff = (p - brush)/dx;
             dist = dot(diff, diff);
             if(dist < 3.0) {
+                // u = 0.25;
                 v = 0.5;
             }
         }
-        // gl_FragColor = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), c);
-        gl_FragColor = vec4(u, v, c.r, c.g);
+        // Original way of clamping values
+        gl_FragColor = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), c);
+        // gl_FragColor = vec4(u, v, c.r, c.g);
     } else {
         if (brush.x > 0.0) {
             diff = (p - brush)/dx;
@@ -161,14 +164,9 @@ void main(void)
                 v = 0.5;
             }
         }
-        // gl_FragColor = vec4(c, clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0));
-        gl_FragColor = vec4(c.r, c.g, u, v);
+        // Original way of clamping values
+        gl_FragColor = vec4(c, clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0));
+        // gl_FragColor = vec4(c.r, c.g, u, v);
     }
-    // No clamping?
-    // if( pingpong == 1 ) {
-    //     gl_FragColor = vec4(u, v, c.r, c.g);
-    // } else {
-    //     gl_FragColor = vec4(c.r, c.g, u, v);
-    // }
 }
 """

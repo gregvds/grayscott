@@ -1,17 +1,35 @@
-# -----------------------------------------------------------------------------
-# Copyright (c) 2021 GREGVDS. All rights reserved.
+# -*- coding: utf-8 -*-
+# Parts of this is based on the following:
 #
+# https://github.com/soilstack/react_diffuse/
+# which uses Matplotlib and hence is quite slow.
+# I reused its systems.py and the setup_grid function.
+#
+# https://github.com/pmneila/jsexp
+# while it's using Javascript and THREE.js, it was a source of understanding
+# and inspiration, for the brush tool for example.
+#
+# https://github.com/glumpy/glumpy/blob/master/examples/grayscott.py
+#
+# which I discovered is very close to this:
+# http://vispy.org/examples/demo/gloo/terrain.html
+#
+# Primary Sources
+# 1. [Karl Sims Original](http://karlsims.com/rd.html)
+# 1. [Detailed discussion of Gray-Scott Model](http://mrob.com/pub/comp/xmorphia/)
+# 1. [Coding Train Reaction-Diffusion (based on Karl Sims)](https://www.youtube.com/watch?v=BV9ny785UNc&t=2100s)
+# 1. [Pearson canonical labelling of systems](https://arxiv.org/abs/patt-sol/9304003)
 # -----------------------------------------------------------------------------
 import numpy as np
 from numpy.random import rand
 
+import vispy.color as color
 from vispy import app, gloo
 from vispy.gloo import gl
-import vispy.color as color
 
+import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import ListedColormap
-import matplotlib.pyplot as plt
 
 from shaders import vertex_shader, compute_fragment, render_fragment
 from systems import pearson
@@ -71,10 +89,10 @@ def createAndRegisterCmap(name, cmapNameList, proportions=None):
     return newcmp
 
 
-def import_pearsons_types():
+def import_pearsons_types(scale = 1.0):
     species = {}
     type = None
-    scale = 4.0 + 4.0/np.sqrt(2)
+    # scale = 4.0 + 4.0/np.sqrt(2)
     for each in pearson.keys():
         type = pearson[each]
         species[each] = [type['factors']['Da']/scale,
@@ -98,7 +116,7 @@ def setup_grid(rows, cols, blob_scale=0.1):
     # grid is and two layers rows by cols numpy array filled first with 1
     grid = np.ones((rows, cols, 2))
     # the second layer is filled with 0
-    grid[:, :, 1] = 0
+    grid[:, :, 1] = 0.0
 
     # here we seed the central part of the grid with randomized .5 on first layer and .25 on second layer values
     DEV = 0.09
@@ -115,7 +133,7 @@ def setup_grid(rows, cols, blob_scale=0.1):
             grid[i, j, 1] = 0.25
 
     grid[from_row:to_row, from_col:to_col, :] = (
-                            (1+rand(to_row-from_row, to_col-from_col, 2) / 10)
+                            (1+rand(to_row-from_row, to_col-from_col, 2) / 100)
 
                             * grid[from_row:to_row, from_col:to_col, :]
     )
@@ -127,13 +145,15 @@ def setup_grid(rows, cols, blob_scale=0.1):
 
 
 class Canvas(app.Canvas): # originally app.Canvas
-    cwidth, cheight = 600, 600
-    dt = 3.5                # timestep; original value = 1.5                        lambda_left: 5
-    dd = 0.7072             # Distance param for diffusion; original value = 1.5    lambda_left: 0.765
+    cwidth, cheight = 512, 512
+    dt = 1.0              # 3.5 timestep; original value = 1.5                        lambda_left: 5
+    dd = 1.0              # 0.7072 Distance param for diffusion; original value = 1.5    lambda_left: 0.765
     w, h = cwidth, cheight
+    fps = 60
 
     # get all the Pearsons types
-    species = import_pearsons_types()
+    diffusionScale = 4.0 + 4.0/np.sqrt(2)
+    species = import_pearsons_types(scale = 1.0)
     speciesDictionnary = {
         'a': 'alpha_right',
         'b': 'beta_left',
@@ -154,7 +174,7 @@ class Canvas(app.Canvas): # originally app.Canvas
             'gray',
             'pink_r',
             'YlOrBr_r'],
-        proportions=[96, 16, 16, 96])
+        proportions=[960, 160, 160, 960])
     seattleCmap = createAndRegisterCmap(
         'seattle', [
             'bone_r',
@@ -163,7 +183,7 @@ class Canvas(app.Canvas): # originally app.Canvas
             'gray',
             'pink_r',
             'YlOrBr_r'],
-        proportions=[16, 48, 320, 64, 64, 384])
+        proportions=[160, 480, 3200, 640, 640, 3840])
     colormapDictionnary = {
         '1': 'Boston_r',
         '&': 'Boston',
@@ -195,7 +215,7 @@ class Canvas(app.Canvas): # originally app.Canvas
     # u, v grid initialization, with central random patch
     UV = np.zeros((h, w, 4), dtype=np.float32)
     UV[:, :, 0:2] = setup_grid(h, w)
-    # UV += np.random.uniform(-0.02, 0.1, (h, w, 4))    # Matbe no more useful since setup_grid add some randomness already
+    UV += np.random.uniform(0.0, 0.01, (h, w, 4))    # Matbe no more useful since setup_grid add some randomness already
     UV[:, :, 2] = UV[:, :, 0]
     UV[:, :, 3] = UV[:, :, 1]
 
@@ -229,28 +249,27 @@ class Canvas(app.Canvas): # originally app.Canvas
     render["texture"].wrapping = gl.GL_REPEAT
     render["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
     render["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
-    render["cmap"] = cm.map(np.linspace(0, 1, 256)).astype('float32')
+    render["cmap"] = cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
     render["uscales"] = uScales
     render["vscales"] = vScales
     render["reagent"] = 1
     render['pingpong'] = pingpong
 
+    # framebuffer = gloo.FrameBuffer(color=compute["texture"],
+    #                                depth=gloo.RenderBuffer((w, h), format='depth'))
     framebuffer = gloo.FrameBuffer(color=compute["texture"],
-                                   depth=gloo.RenderBuffer((w, h), format='depth'))
+                                   depth=gloo.RenderBuffer((w, h)))
 
     def __init__(self):
         super().__init__(size=(1024, 1024),
                          title='Gray-Scott Reaction-Diffusion',
                          keys='interactive',
-                         show=True,
+                         # show=True,
                          resizable=False,
                          dpi=221)
+        self.show()
 
     def on_draw(self, event):
-        # toggling between r,g and b,a of texture
-        self.pingpong = abs(1 - self.pingpong)
-        self.compute["pingpong"] = self.pingpong
-        self.render["pingpong"] = self.pingpong
 
         gl.glDisable(gl.GL_BLEND)
 
@@ -265,6 +284,11 @@ class Canvas(app.Canvas): # originally app.Canvas
         gl.glViewport(0, 0, self.physical_size[0], self.physical_size[1])
         self.render.draw(gl.GL_TRIANGLE_STRIP)
 
+        # toggling between r,g and b,a of texture
+        self.pingpong = abs(1 - self.pingpong)
+        self.compute["pingpong"] = self.pingpong
+        self.render["pingpong"] = self.pingpong
+
         self.update()
 
     def on_mouse_press(self, event):
@@ -275,6 +299,7 @@ class Canvas(app.Canvas): # originally app.Canvas
         elif 'control' in event.modifiers:
             self.mousePressControlPos = [event.pos[0]/self.size[0],
                                          1 - event.pos[1]/self.size[1]]
+            print('Current f and k: %s, %s' % (self.P[0, 0, 2], self.P[0, 0, 3]))
 
     def on_mouse_move(self, event):
         if(self.mouseDown):
@@ -291,12 +316,13 @@ class Canvas(app.Canvas): # originally app.Canvas
                 self.P[:, :, 2] = np.clip(f + 0.0015 * fModAmount, 0.0, 0.08)
                 self.P[:, :, 3] = np.clip(k + 0.002 * kModAmount, 0.03, 0.07)
                 self.compute["params"] = self.P
-                print('New feed: %s. New kill: %s' % (self.P[0, 0, 2], self.P[0, 0, 3]))
 
     def on_mouse_release(self, event):
         self.mouseDown = False
         if len(event.modifiers) == 0:
             self.compute['brush'] = [0, 0]
+        elif 'control' in event.modifiers:
+            print('New f and k: %s, %s' % (self.P[0, 0, 2], self.P[0, 0, 3]))
 
     def on_key_press(self, event):
         if event.text == ' ':
@@ -355,7 +381,7 @@ class Canvas(app.Canvas): # originally app.Canvas
     def switchColormap(self, name):
         print('Using colormap %s.' % name)
         self.cm = get_colormap(name)
-        self.render["cmap"] = self.cm.map(np.linspace(0, 1, 256)).astype('float32')
+        self.render["cmap"] = self.cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
 
 ################################################################################
 
@@ -365,9 +391,11 @@ if __name__ == '__main__':
     print('-----------------------------------')
     print('\nPearson\'s pattern can be switched with keys:')
     print('such as a, b, d, g, k, i, e, p, x, replacing greek letters.')
-    print('Several colormaps are available via 1 - 6, shifted for inversion.')
+    print('Several colormaps are available via 1 - 6, shifted for reversed version.')
     print('Mouse left click in the grid refills reagent v at 0.5.')
+    print('Ctrl + Mouse click and drag to modify feed and kill rates')
     print('* switch presentation between u and v.')
     print('Spacebar reseeds the grid.')
     c = Canvas()
+    # c.measure_fps(window=1, callback='%1.1f FPS')
     app.run()
