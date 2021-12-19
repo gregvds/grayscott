@@ -102,11 +102,12 @@ def import_pearsons_types(scale = 1.0):
                          type['scaling']['a']['icl'],
                          type['scaling']['a']['im'],
                          type['scaling']['a']['icu'],
-                         0,0,
+                         0.0,
                          type['scaling']['b']['icl'],
                          type['scaling']['b']['im'],
                          type['scaling']['b']['icu'],
-                         0,0]
+                         0.0,
+                         type['description']]
     return species
 
 
@@ -359,6 +360,7 @@ class Canvas(app.Canvas): # originally app.Canvas
     def switchSpecie(self, specie):
         self.specie = specie
         print('Pearson\'s Pattern %s' % self.specie)
+        print(self.species[self.specie][12])
         print('dU, dV, f, k: %s, %s, %s, %s.' % (self.species[self.specie][0],
                                                  self.species[self.specie][1],
                                                  self.species[self.specie][2],
