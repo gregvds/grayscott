@@ -164,8 +164,12 @@ class Canvas(app.Canvas): # originally app.Canvas
         'i': 'iota',
         'k': 'kappa_left',
         'l': 'lambda_left',
+        'm': 'mu_right',
+        'n': '*nu_left',
         'p': 'pi_left',
-        'x': '*xi_left'
+        't': 'theta_right',
+        'x': '*xi_left',
+        'z': 'zeta_right'
     }
 
     # definition of some custom colormaps
@@ -185,6 +189,18 @@ class Canvas(app.Canvas): # originally app.Canvas
             'pink_r',
             'YlOrBr_r'],
         proportions=[160, 480, 3200, 640, 640, 3840])
+    detroitCmap = createAndRegisterCmap(
+        'detroit', [
+            'bone',
+            'bone_r'
+        ],
+        proportions=[1024, 1024])
+    detroit_rCmap = createAndRegisterCmap(
+        'antidetroit', [
+            'bone_r',
+            'bone'
+        ],
+        proportions=[1024, 1024])
     colormapDictionnary = {
         '1': 'Boston_r',
         '&': 'Boston',
@@ -197,7 +213,9 @@ class Canvas(app.Canvas): # originally app.Canvas
         '5': 'bone',
         '(': 'bone_r',
         '6': 'YlOrBr',
-        '§': 'YlOrBr_r'
+        '§': 'YlOrBr_r',
+        '7': 'detroit',
+        'è': 'antidetroit'
     }
 
     cm = get_colormap('Boston_r')
@@ -336,20 +354,20 @@ class Canvas(app.Canvas): # originally app.Canvas
             self.switchColormap(self.colormapDictionnary[event.text])
 
     def reinitializeGrid(self):
-        print('Reinitialization of the grid with')
-        print('Pearson\'s Pattern %s' % self.specie)
-        print('dU, dV, f, k: %s, %s, %s, %s.' % (self.species[self.specie][0],
-                                                 self.species[self.specie][1],
-                                                 self.species[self.specie][2],
-                                                 self.species[self.specie][3]))
-        self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
-        self.P[:, :] = self.species[self.specie][0:4]
+        print('Reinitialization of the grid.')
+        # print('Pearson\'s Pattern %s' % self.specie)
+        # print('dU, dV, f, k: %s, %s, %s, %s.' % (self.species[self.specie][0],
+        #                                          self.species[self.specie][1],
+        #                                          self.species[self.specie][2],
+        #                                          self.species[self.specie][3]))
+        # self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
+        # self.P[:, :] = self.species[self.specie][0:4]
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
         self.UV += np.random.uniform(-0.02, 0.1, (self.h, self.w, 4))
         self.UV[:, :, 2] = self.UV[:, :, 0]
         self.UV[:, :, 3] = self.UV[:, :, 1]
-        self.compute["params"] = self.P
+        # self.compute["params"] = self.P
         self.compute["texture"] = self.UV
         self.compute["texture"].interpolation = gl.GL_NEAREST
         self.compute["texture"].wrapping = gl.GL_REPEAT
@@ -393,7 +411,7 @@ if __name__ == '__main__':
     print('-----------------------------------')
     print('\nPearson\'s pattern can be switched with keys:')
     print('such as a, b, d, g, k, i, e, p, x, replacing greek letters.')
-    print('Several colormaps are available via 1 - 6, shifted for reversed version.')
+    print('Several colormaps are available via 1 - 7, shifted for reversed version.')
     print('Mouse left click in the grid refills reagent v at 0.5.')
     print('Ctrl + Mouse click and drag to modify feed and kill rates')
     print('* switch presentation between u and v.')

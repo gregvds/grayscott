@@ -34,7 +34,7 @@ To launch, simply type python3 gs.py
 
 Pearson's pattern can be switched with keys:
 such as a, b, d, g, k, i, e, p, x, replacing greek letters.
-Several colormaps are available via 1 - 6, shifted for reversed version.
+Several colormaps are available via 1 - 7, shifted for reversed version.
 Mouse left click in the grid refills reagent v at 0.5.
 Ctrl + Mouse click and drag to modify feed and kill rates
 Key '*' switch presentation between u and v.
