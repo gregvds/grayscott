@@ -33,11 +33,11 @@ This was developed onto Mac, under Python 3.10.
 To launch, simply type python3 gs.py
 
 Pearson's pattern can be switched with keys:
-such as a, b, d, e, g, i, k, l, m, n, p, x, z replacing greek letters.
-Several colormaps are available via 1 - 7, shifted for reversed version.
-Mouse left click in the grid refills reagent v at 0.5.
-Mouse right click in the grid put reagent v at 0.
-Ctrl + Mouse click and drag to modify feed and kill rates.
-/ switch presentation between u and v.
-* toggles hillshading on or off.
-Spacebar reseeds the grid.
+- a, b, d, e, g, i, k, l, m, n, p, x, z replacing greek letters.
+- Several colormaps are available via 1 - 7, shifted for reversed version.
+- Mouse left click in the grid refills reagent v at 0.5.
+- Mouse right click in the grid put reagent v at 0.
+- Ctrl + Mouse click and drag to modify feed and kill rates.
+- / switch presentation between u and v.
+- * toggles hillshading on or off.
+- Spacebar reseeds the grid.
