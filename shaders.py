@@ -66,10 +66,142 @@ void main()
 
     vec4 color;
     // original no remapping/clamping values
-    // color = texture1D(cmap, u);
+    color = texture1D(cmap, u);
     // new clamped/remapped values
-    color = texture1D(cmap, clampedu);
+    // color = texture1D(cmap, clampedu);
     gl_FragColor = color;
+}
+"""
+
+render_hs_fragment = """
+uniform int pingpong;
+uniform int reagent;
+uniform float hsdir;
+uniform float hsalt;
+uniform float hsz;
+uniform float dx;          // horizontal distance between texels
+uniform float dy;          // vertical distance between texels
+uniform float dd;          // unit of distance
+uniform sampler2D texture; // u:= r or b following pinpong
+uniform sampler2D uscales; // icl, im, icu for U := r,g,b,a
+uniform sampler2D vscales; // icl, im, icu for V := r,g,b,a
+uniform sampler1D cmap;
+varying vec2 v_texcoord;
+void main()
+{
+    float u;
+    vec4 scales;
+    // pingpong between layers and choice or reagent
+    if(pingpong == 0) {
+        if(reagent == 1){
+            u = texture2D(texture, v_texcoord).r;
+            scales = texture2D(uscales, v_texcoord).rgba;
+        } else {
+            u = texture2D(texture, v_texcoord).g;
+            scales = texture2D(vscales, v_texcoord).rgba;
+        }
+    } else {
+        if(reagent == 1){
+            u = texture2D(texture, v_texcoord).b;
+            scales = texture2D(uscales, v_texcoord).rgba;
+        } else {
+            u = texture2D(texture, v_texcoord).a;
+            scales = texture2D(vscales, v_texcoord).rgba;
+        }
+    }
+
+    float icl = scales.r;                      // input lower limit
+    float im  = scales.g;                      // input median
+    float icu = scales.b;                      // input upper limit
+    float ibr = im - icl;                      // input bottom
+    float iur = icu - im;                      // input upper
+    float clampu = clamp(u, icl, icu);         // clipping
+    float uml = 0.5 / ibr;                     // lower-half
+    float ubl = 0.0 - uml * icl;
+    float umh = 0.5 / iur;                     // upper-half
+    float ubh = 0.5 - umh * im;
+
+    float clampedu;
+    if(clampu <= im) {
+        clampedu = uml*clampu + ubl;              // remapping lower-half
+    } else {
+        clampedu = umh*clampu + ubh;              // remapping upper-half
+    }
+
+    vec4 color;
+    // original no remapping/clamping values
+    color = texture1D(cmap, u);
+    // new clamped/remapped values
+    // color = texture1D(cmap, clampedu);
+
+    // Hillshading attempt...
+    if (hsz > 0.0){
+        vec2 p = v_texcoord;                  // center coordinates
+        vec2 dzdx, dzdy;
+        if( pingpong == 0 ) {
+            dzdx = (( texture2D(texture, p + vec2( dx,-dy)).rg
+                  + 2*texture2D(texture, p + vec2( dx,0.0)).rg
+                  +   texture2D(texture, p + vec2( dx, dy)).rg)
+                  - ( texture2D(texture, p + vec2(-dx,-dy)).rg
+                  + 2*texture2D(texture, p + vec2(-dx,0.0)).rg
+                  +   texture2D(texture, p + vec2(-dx, dy)).rg)) / 8 * dd;
+            dzdy = (( texture2D(texture, p + vec2(-dx, dy)).rg
+                  + 2*texture2D(texture, p + vec2(0.0, dy)).rg
+                  +   texture2D(texture, p + vec2( dx, dy)).rg)
+                  - ( texture2D(texture, p + vec2(-dx,-dy)).rg
+                  + 2*texture2D(texture, p + vec2(0.0,-dy)).rg
+                  +   texture2D(texture, p + vec2( dx,-dy)).rg)) / 8 * dd;  //
+        } else {
+            dzdx = (( texture2D(texture, p + vec2( dx,-dy)).ba
+                  + 2*texture2D(texture, p + vec2( dx,0.0)).ba
+                  +   texture2D(texture, p + vec2( dx, dy)).ba)
+                  - ( texture2D(texture, p + vec2(-dx,-dy)).ba
+                  + 2*texture2D(texture, p + vec2(-dx,0.0)).ba
+                  +   texture2D(texture, p + vec2(-dx, dy)).ba)) / 8 * dd;
+            dzdy = (( texture2D(texture, p + vec2(-dx, dy)).ba
+                  + 2*texture2D(texture, p + vec2(0.0, dy)).ba
+                  +   texture2D(texture, p + vec2( dx, dy)).ba)
+                  - ( texture2D(texture, p + vec2(-dx,-dy)).ba
+                  + 2*texture2D(texture, p + vec2(0.0,-dy)).ba
+                  +   texture2D(texture, p + vec2( dx,-dy)).ba)) / 8 * dd;  //
+        }
+
+        float gradzx, gradzy;
+        if(reagent==1){
+            gradzx = dzdx.x;
+            gradzy = dzdy.x;
+        } else {
+            gradzx = dzdx.y;
+            gradzy = dzdy.y;
+        }
+        float pi = 3.141592653589793;
+        float slope = atan(hsz * sqrt(gradzx*gradzx + gradzy*gradzy));
+        float aspect = 0.0;
+        if(gradzx != 0.0){
+            aspect = atan(gradzy, gradzx);
+            if(aspect < 0.0){
+                aspect += 2.0*pi;
+            }
+        } else {
+            if(gradzy>0.0){
+                aspect = pi/2.0;
+            } else if(gradzy<0.0){
+                aspect = 2.0*pi - pi/2.0;
+            }
+        }
+        float hs = ((cos(hsalt)*cos(slope)) + (sin(hsalt)*sin(slope))*(cos(hsdir - aspect)));
+        vec4 colorhsOverlay;
+        if (hs < 0.5){
+            colorhsOverlay = 2.0 * color * vec4(hs, hs, hs, 1.0);
+        } else {
+            colorhsOverlay = 1.0 - 2.0*(1.0-color)*(1.0-vec4(hs, hs, hs, 1.0));
+        }
+        vec4 colorhspegtop = (1.0 - 2.0*color)*vec4(hs, hs, hs, 1.0)*vec4(hs, hs, hs, 1.0) + 2.0*vec4(hs, hs, hs, 1.0)*color;
+        gl_FragColor = colorhsOverlay;
+    } else {
+        gl_FragColor = color;
+    }
+
 }
 """
 
@@ -82,6 +214,7 @@ uniform float dy;          // vertical distance between texels
 uniform float dd;          // unit of distance
 uniform float dt;          // unit of time
 uniform vec2 brush;        // coordinates of mouse down
+uniform int brushtype;
 varying vec2 v_texcoord;
 void main(void)
 {
@@ -136,8 +269,6 @@ void main(void)
 
     float du = ru * lu / dd - uvv + f * (1.0 - u);   // Gray-Scott equation
     float dv = rv * lv / 2*dd + uvv - (f + k) * v;   // diffusion+-reaction
-    // float du = ru * lu + f * (1.0 - u);
-    // float dv = rv * lv;
 
     u = u + (du * dt);
     v = v + (dv * dt);
@@ -148,10 +279,10 @@ void main(void)
         if (brush.x > 0.0) {
             diff = (p - brush)/dx;
             dist = dot(diff, diff);
-            if(dist < 3.0) {
-                // u = 0.25;
+            if((brushtype == 1) && (dist < 3.0))
                 v = 0.5;
-            }
+            if((brushtype == 2) && (dist < 9.0))
+                v = 0.0;
         }
         // Original way of clamping values
         gl_FragColor = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), c);
@@ -160,9 +291,10 @@ void main(void)
         if (brush.x > 0.0) {
             diff = (p - brush)/dx;
             dist = dot(diff, diff);
-            if(dist < 3.0) {
+            if((brushtype == 1) && (dist < 3.0))
                 v = 0.5;
-            }
+            if((brushtype == 2) && (dist < 9.0))
+                v = 0.0;
         }
         // Original way of clamping values
         gl_FragColor = vec4(c, clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0));

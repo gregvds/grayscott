@@ -20,6 +20,22 @@
 # 1. [Coding Train Reaction-Diffusion (based on Karl Sims)](https://www.youtube.com/watch?v=BV9ny785UNc&t=2100s)
 # 1. [Pearson canonical labelling of systems](https://arxiv.org/abs/patt-sol/9304003)
 # -----------------------------------------------------------------------------
+"""
+    Gray-Scott reaction-diffusion model
+    -----------------------------------
+
+    Pearson's pattern can be switched with keys:
+    a, b, d, e, g, i, k, l, m, n, p, x, z replacing greek letters.
+    Several colormaps are available via 1 - 7, shifted for reversed version.
+    Mouse left click in the grid refills reagent v at 0.5.
+    Mouse right click in the grid put reagent v at 0.
+    Ctrl + Mouse click and drag to modify feed and kill rates.
+    / switch presentation between u and v.
+    * toggles hillshading on or off.
+    Spacebar reseeds the grid.
+"""
+import math
+
 import numpy as np
 from numpy.random import rand
 
@@ -31,7 +47,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import ListedColormap
 
-from shaders import vertex_shader, compute_fragment, render_fragment
+from shaders import vertex_shader, compute_fragment, render_fragment, render_hs_fragment
 from systems import pearson
 
 
@@ -150,7 +166,7 @@ class Canvas(app.Canvas): # originally app.Canvas
     dt = 1.0              # 3.5 timestep; original value = 1.5                        lambda_left: 5
     dd = 1.0              # 0.7072 Distance param for diffusion; original value = 1.5    lambda_left: 0.765
     w, h = cwidth, cheight
-    fps = 60
+    # fps = 60
 
     # get all the Pearsons types
     diffusionScale = 4.0 + 4.0/np.sqrt(2)
@@ -240,11 +256,24 @@ class Canvas(app.Canvas): # originally app.Canvas
 
     # brush to add reagent v
     brush = np.zeros((1, 1, 2), dtype=np.float32)
+    brushType = 0
     mouseDown = False
 
     mousePressControlPos = [0.0, 0.0]
 
     pingpong = 1
+
+# ------------------------------------------------------------------------------
+    # Hillshading lightning parameters
+    lightDirection = 315
+    lightAltitude = 45
+    hsdir = 360.0 - lightDirection + 90.0
+    if hsdir >= 360.0:
+        hsdir -= 360.0
+    hsdir *= math.pi / 180.0
+    hsalt = (90 - lightAltitude) * math.pi / 180.0
+    hsz = 5.0
+# ------------------------------------------------------------------------------
 
     # program for computation of Gray-Scott reaction-diffusion sim
     compute = gloo.Program(vertex_shader, compute_fragment, count=4)
@@ -260,9 +289,17 @@ class Canvas(app.Canvas): # originally app.Canvas
     compute['dd'] = dd
     compute['pingpong'] = pingpong
     compute['brush'] = brush
+    compute['brushtype'] = brushType
 
     # program for rendering u or v reagent concentration
-    render = gloo.Program(vertex_shader, render_fragment, count=4)
+    #  render = gloo.Program(vertex_shader, render_fragment, count=4)
+    render = gloo.Program(vertex_shader, render_hs_fragment, count=4)
+    render["hsdir"] = hsdir
+    render["hsalt"] = hsalt
+    render["hsz"] = hsz
+    render['dx'] = 1.0 / w
+    render['dy'] = 1.0 / h
+    render['dd'] = dd
     render["texture"] = compute["texture"]
     render["texture"].interpolation = gl.GL_LINEAR
     render["texture"].wrapping = gl.GL_REPEAT
@@ -289,22 +326,21 @@ class Canvas(app.Canvas): # originally app.Canvas
         self.show()
 
     def on_draw(self, event):
-
-        gl.glDisable(gl.GL_BLEND)
-
-        # holding rendering output ?
+        # holding rendering output
         self.framebuffer.activate()
         gl.glViewport(0, 0, self.cwidth, self.cheight)
         self.compute.draw(gl.GL_TRIANGLE_STRIP)
 
         # releasing rendering output
         self.framebuffer.deactivate()
-        gloo.clear(color=True, depth=True)
+
+        # rendering the state of the model
+        gloo.clear(color=True)
         gl.glViewport(0, 0, self.physical_size[0], self.physical_size[1])
         self.render.draw(gl.GL_TRIANGLE_STRIP)
 
         # toggling between r,g and b,a of texture
-        self.pingpong = abs(1 - self.pingpong)
+        self.pingpong = 1 - self.pingpong
         self.compute["pingpong"] = self.pingpong
         self.render["pingpong"] = self.pingpong
 
@@ -315,6 +351,7 @@ class Canvas(app.Canvas): # originally app.Canvas
         if len(event.modifiers) == 0:
             self.compute['brush'] = [event.pos[0]/self.size[0],
                                      1 - event.pos[1]/self.size[1]]
+            self.compute['brushtype'] = event.button
         elif 'control' in event.modifiers:
             self.mousePressControlPos = [event.pos[0]/self.size[0],
                                          1 - event.pos[1]/self.size[1]]
@@ -326,6 +363,7 @@ class Canvas(app.Canvas): # originally app.Canvas
                 # update brush coords here
                 self.compute['brush'] = [event.pos[0]/self.size[0],
                                          1 - event.pos[1]/self.size[1]]
+                self.compute['brushtype'] = event.button
             elif 'control' in event.modifiers:
                 # update f and k values according to the x and y movements
                 fModAmount = event.pos[0]/self.size[0] - self.mousePressControlPos[0]
@@ -340,6 +378,7 @@ class Canvas(app.Canvas): # originally app.Canvas
         self.mouseDown = False
         if len(event.modifiers) == 0:
             self.compute['brush'] = [0, 0]
+            self.compute['brushtype'] = 0
         elif 'control' in event.modifiers:
             print('New f and k: %s, %s' % (self.P[0, 0, 2], self.P[0, 0, 3]))
 
@@ -348,26 +387,20 @@ class Canvas(app.Canvas): # originally app.Canvas
             self.reinitializeGrid()
         if event.text in self.speciesDictionnary.keys():
             self.switchSpecie(self.speciesDictionnary[event.text])
-        if event.text == '*':
+        if event.text == '/':
             self.switchReagent()
         if event.text in self.colormapDictionnary.keys():
             self.switchColormap(self.colormapDictionnary[event.text])
+        if event.text == '*':
+            self.toggleHillshading()
 
     def reinitializeGrid(self):
         print('Reinitialization of the grid.')
-        # print('Pearson\'s Pattern %s' % self.specie)
-        # print('dU, dV, f, k: %s, %s, %s, %s.' % (self.species[self.specie][0],
-        #                                          self.species[self.specie][1],
-        #                                          self.species[self.specie][2],
-        #                                          self.species[self.specie][3]))
-        # self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
-        # self.P[:, :] = self.species[self.specie][0:4]
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
         self.UV += np.random.uniform(-0.02, 0.1, (self.h, self.w, 4))
         self.UV[:, :, 2] = self.UV[:, :, 0]
         self.UV[:, :, 3] = self.UV[:, :, 1]
-        # self.compute["params"] = self.P
         self.compute["texture"] = self.UV
         self.compute["texture"].interpolation = gl.GL_NEAREST
         self.compute["texture"].wrapping = gl.GL_REPEAT
@@ -403,19 +436,18 @@ class Canvas(app.Canvas): # originally app.Canvas
         self.cm = get_colormap(name)
         self.render["cmap"] = self.cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
 
+    def toggleHillshading(self):
+        if self.hsz == 5.0:
+            self.hsz = 0.0
+        else:
+            self.hsz = 5.0
+        self.render['hsz'] = self.hsz
+
 ################################################################################
 
 
 if __name__ == '__main__':
-    print('Gray-Scott reaction-diffusion model')
-    print('-----------------------------------')
-    print('\nPearson\'s pattern can be switched with keys:')
-    print('such as a, b, d, g, k, i, e, p, x, replacing greek letters.')
-    print('Several colormaps are available via 1 - 7, shifted for reversed version.')
-    print('Mouse left click in the grid refills reagent v at 0.5.')
-    print('Ctrl + Mouse click and drag to modify feed and kill rates')
-    print('* switch presentation between u and v.')
-    print('Spacebar reseeds the grid.')
+    print(__doc__)
     c = Canvas()
     # c.measure_fps(window=1, callback='%1.1f FPS')
     app.run()
