@@ -30,8 +30,9 @@
     Mouse left click in the grid refills reagent v at 0.5.
     Mouse right click in the grid put reagent v at 0.
     Ctrl + Mouse click and drag to modify feed and kill rates.
-    / switch presentation between u and v.
-    * toggles hillshading on or off.
+    Shift + Mouse click and drag modifies the hillshading parameters.
+    key / switch presentation between u and v.
+    key * toggles hillshading on or off.
     Spacebar reseeds the grid.
 """
 import math
@@ -47,7 +48,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import ListedColormap
 
-from shaders import vertex_shader, compute_fragment, render_fragment, render_hs_fragment
+from shaders import vertex_shader, compute_fragment, render_hs_fragment
 from systems import pearson
 
 
@@ -161,16 +162,18 @@ def setup_grid(rows, cols, blob_scale=0.1):
 ################################################################################
 
 
-class Canvas(app.Canvas): # originally app.Canvas
-    cwidth, cheight = 512, 512
-    dt = 1.0              # 3.5 timestep; original value = 1.5                        lambda_left: 5
-    dd = 1.0              # 0.7072 Distance param for diffusion; original value = 1.5    lambda_left: 0.765
-    w, h = cwidth, cheight
+class Canvas(app.Canvas):
     # fps = 60
 
-    # get all the Pearsons types
+    cwidth, cheight = 512, 512
+    w, h = cwidth, cheight
+    dt = 1.0              # 3.5 timestep; original value = 1.5                        lambda_left: 5
+    dd = 1.0              # 0.7072 Distance param for diffusion; original value = 1.5    lambda_left: 0.765
+
+    # Pearson's patterns related variables
+    # scale is used depending on the kernel used by the model
     diffusionScale = 4.0 + 4.0/np.sqrt(2)
-    species = import_pearsons_types(scale = 1.0)
+    species = {}
     speciesDictionnary = {
         'a': 'alpha_right',
         'b': 'beta_left',
@@ -233,97 +236,103 @@ class Canvas(app.Canvas): # originally app.Canvas
         '7': 'detroit',
         'è': 'antidetroit'
     }
-
     cm = get_colormap('Boston_r')
+
     specie = 'alpha_right'
 
-    # parameters for du, dv, f, k
+    # Array for du, dv, f, k
     P = np.zeros((h, w, 4), dtype=np.float32)
-    P[:, :] = species[specie][0:4]
 
-    # parameters for scaling u and v rendering
+    # Arrays for scaling u and v rendering
     uScales = np.zeros((h, w, 4), dtype=np.float32)
     vScales = np.zeros((h, w, 4), dtype=np.float32)
-    uScales[:, :] = species[specie][4:8]
-    vScales[:, :] = species[specie][8:12]
 
-    # u, v grid initialization, with central random patch
+    # Arrays for reagents u, v
     UV = np.zeros((h, w, 4), dtype=np.float32)
-    UV[:, :, 0:2] = setup_grid(h, w)
-    UV += np.random.uniform(0.0, 0.01, (h, w, 4))    # Matbe no more useful since setup_grid add some randomness already
-    UV[:, :, 2] = UV[:, :, 0]
-    UV[:, :, 3] = UV[:, :, 1]
 
     # brush to add reagent v
     brush = np.zeros((1, 1, 2), dtype=np.float32)
     brushType = 0
-    mouseDown = False
 
+    mouseDown = False
     mousePressControlPos = [0.0, 0.0]
 
+    # pipeline toggling parameter
     pingpong = 1
 
-# ------------------------------------------------------------------------------
     # Hillshading lightning parameters
-    lightDirection = 315
-    lightAltitude = 45
-    hsdir = 360.0 - lightDirection + 90.0
-    if hsdir >= 360.0:
-        hsdir -= 360.0
-    hsdir *= math.pi / 180.0
-    hsalt = (90 - lightAltitude) * math.pi / 180.0
+    hsdir = 0
+    hsalt = 0
     hsz = 5.0
-# ------------------------------------------------------------------------------
 
     # program for computation of Gray-Scott reaction-diffusion sim
     compute = gloo.Program(vertex_shader, compute_fragment, count=4)
-    compute["params"] = P
-    compute["texture"] = UV
-    compute["texture"].interpolation = gl.GL_NEAREST
-    compute["texture"].wrapping = gl.GL_REPEAT
-    compute["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
-    compute["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
-    compute['dt'] = dt
-    compute['dx'] = 1.0 / w
-    compute['dy'] = 1.0 / h
-    compute['dd'] = dd
-    compute['pingpong'] = pingpong
-    compute['brush'] = brush
-    compute['brushtype'] = brushType
 
     # program for rendering u or v reagent concentration
-    #  render = gloo.Program(vertex_shader, render_fragment, count=4)
     render = gloo.Program(vertex_shader, render_hs_fragment, count=4)
-    render["hsdir"] = hsdir
-    render["hsalt"] = hsalt
-    render["hsz"] = hsz
-    render['dx'] = 1.0 / w
-    render['dy'] = 1.0 / h
-    render['dd'] = dd
-    render["texture"] = compute["texture"]
-    render["texture"].interpolation = gl.GL_LINEAR
-    render["texture"].wrapping = gl.GL_REPEAT
-    render["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
-    render["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
-    render["cmap"] = cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
-    render["uscales"] = uScales
-    render["vscales"] = vScales
-    render["reagent"] = 1
-    render['pingpong'] = pingpong
 
-    # framebuffer = gloo.FrameBuffer(color=compute["texture"],
-    #                                depth=gloo.RenderBuffer((w, h), format='depth'))
-    framebuffer = gloo.FrameBuffer(color=compute["texture"],
-                                   depth=gloo.RenderBuffer((w, h)))
 
-    def __init__(self):
-        super().__init__(size=(1024, 1024),
+    def __init__(self, size=(1024, 1024), scale=0.5):
+        super().__init__(size=size,
                          title='Gray-Scott Reaction-Diffusion',
                          keys='interactive',
-                         # show=True,
                          resizable=False,
                          dpi=221)
+        self.cwidth, self.cheight = int(size[0]*scale), int(size[1]*scale)
+        self.initialize()
+        self.framebuffer = gloo.FrameBuffer(color=self.compute["texture"],
+                                            depth=gloo.RenderBuffer((self.w, self.h)))
         self.show()
+
+    def initialize(self):
+        self.h, self.w = self.cwidth, self.cheight
+        self.species = import_pearsons_types(scale=1.0) #scale=self.diffusionScale
+        # definition of parameters for du, dv, f, k
+        self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
+        self.P[:, :] = self.species[self.specie][0:4]
+        # definition of parameters for scaling u and v rendering
+        self.uScales = np.zeros((self.h, self.w, 4), dtype=np.float32)
+        self.vScales = np.zeros((self.h, self.w, 4), dtype=np.float32)
+        self.uScales[:, :] = self.species[self.specie][4:8]
+        self.vScales[:, :] = self.species[self.specie][8:12]
+        # grid initialization, with central random patch
+        self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
+        self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
+        self.UV += np.random.uniform(0.0, 0.01, (self.h, self.w, 4))    # Maybe no more useful since setup_grid add some randomness already
+        self.UV[:, :, 2] = self.UV[:, :, 0]
+        self.UV[:, :, 3] = self.UV[:, :, 1]
+        # hillshading parameters computation
+        self.hsdir, self.hsalt = self.getHsDirAlt()
+        # setting the programs
+        self.compute["params"] = self.P
+        self.compute["texture"] = self.UV
+        self.compute["texture"].interpolation = gl.GL_NEAREST
+        self.compute["texture"].wrapping = gl.GL_REPEAT
+        self.compute["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
+        self.compute["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
+        self.compute['dt'] = self.dt
+        self.compute['dx'] = 1.0 / self.w
+        self.compute['dy'] = 1.0 / self.h
+        self.compute['dd'] = self.dd
+        self.compute['pingpong'] = self.pingpong
+        self.compute['brush'] = self.brush
+        self.compute['brushtype'] = self.brushType
+        self.render["hsdir"] = self.hsdir
+        self.render["hsalt"] = self.hsalt
+        self.render["hsz"] = self.hsz
+        self.render['dx'] = 1.0 / self.w
+        self.render['dy'] = 1.0 / self.h
+        self.render['dd'] = self.dd
+        self.render["texture"] = self.compute["texture"]
+        self.render["texture"].interpolation = gl.GL_LINEAR
+        self.render["texture"].wrapping = gl.GL_REPEAT
+        self.render["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
+        self.render["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
+        self.render["cmap"] = self.cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
+        self.render["uscales"] = self.uScales
+        self.render["vscales"] = self.vScales
+        self.render["reagent"] = 1
+        self.render['pingpong'] = self.pingpong
 
     def on_draw(self, event):
         # holding rendering output
@@ -352,10 +361,13 @@ class Canvas(app.Canvas): # originally app.Canvas
             self.compute['brush'] = [event.pos[0]/self.size[0],
                                      1 - event.pos[1]/self.size[1]]
             self.compute['brushtype'] = event.button
-        elif 'control' in event.modifiers:
+        elif len(event.modifiers) == 1 and 'control' in event.modifiers:
             self.mousePressControlPos = [event.pos[0]/self.size[0],
                                          1 - event.pos[1]/self.size[1]]
-            print('Current f and k: %s, %s' % (self.P[0, 0, 2], self.P[0, 0, 3]))
+            print('Current f and k: %s, %s' % (self.P[0, 0, 2],
+                                               self.P[0, 0, 3]))
+        elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
+            self.updateHillshading(event)
 
     def on_mouse_move(self, event):
         if(self.mouseDown):
@@ -364,7 +376,7 @@ class Canvas(app.Canvas): # originally app.Canvas
                 self.compute['brush'] = [event.pos[0]/self.size[0],
                                          1 - event.pos[1]/self.size[1]]
                 self.compute['brushtype'] = event.button
-            elif 'control' in event.modifiers:
+            elif len(event.modifiers) == 1 and 'control' in event.modifiers:
                 # update f and k values according to the x and y movements
                 fModAmount = event.pos[0]/self.size[0] - self.mousePressControlPos[0]
                 kModAmount = 1 - event.pos[1]/self.size[1] - self.mousePressControlPos[1]
@@ -373,6 +385,9 @@ class Canvas(app.Canvas): # originally app.Canvas
                 self.P[:, :, 2] = np.clip(f + 0.0015 * fModAmount, 0.0, 0.08)
                 self.P[:, :, 3] = np.clip(k + 0.002 * kModAmount, 0.03, 0.07)
                 self.compute["params"] = self.P
+                # print('Current f and k: %s, %s' % (self.P[0, 0, 2], self.P[0, 0, 3]))
+            elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
+                self.updateHillshading(event)
 
     def on_mouse_release(self, event):
         self.mouseDown = False
@@ -443,11 +458,36 @@ class Canvas(app.Canvas): # originally app.Canvas
             self.hsz = 5.0
         self.render['hsz'] = self.hsz
 
+    def updateHillshading(self, event):
+        hsdir = 180.0/math.pi*math.atan2(
+            (event.pos[0]/self.size[0] - 0.5)*2,
+            (1 - event.pos[1]/self.size[1] - 0.5)*2
+        )
+        hsalt = 90 - (180.0/math.pi*math.atan(
+            math.sqrt(
+                ((event.pos[0]/self.size[0] - 0.5)*2) *
+                ((event.pos[0]/self.size[0] - 0.5)*2) +
+                ((1 - event.pos[1]/self.size[1] - 0.5)*2) *
+                ((1 - event.pos[1]/self.size[1] - 0.5)*2)
+                )))
+        self.hsdir, self.hsalt = self.getHsDirAlt(lightDirection=hsdir,
+                                                  lightAltitude=hsalt)
+        self.render["hsdir"] = self.hsdir
+        self.render["hsalt"] = self.hsalt
+
+    def getHsDirAlt(self, lightDirection=315, lightAltitude=45):
+        hsdir = 360.0 - lightDirection + 90.0
+        if hsdir >= 360.0:
+            hsdir -= 360.0
+        hsdir *= math.pi / 180.0
+        hsalt = (90 - lightAltitude) * math.pi / 180.0
+        return (hsdir, hsalt)
+
 ################################################################################
 
 
 if __name__ == '__main__':
     print(__doc__)
-    c = Canvas()
+    c = Canvas(size=(1000, 1000), scale=0.5)
     # c.measure_fps(window=1, callback='%1.1f FPS')
     app.run()
