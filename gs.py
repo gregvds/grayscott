@@ -26,13 +26,14 @@
 
     Pearson's pattern can be switched with keys:
     a, b, d, e, g, i, k, l, m, n, p, x, z replacing greek letters.
-    Several colormaps are available via 1 - 7, shifted for reversed version.
+    Several colormaps are available via 1 - 8, shifted for reversed version.
     Mouse left click in the grid refills reagent v at 0.5.
     Mouse right click in the grid put reagent v at 0.
     Ctrl + Mouse click and drag to modify feed and kill rates.
     Shift + Mouse click and drag modifies the hillshading parameters.
     key / switch presentation between u and v.
     key * toggles hillshading on or off.
+    key $ toggles interpolation on or off.
     Spacebar reseeds the grid.
 """
 import math
@@ -192,6 +193,13 @@ class Canvas(app.Canvas):
     }
 
     # definition of some custom colormaps
+    testCmap = createAndRegisterCmap(
+        'test', [
+            'bone_r',
+            'Blues_r',
+            'GnBu_r',
+            'Greens'],
+        proportions=[512, 128, 512, 128])
     bostonCmap = createAndRegisterCmap(
         'Boston', [
             'bone_r',
@@ -234,7 +242,9 @@ class Canvas(app.Canvas):
         '6': 'YlOrBr',
         '§': 'YlOrBr_r',
         '7': 'detroit',
-        'è': 'antidetroit'
+        'è': 'antidetroit',
+        '8': 'test',
+        '!': 'test_r'
     }
     cm = get_colormap('Boston_r')
 
@@ -267,12 +277,14 @@ class Canvas(app.Canvas):
     hsalt = 0
     hsz = 5.0
 
+    # interpolation
+    interpolationMode = 'linear'
+
     # program for computation of Gray-Scott reaction-diffusion sim
     compute = gloo.Program(vertex_shader, compute_fragment, count=4)
 
     # program for rendering u or v reagent concentration
     render = gloo.Program(vertex_shader, render_hs_fragment, count=4)
-
 
     def __init__(self, size=(1024, 1024), scale=0.5):
         super().__init__(size=size,
@@ -300,7 +312,7 @@ class Canvas(app.Canvas):
         # grid initialization, with central random patch
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
-        self.UV += np.random.uniform(0.0, 0.01, (self.h, self.w, 4))    # Maybe no more useful since setup_grid add some randomness already
+        self.UV += np.random.uniform(0.0, 0.01, (self.h, self.w, 4))
         self.UV[:, :, 2] = self.UV[:, :, 0]
         self.UV[:, :, 3] = self.UV[:, :, 1]
         # hillshading parameters computation
@@ -401,14 +413,29 @@ class Canvas(app.Canvas):
     def on_key_press(self, event):
         if event.text == ' ':
             self.reinitializeGrid()
-        if event.text in self.speciesDictionnary.keys():
+        elif event.text in self.speciesDictionnary.keys():
             self.switchSpecie(self.speciesDictionnary[event.text])
-        if event.text == '/':
+        elif event.text == '/':
             self.switchReagent()
-        if event.text in self.colormapDictionnary.keys():
+        elif event.text in self.colormapDictionnary.keys():
             self.switchColormap(self.colormapDictionnary[event.text])
-        if event.text == '*':
+        elif event.text == '*':
             self.toggleHillshading()
+        elif event.text == '$':
+            self.toggleInterpolation()
+        elif event.key.name == 'Up':
+            self.updatedt(0.01)
+            print('dt: %s' % self.dt)
+        elif event.key.name == 'Down':
+            self.updatedt(-0.01)
+            print('dt: %s' % self.dt)
+        elif event.key.name == 'Right':
+            self.updatedd(0.01)
+            print('dd: %s' % self.dd)
+        elif event.key.name == 'Left':
+            self.updatedd(-0.01)
+            print('dd: %s' % self.dd)
+        # print(event.key.name)
 
     def reinitializeGrid(self):
         print('Reinitialization of the grid.')
@@ -456,6 +483,15 @@ class Canvas(app.Canvas):
         self.P[:, :, 3] = np.clip(k + 0.002 * kModAmount, 0.03, 0.07)
         self.compute["params"] = self.P
 
+    def updatedd(self, amount):
+        self.dd += amount
+        self.compute['dd'] = self.dd
+        self.render['dd'] = self.dd
+
+    def updatedt(self, amount):
+        self.dt += amount
+        self.compute['dt'] = self.dt
+
     def switchColormap(self, name):
         print('Using colormap %s.' % name)
         self.cm = get_colormap(name)
@@ -487,6 +523,15 @@ class Canvas(app.Canvas):
                                                   lightAltitude=self.hsaltitude)
         self.render["hsdir"] = self.hsdir
         self.render["hsalt"] = self.hsalt
+
+    def toggleInterpolation(self):
+        if self.interpolationMode == 'linear':
+            self.interpolationMode = 'nearest'
+            self.render["texture"].interpolation = gl.GL_NEAREST
+        else:
+            self.interpolationMode = 'linear'
+            self.render["texture"].interpolation = gl.GL_LINEAR
+        print('Interpolation mode: %s.' % self.interpolationMode)
 
     def getHsDirAlt(self, lightDirection=315, lightAltitude=45):
         hsdir = 360.0 - lightDirection + 90.0

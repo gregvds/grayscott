@@ -110,6 +110,7 @@ void main()
         }
     }
 
+    // clamping and rescaling
     float icl = scales.r;                      // input lower limit
     float im  = scales.g;                      // input median
     float icu = scales.b;                      // input upper limit
@@ -120,7 +121,6 @@ void main()
     float ubl = 0.0 - uml * icl;
     float umh = 0.5 / iur;                     // upper-half
     float ubh = 0.5 - umh * im;
-
     float clampedu;
     if(clampu <= im) {
         clampedu = uml*clampu + ubl;              // remapping lower-half
@@ -129,12 +129,10 @@ void main()
     }
 
     vec4 color;
-    // original no remapping/clamping values
     color = texture1D(cmap, u);
-    // new clamped/remapped values
     // color = texture1D(cmap, clampedu);
 
-    // Hillshading attempt...
+    // Hillshading
     if (hsz > 0.0){
         vec2 p = v_texcoord;                  // center coordinates
         vec2 dzdx, dzdy;
@@ -196,7 +194,7 @@ void main()
         } else {
             colorhsOverlay = 1.0 - 2.0*(1.0-color)*(1.0-vec4(hs, hs, hs, 1.0));
         }
-        vec4 colorhspegtop = (1.0 - 2.0*color)*vec4(hs, hs, hs, 1.0)*vec4(hs, hs, hs, 1.0) + 2.0*vec4(hs, hs, hs, 1.0)*color;
+        // vec4 colorhspegtop = (1.0 - 2.0*color)*vec4(hs, hs, hs, 1.0)*vec4(hs, hs, hs, 1.0) + 2.0*vec4(hs, hs, hs, 1.0)*color;
         gl_FragColor = colorhsOverlay;
     } else {
         gl_FragColor = color;
@@ -216,42 +214,43 @@ uniform float dt;          // unit of time
 uniform vec2 brush;        // coordinates of mouse down
 uniform int brushtype;
 varying vec2 v_texcoord;
+
 void main(void)
 {
     // Original way of computing the diffusion Laplacian
-    // float center = -(4.0+4.0/sqrt(2.0));  // -1 * other weights
-    // float diag   = 1.0/sqrt(2.0);         // weight for diagonals
-    // float neibor = 1.0;                    // weight for neighbours
+    float center = -1.0;                                         // -1 * other weights
+    float diag   = (1.0/sqrt(2.0))/(4.0+4.0/sqrt(2.0));          // weight for diagonals
+    float neibor = (1.0/(4.0+4.0/sqrt(2.0)));                    // weight for neighbours
     // traditional way of computing diffusion Laplacian
-    float center = -1.0;
-    float neibor = 0.2;
-    float diag = 0.05;
-    vec2 p = v_texcoord;                  // center coordinates
+    // float center = -1;
+    // float neibor = 0.2;
+    // float diag = 0.05;
 
+    vec2 p = v_texcoord;                  // center coordinates
     vec2 c,l;
     if( pingpong == 0 ) {
         c = texture2D(texture, p).rg;    // central value
         // Compute Laplacian
-        l = ( texture2D(texture, p + vec2(-dx,-dy)).rg
-            + texture2D(texture, p + vec2( dx,-dy)).rg
-            + texture2D(texture, p + vec2(-dx, dy)).rg
-            + texture2D(texture, p + vec2( dx, dy)).rg) * diag
-            + ( texture2D(texture, p + vec2(-dx, 0.0)).rg
-            + texture2D(texture, p + vec2( dx, 0.0)).rg
-            + texture2D(texture, p + vec2(0.0,-dy)).rg
-            + texture2D(texture, p + vec2(0.0, dy)).rg) * neibor
+        l = ( texture2D(texture, p + vec2(-dx*dd,-dy*dd)).rg
+            + texture2D(texture, p + vec2( dx*dd,-dy*dd)).rg
+            + texture2D(texture, p + vec2(-dx*dd, dy*dd)).rg
+            + texture2D(texture, p + vec2( dx*dd, dy*dd)).rg) * diag
+            + ( texture2D(texture, p + vec2(-dx*dd, 0.0)).rg
+            + texture2D(texture, p + vec2( dx*dd, 0.0)).rg
+            + texture2D(texture, p + vec2(0.0,-dy*dd)).rg
+            + texture2D(texture, p + vec2(0.0, dy*dd)).rg) * neibor
             + c * center;
     } else {
         c = texture2D(texture, p).ba;    // central value
         // Compute Laplacian
-        l = ( texture2D(texture, p + vec2(-dx,-dy)).ba
-            + texture2D(texture, p + vec2( dx,-dy)).ba
-            + texture2D(texture, p + vec2(-dx, dy)).ba
-            + texture2D(texture, p + vec2( dx, dy)).ba) * diag
-            + ( texture2D(texture, p + vec2(-dx, 0.0)).ba
-            + texture2D(texture, p + vec2( dx, 0.0)).ba
-            + texture2D(texture, p + vec2(0.0,-dy)).ba
-            + texture2D(texture, p + vec2(0.0, dy)).ba) * neibor
+        l = ( texture2D(texture, p + vec2(-dx*dd,-dy*dd)).ba
+            + texture2D(texture, p + vec2( dx*dd,-dy*dd)).ba
+            + texture2D(texture, p + vec2(-dx*dd, dy*dd)).ba
+            + texture2D(texture, p + vec2( dx*dd, dy*dd)).ba) * diag
+            + ( texture2D(texture, p + vec2(-dx*dd, 0.0)).ba
+            + texture2D(texture, p + vec2( dx*dd, 0.0)).ba
+            + texture2D(texture, p + vec2(0.0,-dy*dd)).ba
+            + texture2D(texture, p + vec2(0.0, dy*dd)).ba) * neibor
             + c * center;
     }
 
@@ -267,38 +266,35 @@ void main(void)
     float f  = q.b;          // feed of U
     float k  = q.a;          // kill of V
 
-    float du = ru * lu / dd - uvv + f * (1.0 - u);   // Gray-Scott equation
-    float dv = rv * lv / 2*dd + uvv - (f + k) * v;   // diffusion+-reaction
+    // WIP attempt at understanding why diffusion freezes over a given distance
+    float weight1 = 1.0;     // Reaction part weight
+    float weight2 = 1.0;     // Feed Kill part weight
+    float weight3 = 1.0;    // Diffusion part weight
+    float weight4 = 1.0;    // Ratio of Diffusion U
+    float weight5 = 2.0;    // Ratio of Diffusion V
 
-    u = u + (du * dt);
-    v = v + (dv * dt);
+    float du = weight3 * (ru * lu / weight4 * dd) - (weight1 * uvv) + weight2 * (f * (1.0 - u));   // Gray-Scott equation
+    float dv = weight3 * (rv * lv / weight5 * dd) + (weight1 * uvv) - weight2 * ((f + k) * v);   // diffusion+-reaction
 
+    u += du * dt;
+    v += dv * dt;
+
+    // Manual mouse feed or kill
     vec2 diff;
     float dist;
+    if (brush.x > 0.0) {
+        diff = (p - brush)/dx;
+        dist = dot(diff, diff);
+        if((brushtype == 1) && (dist < 3.0))
+            v = 0.5;
+        if((brushtype == 2) && (dist < 9.0))
+            v = 0.0;
+    }
+
     if( pingpong == 1 ) {
-        if (brush.x > 0.0) {
-            diff = (p - brush)/dx;
-            dist = dot(diff, diff);
-            if((brushtype == 1) && (dist < 3.0))
-                v = 0.5;
-            if((brushtype == 2) && (dist < 9.0))
-                v = 0.0;
-        }
-        // Original way of clamping values
         gl_FragColor = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), c);
-        // gl_FragColor = vec4(u, v, c.r, c.g);
     } else {
-        if (brush.x > 0.0) {
-            diff = (p - brush)/dx;
-            dist = dot(diff, diff);
-            if((brushtype == 1) && (dist < 3.0))
-                v = 0.5;
-            if((brushtype == 2) && (dist < 9.0))
-                v = 0.0;
-        }
-        // Original way of clamping values
         gl_FragColor = vec4(c, clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0));
-        // gl_FragColor = vec4(c.r, c.g, u, v);
     }
 }
 """

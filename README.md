@@ -34,11 +34,12 @@ To launch, simply type python3 gs.py
 
 Pearson's pattern can be switched with keys:
 - Keys a, b, d, e, g, i, k, l, m, n, p, x, z replacing greek letters.
-- Several colormaps are available via 1 - 7, shifted for reversed version.
+- Several colormaps are available via 1 - 8, shifted for reversed version.
 - Mouse left click in the grid refills reagent v at 0.5.
 - Mouse right click in the grid put reagent v at 0.
 - Ctrl + Mouse click and drag to modify feed and kill rates.
 - Shift + Mouse click and drag modifies the hillshading parameters.
 - Key / switch presentation between u and v.
 - Key * toggles hillshading on or off.
+- key $ toggles interpolation on or off.
 - Spacebar reseeds the grid.

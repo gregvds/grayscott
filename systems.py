@@ -1,7 +1,9 @@
 import numpy as np
 
 kernels = {
-            "standard":  np.array([[0.05, 0.2, 0.05],[0.2,-1,0.2],[0.05, 0.2, 0.05]], )
+            "standard":  np.array([[0.05, 0.2, 0.05],
+                                   [ 0.2,  -1,  0.2],
+                                   [0.05, 0.2, 0.05]], )
 }
 
 #http://mrob.com/pub/comp/xmorphia/pearson-classes.html
@@ -648,30 +650,30 @@ pearson = {
         }
     },
     'gamma_left': {
-                'description': """Stripe either wormlike or branching, with endless instability in the form of
-                occasional changes due to overcrowding, grain boundary instabilities, or other localised events,
-                and oscillation in the ∂u/∂t component.""",
-                'file_stub': "gamma(left)",
-                'cmap': {'a':  "seismic", 'b': 'seismic'},
-                'factors':{
-                    'Da' : 1.0,
-                    'Db' : 0.5,
-                    'f' : 0.022,
-                    'k' : 0.051
-                },
-                'scaling'  : {
-                    "a": {
-                        'icl': 0.27,
-                        'im': 0.42,
-                        'icu': 0.70
-                    },
-                    "b": {
-                        'icl': 0.17,
-                        'im': 0.23,
-                        'icu': 0.29
-                    },
-                }
+        'description': """Stripe either wormlike or branching, with endless instability in the form of
+            occasional changes due to overcrowding, grain boundary instabilities, or other localised events,
+            and oscillation in the ∂u/∂t component.""",
+        'file_stub': "gamma(left)",
+        'cmap': {'a':  "seismic", 'b': 'seismic'},
+        'factors': {
+            'Da': 1.0,
+            'Db': 0.5,
+            'f': 0.022,
+            'k': 0.051
+        },
+        'scaling': {
+            "a": {
+                'icl': 0.27,
+                'im': 0.42,
+                'icu': 0.70
             },
+            "b": {
+                'icl': 0.17,
+                'im': 0.23,
+                'icu': 0.29
+            },
+        }
+    },
     'gamma_right': {
         'description': """Stripe either wormlike or branching, with endless instability in the form of
             occasional changes due to overcrowding, grain boundary instabilities, or other localised events,
