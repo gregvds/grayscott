@@ -261,6 +261,8 @@ class Canvas(app.Canvas):
     pingpong = 1
 
     # Hillshading lightning parameters
+    hsdirection = 0
+    hsaltitude = 0
     hsdir = 0
     hsalt = 0
     hsz = 5.0
@@ -364,10 +366,11 @@ class Canvas(app.Canvas):
         elif len(event.modifiers) == 1 and 'control' in event.modifiers:
             self.mousePressControlPos = [event.pos[0]/self.size[0],
                                          1 - event.pos[1]/self.size[1]]
-            print('Current f and k: %s, %s' % (self.P[0, 0, 2],
-                                               self.P[0, 0, 3]))
+            print('Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2],
+                                               self.P[0, 0, 3]), end="\r")
         elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
             self.updateHillshading(event)
+            print('Current Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdir, self.hsalt), end="\r")
 
     def on_mouse_move(self, event):
         if(self.mouseDown):
@@ -378,24 +381,22 @@ class Canvas(app.Canvas):
                 self.compute['brushtype'] = event.button
             elif len(event.modifiers) == 1 and 'control' in event.modifiers:
                 # update f and k values according to the x and y movements
-                fModAmount = event.pos[0]/self.size[0] - self.mousePressControlPos[0]
-                kModAmount = 1 - event.pos[1]/self.size[1] - self.mousePressControlPos[1]
-                f = self.P[0, 0, 2]
-                k = self.P[0, 0, 3]
-                self.P[:, :, 2] = np.clip(f + 0.0015 * fModAmount, 0.0, 0.08)
-                self.P[:, :, 3] = np.clip(k + 0.002 * kModAmount, 0.03, 0.07)
-                self.compute["params"] = self.P
-                # print('Current f and k: %s, %s' % (self.P[0, 0, 2], self.P[0, 0, 3]))
+                self.updateFK(event)
+                print('Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2],
+                                                   self.P[0, 0, 3]), end="\r")
             elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
                 self.updateHillshading(event)
+                print('Current Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdirection, self.hsaltitude), end="\r")
 
     def on_mouse_release(self, event):
         self.mouseDown = False
         if len(event.modifiers) == 0:
             self.compute['brush'] = [0, 0]
             self.compute['brushtype'] = 0
-        elif 'control' in event.modifiers:
-            print('New f and k: %s, %s' % (self.P[0, 0, 2], self.P[0, 0, 3]))
+        elif len(event.modifiers) == 1 and 'control' in event.modifiers:
+            print('    New f and k: %1.4f, %1.4f' % (self.P[0, 0, 2], self.P[0, 0, 3]), end="\n")
+        elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
+            print('    New Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdirection, self.hsaltitude), end="\n")
 
     def on_key_press(self, event):
         if event.text == ' ':
@@ -446,6 +447,15 @@ class Canvas(app.Canvas):
             self.render["reagent"] = 1
             print('Displaying U.')
 
+    def updateFK(self, event):
+        fModAmount = event.pos[0]/self.size[0] - self.mousePressControlPos[0]
+        kModAmount = 1 - event.pos[1]/self.size[1] - self.mousePressControlPos[1]
+        f = self.P[0, 0, 2]
+        k = self.P[0, 0, 3]
+        self.P[:, :, 2] = np.clip(f + 0.0015 * fModAmount, 0.0, 0.08)
+        self.P[:, :, 3] = np.clip(k + 0.002 * kModAmount, 0.03, 0.07)
+        self.compute["params"] = self.P
+
     def switchColormap(self, name):
         print('Using colormap %s.' % name)
         self.cm = get_colormap(name)
@@ -454,8 +464,10 @@ class Canvas(app.Canvas):
     def toggleHillshading(self):
         if self.hsz == 5.0:
             self.hsz = 0.0
+            print('Hillshading off.')
         else:
             self.hsz = 5.0
+            print('Hillshading on.')
         self.render['hsz'] = self.hsz
 
     def updateHillshading(self, event):
@@ -463,15 +475,16 @@ class Canvas(app.Canvas):
             (event.pos[0]/self.size[0] - 0.5)*2,
             (1 - event.pos[1]/self.size[1] - 0.5)*2
         )
-        hsalt = 90 - (180.0/math.pi*math.atan(
+        self.hsdirection = 360 + hsdir if hsdir < 0.0 else hsdir
+        self.hsaltitude = 90 - (180.0/math.pi*math.atan(
             math.sqrt(
                 ((event.pos[0]/self.size[0] - 0.5)*2) *
                 ((event.pos[0]/self.size[0] - 0.5)*2) +
                 ((1 - event.pos[1]/self.size[1] - 0.5)*2) *
                 ((1 - event.pos[1]/self.size[1] - 0.5)*2)
                 )))
-        self.hsdir, self.hsalt = self.getHsDirAlt(lightDirection=hsdir,
-                                                  lightAltitude=hsalt)
+        self.hsdir, self.hsalt = self.getHsDirAlt(lightDirection=self.hsdirection,
+                                                  lightAltitude=self.hsaltitude)
         self.render["hsdir"] = self.hsdir
         self.render["hsalt"] = self.hsalt
 
