@@ -29,12 +29,42 @@ I do certainly not claim originality nor paternity of all this; I only intend to
 try and make it myself working.
 
 This was developed onto Mac, under Python 3.10.
+Dependencies are:
+- vispy
+- numpy
+- matplotlib
+
+vispy requires a backend such as pyside2, pyside6, wx, Pyqt5...
 
 To launch, simply type python3 gs.py
 
 Pearson's pattern can be switched with keys:
-- Keys a, b, d, e, g, i, k, l, m, n, p, x, z replacing greek letters.
-- Several colormaps are available via 1 - 8, shifted for reversed version.
+-       'a': 'alpha_left',
+        'A': 'alpha_right',
+        'b': 'beta_left',
+        'B': 'beta_right',
+        'd': 'delta_left',
+        'D': 'delta_right',
+        'e': 'epsilon_left',
+        'E': 'epsilon_right',
+        'g': 'gamma_left',
+        'G': 'gamma_right',
+        'h': 'eta',
+        'i': 'iota',
+        'k': 'kappa_left',
+        'K': 'kappa_right',
+        'l': 'lambda_left',
+        'L': 'lambda_right',
+        'm': 'mu_left',
+        'M': 'mu_right',
+        'n': '*nu_left',
+        'p': 'pi_left',
+        't': 'theta_left',
+        'T': 'theta_right',
+        'x': '*xi_left',
+        'z': 'zeta_left',
+        'Z': 'zeta_right'
+- Several colormaps are available via 1 - 8, shift for reversed versions.
 - Mouse left click in the grid refills reagent v at 0.5.
 - Mouse right click in the grid put reagent v at 0.
 - Ctrl + Mouse click and drag to modify feed and kill rates.
@@ -43,3 +73,5 @@ Pearson's pattern can be switched with keys:
 - Key * toggles hillshading on or off.
 - key $ toggles interpolation on or off.
 - Spacebar reseeds the grid.
+
+Greg

@@ -176,20 +176,31 @@ class Canvas(app.Canvas):
     diffusionScale = 4.0 + 4.0/np.sqrt(2)
     species = {}
     speciesDictionnary = {
-        'a': 'alpha_right',
+        'a': 'alpha_left',
+        'A': 'alpha_right',
         'b': 'beta_left',
+        'B': 'beta_right',
         'd': 'delta_left',
-        'e': 'eta',
-        'g': 'gamma_right',
+        'D': 'delta_right',
+        'e': 'epsilon_left',
+        'E': 'epsilon_right',
+        'g': 'gamma_left',
+        'G': 'gamma_right',
+        'h': 'eta',
         'i': 'iota',
         'k': 'kappa_left',
+        'K': 'kappa_right',
         'l': 'lambda_left',
-        'm': 'mu_right',
+        'L': 'lambda_right',
+        'm': 'mu_left',
+        'M': 'mu_right',
         'n': '*nu_left',
         'p': 'pi_left',
-        't': 'theta_right',
+        't': 'theta_left',
+        'T': 'theta_right',
         'x': '*xi_left',
-        'z': 'zeta_right'
+        'z': 'zeta_left',
+        'Z': 'zeta_right'
     }
 
     # definition of some custom colormaps
@@ -307,6 +318,8 @@ class Canvas(app.Canvas):
     def initialize(self):
         self.h, self.w = self.cwidth, self.cheight
         self.species = import_pearsons_types()
+        print('Pearson\'s Pattern %s' % self.specie)
+        print(self.species[self.specie][12])
         # definition of parameters for du, dv, f, k
         self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.P[:, :] = self.species[self.specie][0:4]
@@ -360,12 +373,6 @@ class Canvas(app.Canvas):
         self.framebuffer.activate()
         gl.glViewport(0, 0, self.cwidth, self.cheight)
         self.compute.draw(gl.GL_TRIANGLE_STRIP)
-        # i = 0
-        # while i < self.cycle:
-        #     self.compute.draw(gl.GL_TRIANGLE_STRIP)
-        #     self.pingpong = 1 - self.pingpong
-        #     self.compute["pingpong"] = self.pingpong
-        #     i += 1
 
         # releasing rendering output
         self.framebuffer.deactivate()
@@ -561,11 +568,44 @@ class Canvas(app.Canvas):
         hsalt = (90 - lightAltitude) * math.pi / 180.0
         return (hsdir, hsalt)
 
+    def measure_fps2(self, window=1, callback='%1.1f FPS'):
+        """Measure the current FPS
+
+        Sets the update window, connects the draw event to update_fps
+        and sets the callback function.
+
+        Parameters
+        ----------
+        window : float
+            The time-window (in seconds) to calculate FPS. Default 1.0.
+        callback : function | str
+            The function to call with the float FPS value, or the string
+            to be formatted with the fps value and then printed. The
+            default is ``'%1.1f FPS'``. If callback evaluates to False, the
+            FPS measurement is stopped.
+        """
+        # Connect update_fps function to draw
+        self.events.draw.disconnect(self._update_fps)
+        if callback:
+            if isinstance(callback, str):
+                callback_str = callback  # because callback gets overwritten
+
+                def callback(x):
+                    print(callback_str % x, end="\r")
+
+            self._fps_window = window
+            self.events.draw.connect(self._update_fps)
+            self._fps_callback = callback
+        else:
+            self._fps_callback = None
+
+
+
 ################################################################################
 
 
 if __name__ == '__main__':
     print(__doc__)
     c = Canvas(size=(1024, 1024), scale=0.5)
-    # c.measure_fps(window=1, callback='%1.1f FPS')
+    c.measure_fps2(window=1, callback=' %1.1f FPS')
     app.run()
