@@ -107,14 +107,14 @@ def createAndRegisterCmap(name, cmapNameList, proportions=None):
     return newcmp
 
 
-def import_pearsons_types(scale = 1.0):
+def import_pearsons_types():
     species = {}
     type = None
     # scale = 4.0 + 4.0/np.sqrt(2)
     for each in pearson.keys():
         type = pearson[each]
-        species[each] = [type['factors']['Da']/scale,
-                         type['factors']['Db']/scale,
+        species[each] = [type['factors']['Da'],
+                         type['factors']['Db'],
                          type['factors']['f'],
                          type['factors']['k'],
                          type['scaling']['a']['icl'],
@@ -280,6 +280,11 @@ class Canvas(app.Canvas):
     # interpolation
     interpolationMode = 'linear'
 
+    # cycle of computation drawn per frame
+    cycle = 1
+    # ? better computation for diffusion and concentration ?
+    gl.GL_FRAGMENT_PRECISION_HIGH = 1
+
     # program for computation of Gray-Scott reaction-diffusion sim
     compute = gloo.Program(vertex_shader, compute_fragment, count=4)
 
@@ -296,11 +301,12 @@ class Canvas(app.Canvas):
         self.initialize()
         self.framebuffer = gloo.FrameBuffer(color=self.compute["texture"],
                                             depth=gloo.RenderBuffer((self.w, self.h)))
+        # print(gloo.context.config)
         self.show()
 
     def initialize(self):
         self.h, self.w = self.cwidth, self.cheight
-        self.species = import_pearsons_types(scale=1.0) #scale=self.diffusionScale
+        self.species = import_pearsons_types()
         # definition of parameters for du, dv, f, k
         self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.P[:, :] = self.species[self.specie][0:4]
@@ -319,7 +325,8 @@ class Canvas(app.Canvas):
         self.hsdir, self.hsalt = self.getHsDirAlt()
         # setting the programs
         self.compute["params"] = self.P
-        self.compute["texture"] = self.UV
+        self.texture = gloo.texture.Texture2D(data=self.UV, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["texture"] = self.texture
         self.compute["texture"].interpolation = gl.GL_NEAREST
         self.compute["texture"].wrapping = gl.GL_REPEAT
         self.compute["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
@@ -353,6 +360,12 @@ class Canvas(app.Canvas):
         self.framebuffer.activate()
         gl.glViewport(0, 0, self.cwidth, self.cheight)
         self.compute.draw(gl.GL_TRIANGLE_STRIP)
+        # i = 0
+        # while i < self.cycle:
+        #     self.compute.draw(gl.GL_TRIANGLE_STRIP)
+        #     self.pingpong = 1 - self.pingpong
+        #     self.compute["pingpong"] = self.pingpong
+        #     i += 1
 
         # releasing rendering output
         self.framebuffer.deactivate()
@@ -361,8 +374,6 @@ class Canvas(app.Canvas):
         gloo.clear(color=True)
         gl.glViewport(0, 0, self.physical_size[0], self.physical_size[1])
         self.render.draw(gl.GL_TRIANGLE_STRIP)
-
-        # toggling between r,g and b,a of texture
         self.pingpong = 1 - self.pingpong
         self.compute["pingpong"] = self.pingpong
         self.render["pingpong"] = self.pingpong
@@ -424,11 +435,11 @@ class Canvas(app.Canvas):
         elif event.text == '$':
             self.toggleInterpolation()
         elif event.key.name == 'Up':
-            self.updatedt(0.01)
-            print('dt: %s' % self.dt)
+            self.increaseCycle()
+            print('Number of cycles: %s' % self.cycle)
         elif event.key.name == 'Down':
-            self.updatedt(-0.01)
-            print('dt: %s' % self.dt)
+            self.decreaseCycle()
+            print('Number of cycles: %s' % self.cycle)
         elif event.key.name == 'Right':
             self.updatedd(0.01)
             print('dd: %s' % self.dd)
@@ -444,7 +455,8 @@ class Canvas(app.Canvas):
         self.UV += np.random.uniform(-0.02, 0.1, (self.h, self.w, 4))
         self.UV[:, :, 2] = self.UV[:, :, 0]
         self.UV[:, :, 3] = self.UV[:, :, 1]
-        self.compute["texture"] = self.UV
+        self.texture.set_data(self.UV)
+        self.compute["texture"] = self.texture
         self.compute["texture"].interpolation = gl.GL_NEAREST
         self.compute["texture"].wrapping = gl.GL_REPEAT
         self.render["texture"] = self.compute["texture"]
@@ -491,6 +503,14 @@ class Canvas(app.Canvas):
     def updatedt(self, amount):
         self.dt += amount
         self.compute['dt'] = self.dt
+
+    def increaseCycle(self):
+        self.cycle *= 2
+
+    def decreaseCycle(self):
+        self.cycle /= 2
+        if self.cycle < 1:
+            self.cycle = 1
 
     def switchColormap(self, name):
         print('Using colormap %s.' % name)
@@ -546,6 +566,6 @@ class Canvas(app.Canvas):
 
 if __name__ == '__main__':
     print(__doc__)
-    c = Canvas(size=(1000, 1000), scale=0.5)
+    c = Canvas(size=(1024, 1024), scale=0.5)
     # c.measure_fps(window=1, callback='%1.1f FPS')
     app.run()
