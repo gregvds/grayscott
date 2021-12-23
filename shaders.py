@@ -132,9 +132,9 @@ varying highp vec2 v_texcoord;
 void main(void)
 {
     // Original way of computing the diffusion Laplacian
-    float center = -1.0 * sqrt(2.0) * (4.0+4.0/sqrt(2.0)); // -1 * other weights
-    float diag   = 1.0;                                    // weight for diagonals
-    float neibor = 1.0 * sqrt(2.0);                        // weight for neighbours
+    float center = -1.0 * (sqrt(2.0) * 4.0 + 4.0);         // -1 * other weights
+    float diag   =  1.0;                                    // weight for diagonals
+    float neibor =  1.0 * sqrt(2.0);                        // weight for neighbours
 
     vec2 highp p = v_texcoord;                             // center coordinates
     vec2 highp c;
@@ -178,14 +178,16 @@ void main(void)
     float f  = q.b;          // feed of U
     float k  = q.a;          // kill of V
 
-    float weight1 = 1.0;     // Reaction part weight
-    float weight2 = 1.0;     // Feed Kill part weight
-    float weight3 = 1.0 ;    // Diffusion part weight
+    // float weight1 = 1.0;     // Reaction part weight
+    // float weight2 = 1.0;     // Feed Kill part weight
+    // float weight3 = 1.0 ;    // Diffusion part weight
     float weight4 = sqrt(2.0) * 4.0 + 4.0;    // Ratio of Diffusion U
     float weight5 = sqrt(2.0) * 4.0 + 4.0;    // Ratio of Diffusion V
 
-    float highp du = weight3 * (ru * lu / weight4 * dd) - (weight1 * uvv) + weight2 * (f * (1.0 - u));   // Gray-Scott equation
-    float highp dv = weight3 * (rv * lv / weight5 * dd) + (weight1 * uvv) - weight2 * ((f + k) * v);   // diffusion+-reaction
+    // float highp du = weight3 * (ru * lu / weight4 * dd) - (weight1 * uvv) + weight2 * (f * (1.0 - u));   // Gray-Scott equation
+    // float highp dv = weight3 * (rv * lv / weight5 * dd) + (weight1 * uvv) - weight2 * ((f + k) * v);   // diffusion+-reaction
+    float highp du = ru * lu / weight4 * dd - uvv + f * (1.0 - u);   // Gray-Scott equation
+    float highp dv = rv * lv / weight5 * dd + uvv - (f + k) * v;   // diffusion+-reaction
 
     u += du * dt;
     v += dv * dt;

@@ -43,23 +43,26 @@
             'L': 'lambda_right',
             'm': 'mu_left',
             'M': 'mu_right',
-            'n': '*nu_left',
+            'n': 'nu_left',
             'p': 'pi_left',
             't': 'theta_left',
             'T': 'theta_right',
-            'x': '*xi_left',
+            'x': 'xi_left',
             'z': 'zeta_left',
             'Z': 'zeta_right'
     Several colormaps are available via 1 - 8, shifted for reversed version.
     Mouse left click in the grid refills reagent v at 0.5.
     Mouse right click in the grid put reagent v at 0.
-    Ctrl + Mouse click and drag to modify feed and kill rates.
+    Ctrl + Mouse click and drag to modify globaly feed and kill rates.
+    Alt + Mouse click and drag to vary sinusoidally feed and kill rates.
     Shift + Mouse click and drag modifies the hillshading parameters.
     key / switch presentation between u and v.
     key * toggles hillshading on or off.
     key $ toggles interpolation on or off.
+    key Up/Down arrows to multiply computation cycles/frame
     Spacebar reseeds the grid.
 """
+
 import math
 
 import numpy as np
@@ -311,7 +314,7 @@ class Canvas(app.Canvas):
     createColormaps()
     cm = get_colormap('Boston_r')
 
-    specie = 'alpha_right'
+    specie = 'lambda_left'
 
     # Array for du, dv, f, k
     P = np.zeros((h, w, 4), dtype=np.float32)
@@ -325,6 +328,7 @@ class Canvas(app.Canvas):
 
     mouseDown = False
     mousePressControlPos = [0.0, 0.0]
+    mousePressAltPos = [0.0, 0.0]
 
     # pipeline toggling parameter
     pingpong = 1
@@ -339,8 +343,9 @@ class Canvas(app.Canvas):
     # interpolation
     interpolationMode = 'linear'
 
-    # cycle of computation per frame -- TOBEDONE
+    # cycle of computation per frame
     cycle = 0
+
     # ? better computation for diffusion and concentration ?
     gl.GL_FRAGMENT_PRECISION_HIGH = 1
 
@@ -352,7 +357,7 @@ class Canvas(app.Canvas):
 
     def __init__(self, size=(1024, 1024), scale=0.5):
         super().__init__(size=size,
-                         title='Gray-Scott Reaction-Diffusion',
+                         title='Gray-Scott Reaction-Diffusion - GregVDS',
                          keys='interactive',
                          resizable=False,
                          dpi=221)
@@ -367,9 +372,14 @@ class Canvas(app.Canvas):
         self.species = import_pearsons_types()
         print('Pearson\'s Pattern %s' % self.specie)
         print(self.species[self.specie][4])
+        print('        dU  dV  f     k \n        %s %s %s %s' % (self.species[self.specie][0],
+                                                 self.species[self.specie][1],
+                                                 self.species[self.specie][2],
+                                                 self.species[self.specie][3]))
         # definition of parameters for du, dv, f, k
         self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.P[:, :] = self.species[self.specie][0:4]
+        self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
         # grid initialization, with central random patch
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
@@ -379,7 +389,7 @@ class Canvas(app.Canvas):
         # hillshading parameters computation
         self.hsdir, self.hsalt = self.getHsDirAlt()
         # setting the programs
-        self.compute["params"] = self.P
+        self.compute["params"] = self.params
         self.texture = gloo.texture.Texture2D(data=self.UV, format=gl.GL_RGBA, internalformat='rgba32f')
         self.compute["texture"] = self.texture
         self.compute["texture"].interpolation = gl.GL_NEAREST
@@ -443,11 +453,18 @@ class Canvas(app.Canvas):
         elif len(event.modifiers) == 1 and 'control' in event.modifiers:
             self.mousePressControlPos = [event.pos[0]/self.size[0],
                                          1 - event.pos[1]/self.size[1]]
-            print('Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2],
+            print(' Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2],
                                                self.P[0, 0, 3]), end="\r")
         elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
             self.updateHillshading(event)
-            print('Current Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdir, self.hsalt), end="\r")
+            print(' Current Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdir, self.hsalt), end="\r")
+        elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
+            self.mousePressAltPos = [event.pos[0]/self.size[0],
+                                         1 - event.pos[1]/self.size[1]]
+            print(' Current df and dk: %1.4f, %1.4f' % (self.P[int(self.h/4), int(self.w/4), 2],
+                  self.P[int(self.h/4), int(self.w/4), 3]), end="\r")
+        else:
+            print(event.modifiers)
 
     def on_mouse_move(self, event):
         if(self.mouseDown):
@@ -459,11 +476,16 @@ class Canvas(app.Canvas):
             elif len(event.modifiers) == 1 and 'control' in event.modifiers:
                 # update f and k values according to the x and y movements
                 self.updateFK(event)
-                print('Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2],
+                print(' Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2],
                                                    self.P[0, 0, 3]), end="\r")
             elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
                 self.updateHillshading(event)
-                print('Current Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdirection, self.hsaltitude), end="\r")
+                print(' Current Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdirection, self.hsaltitude), end="\r")
+            elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
+                self.modulateF(event)
+                self.modulateK(event)
+                print(' Current df and dk: %1.4f, %1.4f' % (self.P[int(self.h/4), int(self.w/4), 2],
+                                                   self.P[int(self.h/4), int(self.w/4), 3]), end="\r")
 
     def on_mouse_release(self, event):
         self.mouseDown = False
@@ -471,9 +493,12 @@ class Canvas(app.Canvas):
             self.compute['brush'] = [0, 0]
             self.compute['brushtype'] = 0
         elif len(event.modifiers) == 1 and 'control' in event.modifiers:
-            print('    New f and k: %1.4f, %1.4f' % (self.P[0, 0, 2], self.P[0, 0, 3]), end="\n")
+            print('     New f and k: %1.4f, %1.4f' % (self.P[0, 0, 2], self.P[0, 0, 3]), end="\n")
         elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
-            print('    New Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdirection, self.hsaltitude), end="\n")
+            print('     New Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdirection, self.hsaltitude), end="\n")
+        elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
+            print('     New df and dk: %1.4f, %1.4f' % (self.P[int(self.h/4), int(self.w/4), 2],
+                                               self.P[int(self.h/4), int(self.w/4), 3]), end="\n")
 
     def on_key_press(self, event):
         if event.text == ' ':
@@ -519,14 +544,16 @@ class Canvas(app.Canvas):
 
     def switchSpecie(self, specie):
         self.specie = specie
+        self.title = 'Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
         print('Pearson\'s Pattern %s' % self.specie)
         print(self.species[self.specie][4])
-        print('dU, dV, f, k: %s, %s, %s, %s.' % (self.species[self.specie][0],
+        print('        dU  dV  f     k \n        %s %s %s %s' % (self.species[self.specie][0],
                                                  self.species[self.specie][1],
                                                  self.species[self.specie][2],
                                                  self.species[self.specie][3]))
         self.P[:, :] = self.species[specie][0:4]
-        self.compute["params"] = self.P
+        self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["params"] = self.params
 
     def switchReagent(self):
         if self.render["reagent"] == 1:
@@ -541,9 +568,33 @@ class Canvas(app.Canvas):
         kModAmount = 1 - event.pos[1]/self.size[1] - self.mousePressControlPos[1]
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
-        self.P[:, :, 2] = np.clip(f + 0.0015 * fModAmount, 0.0, 0.08)
-        self.P[:, :, 3] = np.clip(k + 0.002 * kModAmount, 0.03, 0.07)
+        self.P[:, :, 2] = np.clip(f + 0.00075 * fModAmount, 0.0, 0.08)
+        self.P[:, :, 3] = np.clip(k + 0.001 * kModAmount, 0.03, 0.07)
         self.compute["params"] = self.P
+
+    def modulateF(self, event):
+        f = self.P[0, 0, 2]
+        amount = 0.0075 * (event.pos[0]/self.size[0] - self.mousePressAltPos[0])
+        rows = self.h
+        cols = self.w
+        sins = np.sin(np.linspace(0.0, 2*np.pi, cols))
+        # for each column
+        for i in range(rows):
+            self.P[i, :, 2] = np.clip(f + amount*sins, 0.0, 0.08)
+        self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["params"] = self.params
+
+    def modulateK(self, event):
+        k = self.P[0, 0, 3]
+        amount = 0.01 * (1 - event.pos[1]/self.size[1] - self.mousePressAltPos[1])
+        rows = self.h
+        cols = self.w
+        sins = np.sin(np.linspace(0.0, 2*np.pi, rows))
+        # for each row
+        for i in range(cols):
+            self.P[:, i, 3] = np.clip(k + amount*sins, 0.03, 0.07)
+        self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["params"] = self.params
 
     def updatedd(self, amount):
         self.dd += amount
@@ -616,7 +667,7 @@ class Canvas(app.Canvas):
         hsalt = (90 - lightAltitude) * math.pi / 180.0
         return (hsdir, hsalt)
 
-    def measure_fps2(self, window=1, callback='%1.1f FPS'):
+    def measure_fps2(self, window=1, callback=' %1.1f FPS'):
         """Measure the current FPS
 
         Sets the update window, connects the draw event to update_fps
@@ -648,12 +699,11 @@ class Canvas(app.Canvas):
             self._fps_callback = None
 
 
-
 ################################################################################
 
 
 if __name__ == '__main__':
     print(__doc__)
-    c = Canvas(scale=0.25)
+    c = Canvas(scale=0.5)
     c.measure_fps2()
     app.run()
