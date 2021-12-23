@@ -187,7 +187,7 @@ def createColormaps():
         ],
         proportions=[1024, 1024])
     createAndRegisterLinearSegmentedCmap(
-        'uppsala',[
+        'uppsala', [
             'slategrey',
             'goldenrod',
             'antiquewhite',
@@ -207,6 +207,16 @@ def createColormaps():
             'skyblue'
         ],
         nodes=[0.0, 0.48, 0.5, 0.53, 0.6, 1.0])
+    createAndRegisterLinearSegmentedCmap(
+        'Lochinver', [
+            'floralwhite',
+            'antiquewhite',
+            'wheat',
+            'cornflowerblue',
+            'dodgerblue',
+            'powderblue'
+        ],
+        nodes=[0.0, 0.4, 0.45, 0.5, 0.65, 1.0])
 
 
 def import_pearsons_types():
@@ -285,7 +295,7 @@ class Canvas(app.Canvas):
         'L': 'lambda_right',
         'm': 'mu_left',
         'M': 'mu_right',
-        'n': '*nu_left',
+        'n': 'nu_left',
         'p': 'pi_left',
         't': 'theta_left',
         'T': 'theta_right',
@@ -300,10 +310,10 @@ class Canvas(app.Canvas):
         'é': 'malmo_r',
         '3': 'uppsala',
         '"': 'uppsala_r',
-        '4': 'oslo',
-        '\'': 'oslo_r',
-        '5': 'bone',
-        '(': 'bone_r',
+        '4': 'oslo_r',
+        '\'': 'oslo',
+        '5': 'Lochinver',
+        '(': 'Lochinver_r',
         '6': 'YlOrBr',
         '§': 'YlOrBr_r',
         '7': 'detroit',
@@ -312,9 +322,9 @@ class Canvas(app.Canvas):
         '!': 'seattle'
     }
     createColormaps()
-    cm = get_colormap('Boston_r')
+    cm = get_colormap('malmo_r')
 
-    specie = 'lambda_left'
+    specie = 'alpha_right'
 
     # Array for du, dv, f, k
     P = np.zeros((h, w, 4), dtype=np.float32)
@@ -338,7 +348,8 @@ class Canvas(app.Canvas):
     hsaltitude = 0
     hsdir = 0
     hsalt = 0
-    hsz = 5.0
+    hsz = 2.0
+    lastHsz = 2.0
 
     # interpolation
     interpolationMode = 'linear'
@@ -500,6 +511,17 @@ class Canvas(app.Canvas):
             print('     New df and dk: %1.4f, %1.4f' % (self.P[int(self.h/4), int(self.w/4), 2],
                                                self.P[int(self.h/4), int(self.w/4), 3]), end="\n")
 
+    def on_mouse_wheel(self, event):
+        delta = event.delta[1]
+        hsz = self.hsz
+        if delta < 0:
+            hsz += 0.1
+        elif delta > 0:
+            hsz -= 0.1
+        self.hsz = np.clip(hsz, 0.5, 2.5)
+        print(' Hillshade Z: %s' % self.hsz, end='\r')
+        self.render["hsz"] = self.hsz
+
     def on_key_press(self, event):
         if event.text == ' ':
             self.reinitializeGrid()
@@ -624,11 +646,12 @@ class Canvas(app.Canvas):
         self.render["cmap"] = self.cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
 
     def toggleHillshading(self):
-        if self.hsz == 5.0:
+        if self.hsz > 0.0:
+            self.lastHsz = self.hsz
             self.hsz = 0.0
             print('Hillshading off.')
         else:
-            self.hsz = 5.0
+            self.hsz = self.lastHsz
             print('Hillshading on.')
         self.render['hsz'] = self.hsz
 
@@ -645,6 +668,7 @@ class Canvas(app.Canvas):
                 ((1 - event.pos[1]/self.size[1] - 0.5)*2) *
                 ((1 - event.pos[1]/self.size[1] - 0.5)*2)
                 )))
+        self.hsaltitude *= .5
         self.hsdir, self.hsalt = self.getHsDirAlt(lightDirection=self.hsdirection,
                                                   lightAltitude=self.hsaltitude)
         self.render["hsdir"] = self.hsdir
@@ -659,7 +683,7 @@ class Canvas(app.Canvas):
             self.render["texture"].interpolation = gl.GL_LINEAR
         print('Interpolation mode: %s.' % self.interpolationMode)
 
-    def getHsDirAlt(self, lightDirection=315, lightAltitude=45):
+    def getHsDirAlt(self, lightDirection=315, lightAltitude=20):
         hsdir = 360.0 - lightDirection + 90.0
         if hsdir >= 360.0:
             hsdir -= 360.0
