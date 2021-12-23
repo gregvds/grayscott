@@ -25,7 +25,31 @@
     -----------------------------------
 
     Pearson's pattern can be switched with keys:
-    a, b, d, e, g, i, k, l, m, n, p, x, z replacing greek letters.
+            'a': 'alpha_left',
+            'A': 'alpha_right',
+            'b': 'beta_left',
+            'B': 'beta_right',
+            'd': 'delta_left',
+            'D': 'delta_right',
+            'e': 'epsilon_left',
+            'E': 'epsilon_right',
+            'g': 'gamma_left',
+            'G': 'gamma_right',
+            'h': 'eta',
+            'i': 'iota',
+            'k': 'kappa_left',
+            'K': 'kappa_right',
+            'l': 'lambda_left',
+            'L': 'lambda_right',
+            'm': 'mu_left',
+            'M': 'mu_right',
+            'n': '*nu_left',
+            'p': 'pi_left',
+            't': 'theta_left',
+            'T': 'theta_right',
+            'x': '*xi_left',
+            'z': 'zeta_left',
+            'Z': 'zeta_right'
     Several colormaps are available via 1 - 8, shifted for reversed version.
     Mouse left click in the grid refills reagent v at 0.5.
     Mouse right click in the grid put reagent v at 0.
@@ -47,7 +71,7 @@ from vispy.gloo import gl
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
 from shaders import vertex_shader, compute_fragment, render_hs_fragment
 from systems import pearson
@@ -93,38 +117,104 @@ def createAndRegisterCmap(name, cmapNameList, proportions=None):
         newColors.append(cm.get_cmap(cmapName, proportion)
                          (np.linspace(0, 1, proportion)))
     newcmp = ListedColormap(np.vstack(newColors), name=name)
-    cm.register_cmap(name=name, cmap=newcmp)
-
     cmapNameList.reverse()
     proportions.reverse()
-
     for cmapName, proportion in zip(cmapNameList, proportions):
         newColors_r.append(cm.get_cmap(invertCmapName(
             cmapName), proportion)(np.linspace(0, 1, proportion)))
     newcmp_r = ListedColormap(np.vstack(newColors_r),
                               name=invertCmapName(name))
+    cm.register_cmap(name=name, cmap=newcmp)
     cm.register_cmap(name=invertCmapName(name), cmap=newcmp_r)
-    return newcmp
+
+
+def createAndRegisterLinearSegmentedCmap(name, colors, nodes=None):
+    # routine to create custom Matplotlib colormap and its reversed version
+    if nodes and len(nodes) != len(colors):
+        raise KeyError(
+            f'colors and nodes for Colormap {name}'
+            'have not the same length.')
+    if nodes is None:
+        nodes = np.linspace(0, 1, len(colors))
+
+    newcmp = LinearSegmentedColormap.from_list(name, list(zip(nodes, colors)))
+    colors.reverse()
+    nodes.reverse()
+    nodes = [1-x for x in nodes]
+    newcmp_r = LinearSegmentedColormap.from_list(invertCmapName(name), list(zip(nodes, colors)))
+    cm.register_cmap(name=name, cmap=newcmp)
+    cm.register_cmap(name=invertCmapName(name), cmap=newcmp_r)
+
+
+def createColormaps():
+    # definition of some custom colormaps
+    createAndRegisterCmap(
+        'malmo', [
+            'bone_r',
+            'Blues_r',
+            'GnBu_r',
+            'Greens'],
+        proportions=[512, 128, 512, 128])
+    createAndRegisterCmap(
+        'Boston', [
+            'bone_r',
+            'gray',
+            'pink_r',
+            'YlOrBr_r'],
+        proportions=[960, 160, 160, 960])
+    createAndRegisterCmap(
+        'seattle', [
+            'bone_r',
+            'Blues_r',
+            'bone_r',
+            'gray',
+            'pink_r',
+            'YlOrBr_r'],
+        proportions=[160, 480, 3200, 640, 640, 3840])
+    createAndRegisterCmap(
+        'detroit', [
+            'bone',
+            'bone_r'
+        ],
+        proportions=[1024, 1024])
+    createAndRegisterCmap(
+        'antidetroit', [
+            'bone_r',
+            'bone'
+        ],
+        proportions=[1024, 1024])
+    createAndRegisterLinearSegmentedCmap(
+        'uppsala',[
+            'slategrey',
+            'goldenrod',
+            'antiquewhite',
+            'olivedrab',
+            'lawngreen',
+            'lightseagreen',
+            'paleturquoise'
+        ],
+        nodes=[0.0, 0.4, 0.46, 0.5, 0.58, 0.75, 1.0])
+    createAndRegisterLinearSegmentedCmap(
+        'oslo', [
+            'black',
+            'saddlebrown',
+            'sienna',
+            'white',
+            'aliceblue',
+            'skyblue'
+        ],
+        nodes=[0.0, 0.48, 0.5, 0.53, 0.6, 1.0])
 
 
 def import_pearsons_types():
     species = {}
     type = None
-    # scale = 4.0 + 4.0/np.sqrt(2)
     for each in pearson.keys():
         type = pearson[each]
         species[each] = [type['factors']['Da'],
                          type['factors']['Db'],
                          type['factors']['f'],
                          type['factors']['k'],
-                         type['scaling']['a']['icl'],
-                         type['scaling']['a']['im'],
-                         type['scaling']['a']['icu'],
-                         0.0,
-                         type['scaling']['b']['icl'],
-                         type['scaling']['b']['im'],
-                         type['scaling']['b']['icu'],
-                         0.0,
                          type['description']]
     return species
 
@@ -168,12 +258,10 @@ class Canvas(app.Canvas):
 
     cwidth, cheight = 512, 512
     w, h = cwidth, cheight
-    dt = 1.0              # 3.5 timestep; original value = 1.5                        lambda_left: 5
-    dd = 1.0              # 0.7072 Distance param for diffusion; original value = 1.5    lambda_left: 0.765
+    dt = 1.0
+    dd = 1.0
 
     # Pearson's patterns related variables
-    # scale is used depending on the kernel used by the model
-    diffusionScale = 4.0 + 4.0/np.sqrt(2)
     species = {}
     speciesDictionnary = {
         'a': 'alpha_left',
@@ -202,71 +290,31 @@ class Canvas(app.Canvas):
         'z': 'zeta_left',
         'Z': 'zeta_right'
     }
-
-    # definition of some custom colormaps
-    testCmap = createAndRegisterCmap(
-        'test', [
-            'bone_r',
-            'Blues_r',
-            'GnBu_r',
-            'Greens'],
-        proportions=[512, 128, 512, 128])
-    bostonCmap = createAndRegisterCmap(
-        'Boston', [
-            'bone_r',
-            'gray',
-            'pink_r',
-            'YlOrBr_r'],
-        proportions=[960, 160, 160, 960])
-    seattleCmap = createAndRegisterCmap(
-        'seattle', [
-            'bone_r',
-            'Blues_r',
-            'bone_r',
-            'gray',
-            'pink_r',
-            'YlOrBr_r'],
-        proportions=[160, 480, 3200, 640, 640, 3840])
-    detroitCmap = createAndRegisterCmap(
-        'detroit', [
-            'bone',
-            'bone_r'
-        ],
-        proportions=[1024, 1024])
-    detroit_rCmap = createAndRegisterCmap(
-        'antidetroit', [
-            'bone_r',
-            'bone'
-        ],
-        proportions=[1024, 1024])
     colormapDictionnary = {
         '1': 'Boston_r',
         '&': 'Boston',
-        '2': 'seattle',
-        'é': 'seattle_r',
-        '3': 'twilight',
-        '"': 'twilight_r',
-        '4': 'magma',
-        '\'': 'magma_r',
+        '2': 'malmo',
+        'é': 'malmo_r',
+        '3': 'uppsala',
+        '"': 'uppsala_r',
+        '4': 'oslo',
+        '\'': 'oslo_r',
         '5': 'bone',
         '(': 'bone_r',
         '6': 'YlOrBr',
         '§': 'YlOrBr_r',
         '7': 'detroit',
         'è': 'antidetroit',
-        '8': 'test',
-        '!': 'test_r'
+        '8': 'seattle_r',
+        '!': 'seattle'
     }
+    createColormaps()
     cm = get_colormap('Boston_r')
 
     specie = 'alpha_right'
 
     # Array for du, dv, f, k
     P = np.zeros((h, w, 4), dtype=np.float32)
-
-    # Arrays for scaling u and v rendering
-    uScales = np.zeros((h, w, 4), dtype=np.float32)
-    vScales = np.zeros((h, w, 4), dtype=np.float32)
 
     # Arrays for reagents u, v
     UV = np.zeros((h, w, 4), dtype=np.float32)
@@ -291,8 +339,8 @@ class Canvas(app.Canvas):
     # interpolation
     interpolationMode = 'linear'
 
-    # cycle of computation drawn per frame
-    cycle = 1
+    # cycle of computation per frame -- TOBEDONE
+    cycle = 0
     # ? better computation for diffusion and concentration ?
     gl.GL_FRAGMENT_PRECISION_HIGH = 1
 
@@ -312,22 +360,16 @@ class Canvas(app.Canvas):
         self.initialize()
         self.framebuffer = gloo.FrameBuffer(color=self.compute["texture"],
                                             depth=gloo.RenderBuffer((self.w, self.h)))
-        # print(gloo.context.config)
         self.show()
 
     def initialize(self):
         self.h, self.w = self.cwidth, self.cheight
         self.species = import_pearsons_types()
         print('Pearson\'s Pattern %s' % self.specie)
-        print(self.species[self.specie][12])
+        print(self.species[self.specie][4])
         # definition of parameters for du, dv, f, k
         self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.P[:, :] = self.species[self.specie][0:4]
-        # definition of parameters for scaling u and v rendering
-        self.uScales = np.zeros((self.h, self.w, 4), dtype=np.float32)
-        self.vScales = np.zeros((self.h, self.w, 4), dtype=np.float32)
-        self.uScales[:, :] = self.species[self.specie][4:8]
-        self.vScales[:, :] = self.species[self.specie][8:12]
         # grid initialization, with central random patch
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
@@ -356,15 +398,12 @@ class Canvas(app.Canvas):
         self.render["hsz"] = self.hsz
         self.render['dx'] = 1.0 / self.w
         self.render['dy'] = 1.0 / self.h
-        self.render['dd'] = self.dd
         self.render["texture"] = self.compute["texture"]
         self.render["texture"].interpolation = gl.GL_LINEAR
         self.render["texture"].wrapping = gl.GL_REPEAT
         self.render["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
         self.render["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
         self.render["cmap"] = self.cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
-        self.render["uscales"] = self.uScales
-        self.render["vscales"] = self.vScales
         self.render["reagent"] = 1
         self.render['pingpong'] = self.pingpong
 
@@ -373,6 +412,14 @@ class Canvas(app.Canvas):
         self.framebuffer.activate()
         gl.glViewport(0, 0, self.cwidth, self.cheight)
         self.compute.draw(gl.GL_TRIANGLE_STRIP)
+
+        for cycle in range(self.cycle):
+            self.pingpong = 1 - self.pingpong
+            self.compute["pingpong"] = self.pingpong
+            self.compute.draw(gl.GL_TRIANGLE_STRIP)
+            self.pingpong = 1 - self.pingpong
+            self.compute["pingpong"] = self.pingpong
+            self.compute.draw(gl.GL_TRIANGLE_STRIP)
 
         # releasing rendering output
         self.framebuffer.deactivate()
@@ -443,10 +490,10 @@ class Canvas(app.Canvas):
             self.toggleInterpolation()
         elif event.key.name == 'Up':
             self.increaseCycle()
-            print('Number of cycles: %s' % self.cycle)
+            print('Number of cycles: %s' % (1 + 2* self.cycle))
         elif event.key.name == 'Down':
             self.decreaseCycle()
-            print('Number of cycles: %s' % self.cycle)
+            print('Number of cycles: %s' % (1 + 2* self.cycle))
         elif event.key.name == 'Right':
             self.updatedd(0.01)
             print('dd: %s' % self.dd)
@@ -473,17 +520,13 @@ class Canvas(app.Canvas):
     def switchSpecie(self, specie):
         self.specie = specie
         print('Pearson\'s Pattern %s' % self.specie)
-        print(self.species[self.specie][12])
+        print(self.species[self.specie][4])
         print('dU, dV, f, k: %s, %s, %s, %s.' % (self.species[self.specie][0],
                                                  self.species[self.specie][1],
                                                  self.species[self.specie][2],
                                                  self.species[self.specie][3]))
         self.P[:, :] = self.species[specie][0:4]
-        self.uScales[:, :] = self.species[specie][4:8]
-        self.vScales[:, :] = self.species[specie][8:12]
         self.compute["params"] = self.P
-        self.render["uscales"] = self.uScales
-        self.render["vscales"] = self.vScales
 
     def switchReagent(self):
         if self.render["reagent"] == 1:
@@ -512,12 +555,17 @@ class Canvas(app.Canvas):
         self.compute['dt'] = self.dt
 
     def increaseCycle(self):
-        self.cycle *= 2
+        if not self.cycle:
+            self.cycle = 1
+        else:
+            self.cycle *= 2
+        if self.cycle > 64:
+            self.cycle = 64
 
     def decreaseCycle(self):
-        self.cycle /= 2
+        self.cycle = int(self.cycle/2)
         if self.cycle < 1:
-            self.cycle = 1
+            self.cycle = 0
 
     def switchColormap(self, name):
         print('Using colormap %s.' % name)
@@ -606,6 +654,6 @@ class Canvas(app.Canvas):
 
 if __name__ == '__main__':
     print(__doc__)
-    c = Canvas(size=(1024, 1024), scale=0.5)
-    c.measure_fps2(window=1, callback=' %1.1f FPS')
+    c = Canvas(scale=0.25)
+    c.measure_fps2()
     app.run()

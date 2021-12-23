@@ -16,62 +16,34 @@ void main()
 
 render_hs_fragment = """
 uniform int pingpong;
-uniform int reagent;
-uniform float hsdir;
-uniform float hsalt;
-uniform float hsz;
+uniform int reagent;             // toggle render between reagent u and v
+uniform float hsdir;             // hillshading lighting direction
+uniform float hsalt;             // hillshading lighting altitude
+uniform float hsz;               // hillshading 'z' multiplier
 uniform float dx;                // horizontal distance between texels
 uniform float dy;                // vertical distance between texels
-uniform float dd;                // unit of distance
 uniform highp sampler2D texture; // u:= r or b following pinpong
-uniform highp sampler2D uscales; // icl, im, icu for U := r,g,b,a
-uniform highp sampler2D vscales; // icl, im, icu for V := r,g,b,a
-uniform sampler1D cmap;
+uniform sampler1D cmap;          // colormap used to render reagent concentration
 varying highp vec2 v_texcoord;
 void main()
 {
     float u;
-    vec4 highp scales;
     // pingpong between layers and choice or reagent
     if(pingpong == 0) {
         if(reagent == 1){
             u = texture2D(texture, v_texcoord).r;
-            scales = texture2D(uscales, v_texcoord).rgba;
         } else {
             u = texture2D(texture, v_texcoord).g;
-            scales = texture2D(vscales, v_texcoord).rgba;
         }
     } else {
         if(reagent == 1){
             u = texture2D(texture, v_texcoord).b;
-            scales = texture2D(uscales, v_texcoord).rgba;
         } else {
             u = texture2D(texture, v_texcoord).a;
-            scales = texture2D(vscales, v_texcoord).rgba;
         }
     }
 
-    // clamping and rescaling
-    float icl = scales.r;                      // input lower limit
-    float im  = scales.g;                      // input median
-    float icu = scales.b;                      // input upper limit
-    float ibr = im - icl;                      // input bottom
-    float iur = icu - im;                      // input upper
-    float clampu = clamp(u, icl, icu);         // clipping
-    float uml = 0.5 / ibr;                     // lower-half
-    float ubl = 0.0 - uml * icl;
-    float umh = 0.5 / iur;                     // upper-half
-    float ubh = 0.5 - umh * im;
-    float clampedu;
-    if(clampu <= im) {
-        clampedu = uml*clampu + ubl;              // remapping lower-half
-    } else {
-        clampedu = umh*clampu + ubh;              // remapping upper-half
-    }
-
-    vec4 color;
-    color = texture1D(cmap, u);
-    // color = texture1D(cmap, clampedu);
+    vec4 color = texture1D(cmap, u);
 
     // Hillshading
     if (hsz > 0.0){
@@ -136,12 +108,12 @@ void main()
         } else {
             colorhsOverlay = 1.0 - 2.0*(1.0-color)*(1.0-vec4(hs, hs, hs, 1.0));
         }
+        // another way of mixing color and hillshading
         // vec4 colorhspegtop = (1.0 - 2.0*color)*vec4(hs, hs, hs, 1.0)*vec4(hs, hs, hs, 1.0) + 2.0*vec4(hs, hs, hs, 1.0)*color;
         gl_FragColor = colorhsOverlay;
     } else {
         gl_FragColor = color;
     }
-
 }
 """
 
@@ -149,7 +121,6 @@ compute_fragment = """
 uniform int pingpong;
 uniform highp sampler2D texture;                           // U,V:= r,g or b,a following pingpong
 uniform highp sampler2D params;                            // rU,rV,f,k := r,g,b,a
-// RWTexture2DArray<unorm float4> colorTexture;
 uniform float dx;                                          // horizontal distance between texels
 uniform float dy;                                          // vertical distance between texels
 uniform float dd;                                          // unit of distance
@@ -168,6 +139,7 @@ void main(void)
     vec2 highp p = v_texcoord;                             // center coordinates
     vec2 highp c;
     vec2 highp l;
+
     if( pingpong == 0 ) {
         c = texture2D(texture, p).rg;                      // central value
         // Compute Laplacian
@@ -206,20 +178,11 @@ void main(void)
     float f  = q.b;          // feed of U
     float k  = q.a;          // kill of V
 
-    // WIP attempt at understanding why diffusion freezes over a given distance
     float weight1 = 1.0;     // Reaction part weight
     float weight2 = 1.0;     // Feed Kill part weight
     float weight3 = 1.0 ;    // Diffusion part weight
-    float weight4 = (sqrt(2.0) * (4.0+4.0/sqrt(2.0)));    // Ratio of Diffusion U
-    float weight5 = (sqrt(2.0) * (4.0+4.0/sqrt(2.0)));    // Ratio of Diffusion V
-
-    // u + 2v -> v + 2v
-    // ru = 1.0
-    // rv = 0.5
-    // dd = 1.0
-    // dt = 1.0
-    // f = 0.026
-    // k = 0.061
+    float weight4 = sqrt(2.0) * 4.0 + 4.0;    // Ratio of Diffusion U
+    float weight5 = sqrt(2.0) * 4.0 + 4.0;    // Ratio of Diffusion V
 
     float highp du = weight3 * (ru * lu / weight4 * dd) - (weight1 * uvv) + weight2 * (f * (1.0 - u));   // Gray-Scott equation
     float highp dv = weight3 * (rv * lv / weight5 * dd) + (weight1 * uvv) - weight2 * ((f + k) * v);   // diffusion+-reaction
