@@ -217,7 +217,51 @@ def createColormaps():
             'powderblue'
         ],
         nodes=[0.0, 0.4, 0.45, 0.5, 0.65, 1.0])
+    createAndRegisterLinearSegmentedCmap(
+        'tromso', [
+            'black',
+            'black',
+            'chocolate',
+            'ivory',
+            'sandybrown',
+            'black',
+            'black'
+        ],
+        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
+    createAndRegisterLinearSegmentedCmap(
+        'osmort', [
+            'linen',
+            'linen',
+            'chocolate',
+            'black',
+            'sandybrown',
+            'linen',
+            'linen'
+        ],
+        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
+    createAndRegisterLinearSegmentedCmap(
+        'irkoutsk', [
+            'darkkhaki',
+            'olive',
+            'dimgray',
+            'seashell',
+            'yellowgreen',
+            'darkolivegreen',
+            'olivedrab'
+        ],
+        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
 
+    createAndRegisterLinearSegmentedCmap(
+        'krasnoiarsk', [
+            'darkgoldenrod',
+            'goldenrod',
+            'dimgray',
+            'cornsilk',
+            'gold',
+            'tan',
+            'burlywood'
+        ],
+        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
 
 def import_pearsons_types():
     species = {}
@@ -299,7 +343,7 @@ class Canvas(app.Canvas):
         'p': 'pi_left',
         't': 'theta_left',
         'T': 'theta_right',
-        'x': '*xi_left',
+        'x': 'xi_left',
         'z': 'zeta_left',
         'Z': 'zeta_right'
     }
@@ -316,10 +360,14 @@ class Canvas(app.Canvas):
         '(': 'Lochinver_r',
         '6': 'YlOrBr',
         '§': 'YlOrBr_r',
-        '7': 'detroit',
-        'è': 'antidetroit',
-        '8': 'seattle_r',
-        '!': 'seattle'
+        '7': 'antidetroit',
+        'è': 'detroit',
+        '8': 'tromso',
+        '!': 'osmort',
+        '9': 'irkoutsk',
+        'ç': 'irkoutsk_r',
+        '0': 'krasnoiarsk',
+        'à': 'krasnoiarsk_r'
     }
     createColormaps()
     cm = get_colormap('malmo_r')
@@ -531,22 +579,22 @@ class Canvas(app.Canvas):
             self.switchReagent()
         elif event.text in self.colormapDictionnary.keys():
             self.switchColormap(self.colormapDictionnary[event.text])
-        elif event.text == '*':
-            self.toggleHillshading()
         elif event.text == '$':
+            self.toggleHillshading()
+        elif event.text == '*':
             self.toggleInterpolation()
-        elif event.key.name == 'Up':
+        elif event.key and event.key.name == 'Up':
             self.increaseCycle()
-            print('Number of cycles: %s' % (1 + 2* self.cycle))
-        elif event.key.name == 'Down':
+            print('Number of cycles: %2.0f' % (1 + 2* self.cycle), end='\r')
+        elif event.key and event.key.name == 'Down':
             self.decreaseCycle()
-            print('Number of cycles: %s' % (1 + 2* self.cycle))
-        elif event.key.name == 'Right':
+            print('Number of cycles: %2.0f' % (1 + 2* self.cycle), end='\r')
+        elif event.key and event.key.name == 'Right':
             self.updatedd(0.01)
-            print('dd: %s' % self.dd)
-        elif event.key.name == 'Left':
+            print(' dd: %1.2f' % self.dd, end='\r')
+        elif event.key and event.key.name == 'Left':
             self.updatedd(-0.01)
-            print('dd: %s' % self.dd)
+            print(' dd: %1.2f' % self.dd, end='\r')
         # print(event.key.name)
 
     def reinitializeGrid(self):
@@ -619,9 +667,8 @@ class Canvas(app.Canvas):
         self.compute["params"] = self.params
 
     def updatedd(self, amount):
-        self.dd += amount
-        self.compute['dd'] = self.dd
-        self.render['dd'] = self.dd
+        self.dd = np.clip(self.dd + amount, .2, 1.3)
+        self.compute['dd'] = np.clip(self.dd, .2, 1.3)
 
     def updatedt(self, amount):
         self.dt += amount
@@ -658,15 +705,16 @@ class Canvas(app.Canvas):
     def updateHillshading(self, event):
         hsdir = 180.0/math.pi*math.atan2(
             (event.pos[0]/self.size[0] - 0.5)*2,
-            (1 - event.pos[1]/self.size[1] - 0.5)*2
+            (1-event.pos[1]/self.size[1] - 0.5)*2
         )
         self.hsdirection = 360 + hsdir if hsdir < 0.0 else hsdir
+        # self.hsdirection -= 180
         self.hsaltitude = 90 - (180.0/math.pi*math.atan(
             math.sqrt(
                 ((event.pos[0]/self.size[0] - 0.5)*2) *
                 ((event.pos[0]/self.size[0] - 0.5)*2) +
-                ((1 - event.pos[1]/self.size[1] - 0.5)*2) *
-                ((1 - event.pos[1]/self.size[1] - 0.5)*2)
+                ((1-event.pos[1]/self.size[1] - 0.5)*2) *
+                ((1-event.pos[1]/self.size[1] - 0.5)*2)
                 )))
         self.hsaltitude *= .5
         self.hsdir, self.hsalt = self.getHsDirAlt(lightDirection=self.hsdirection,
@@ -691,7 +739,7 @@ class Canvas(app.Canvas):
         hsalt = (90 - lightAltitude) * math.pi / 180.0
         return (hsdir, hsalt)
 
-    def measure_fps2(self, window=1, callback=' %1.1f FPS'):
+    def measure_fps2(self, window=1, callback=' %1.1f FPS                   '):
         """Measure the current FPS
 
         Sets the update window, connects the draw event to update_fps
@@ -728,6 +776,6 @@ class Canvas(app.Canvas):
 
 if __name__ == '__main__':
     print(__doc__)
-    c = Canvas(scale=0.5)
-    c.measure_fps2()
+    c = Canvas(size=(512, 512), scale=0.5)
+    c.measure_fps2(window=2)
     app.run()
