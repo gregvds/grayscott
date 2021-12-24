@@ -165,27 +165,37 @@ def createColormaps():
             'pink_r',
             'YlOrBr_r'],
         proportions=[960, 160, 160, 960])
-    createAndRegisterCmap(
-        'seattle', [
-            'bone_r',
-            'Blues_r',
-            'bone_r',
-            'gray',
-            'pink_r',
-            'YlOrBr_r'],
-        proportions=[160, 480, 3200, 640, 640, 3840])
-    createAndRegisterCmap(
+    # createAndRegisterCmap(
+    #     'seattle', [
+    #         'bone_r',
+    #         'Blues_r',
+    #         'bone_r',
+    #         'gray',
+    #         'pink_r',
+    #         'YlOrBr_r'],
+    #     proportions=[160, 480, 3200, 640, 640, 3840])
+    createAndRegisterLinearSegmentedCmap(
         'detroit', [
-            'bone',
-            'bone_r'
+            'white',
+            'lightblue',
+            'cadetblue',
+            'black',
+            'cadetblue',
+            'lightblue',
+            'white'
         ],
-        proportions=[1024, 1024])
-    createAndRegisterCmap(
+        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
+    createAndRegisterLinearSegmentedCmap(
         'antidetroit', [
-            'bone_r',
-            'bone'
+            'black',
+            'cadetblue',
+            'lightblue',
+            'white',
+            'lightblue',
+            'cadetblue',
+            'black'
         ],
-        proportions=[1024, 1024])
+        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
     createAndRegisterLinearSegmentedCmap(
         'uppsala', [
             'slategrey',
@@ -227,7 +237,7 @@ def createColormaps():
             'black',
             'black'
         ],
-        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
+        nodes=[0.0, 0.3, 0.47, 0.5, 0.53, 0.7, 1.0])
     createAndRegisterLinearSegmentedCmap(
         'osmort', [
             'linen',
@@ -250,7 +260,6 @@ def createColormaps():
             'olivedrab'
         ],
         nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
-
     createAndRegisterLinearSegmentedCmap(
         'krasnoiarsk', [
             'darkgoldenrod',
@@ -262,6 +271,37 @@ def createColormaps():
             'burlywood'
         ],
         nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
+    createAndRegisterLinearSegmentedCmap(
+        'Rejkjavik', [
+            'rebeccapurple',
+            'indigo',
+            'darkorchid',
+            'gold',
+            'darkorange',
+            'orange',
+            'gold'
+        ],
+        nodes=[0.0, 0.3, 0.47, 0.5, 0.53, 0.7, 1.0])
+
+
+def plot_color_gradients(cmap_category, cmap_list):
+    # Create figure and adjust figure height to number of colormaps
+    nrows = len(cmap_list)
+    figh = 0.35 + 0.15 + (nrows + (nrows-1)*0.1)*0.22
+    fig, axs = plt.subplots(nrows=nrows, figsize=(6.4, figh))
+    fig.subplots_adjust(top=1-.35/figh, bottom=.15/figh, left=0.2, right=0.99)
+
+    axs[0].set_title(cmap_category + ' colormaps', fontsize=14)
+
+    for ax, cmap_name in zip(axs, cmap_list):
+        ax.imshow(gradient, aspect='auto', cmap=cmap_name)
+        ax.text(-.01, .5, cmap_name, va='center', ha='right', fontsize=10,
+                transform=ax.transAxes)
+
+    # Turn off *all* ticks & spines, not just the ones with colormaps.
+    for ax in axs:
+        ax.set_axis_off()
+
 
 def import_pearsons_types():
     species = {}
@@ -358,10 +398,10 @@ class Canvas(app.Canvas):
         '\'': 'oslo',
         '5': 'Lochinver',
         '(': 'Lochinver_r',
-        '6': 'YlOrBr',
-        '§': 'YlOrBr_r',
-        '7': 'antidetroit',
-        'è': 'detroit',
+        '6': 'Rejkjavik',
+        '§': 'Rejkjavik_r',
+        '7': 'detroit',
+        'è': 'antidetroit',
         '8': 'tromso',
         '!': 'osmort',
         '9': 'irkoutsk',
@@ -372,7 +412,7 @@ class Canvas(app.Canvas):
     createColormaps()
     cm = get_colormap('malmo_r')
 
-    specie = 'alpha_right'
+    specie = 'lambda_left'
 
     # Array for du, dv, f, k
     P = np.zeros((h, w, 4), dtype=np.float32)
@@ -387,6 +427,8 @@ class Canvas(app.Canvas):
     mouseDown = False
     mousePressControlPos = [0.0, 0.0]
     mousePressAltPos = [0.0, 0.0]
+    fModAmount = 0
+    kModAmount = 0
 
     # pipeline toggling parameter
     pingpong = 1
@@ -567,7 +609,7 @@ class Canvas(app.Canvas):
         elif delta > 0:
             hsz -= 0.1
         self.hsz = np.clip(hsz, 0.5, 2.5)
-        print(' Hillshade Z: %s' % self.hsz, end='\r')
+        print(' Hillshade Z: %1.2f                       ' % self.hsz, end='\r')
         self.render["hsz"] = self.hsz
 
     def on_key_press(self, event):
@@ -638,31 +680,33 @@ class Canvas(app.Canvas):
         kModAmount = 1 - event.pos[1]/self.size[1] - self.mousePressControlPos[1]
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
-        self.P[:, :, 2] = np.clip(f + 0.00075 * fModAmount, 0.0, 0.08)
-        self.P[:, :, 3] = np.clip(k + 0.001 * kModAmount, 0.03, 0.07)
+        self.P[:, :, 2] -= f
+        self.P[:, :, 3] -= k
+        self.P[:, :, 2] = self.P[:, :, 2] + np.clip(f + 0.00075 * fModAmount, 0.0, 0.08)
+        self.P[:, :, 3] = self.P[:, :, 3] + np.clip(k + 0.001 * kModAmount, 0.03, 0.07)
         self.compute["params"] = self.P
 
     def modulateF(self, event):
         f = self.P[0, 0, 2]
-        amount = 0.0075 * (event.pos[0]/self.size[0] - self.mousePressAltPos[0])
+        self.fModAmount += 0.00375 * (event.pos[0]/self.size[0] - self.mousePressAltPos[0])
         rows = self.h
         cols = self.w
         sins = np.sin(np.linspace(0.0, 2*np.pi, cols))
         # for each column
         for i in range(rows):
-            self.P[i, :, 2] = np.clip(f + amount*sins, 0.0, 0.08)
+            self.P[i, :, 2] = np.clip(f + self.fModAmount*sins, 0.0, 0.08)
         self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
         self.compute["params"] = self.params
 
     def modulateK(self, event):
         k = self.P[0, 0, 3]
-        amount = 0.01 * (1 - event.pos[1]/self.size[1] - self.mousePressAltPos[1])
+        self.kModAmount += 0.005 * (1 - event.pos[1]/self.size[1] - self.mousePressAltPos[1])
         rows = self.h
         cols = self.w
         sins = np.sin(np.linspace(0.0, 2*np.pi, rows))
         # for each row
         for i in range(cols):
-            self.P[:, i, 3] = np.clip(k + amount*sins, 0.03, 0.07)
+            self.P[:, i, 3] = np.clip(k + self.kModAmount*sins, 0.03, 0.07)
         self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
         self.compute["params"] = self.params
 
@@ -776,6 +820,12 @@ class Canvas(app.Canvas):
 
 if __name__ == '__main__':
     print(__doc__)
-    c = Canvas(size=(512, 512), scale=0.5)
+
+    gradient = np.linspace(0, 1, 256)
+    gradient = np.vstack((gradient, gradient))
+    plot_color_gradients("Custom colormaps", [Canvas.colormapDictionnary[each] for each in Canvas.colormapDictionnary.keys()])
+    plt.show()
+
+    c = Canvas(size=(1024, 1024), scale=0.5)
     c.measure_fps2(window=2)
     app.run()

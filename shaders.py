@@ -102,14 +102,15 @@ void main()
             }
         }
         float hs = ((cos(hsalt)*cos(slope)) + (sin(hsalt)*sin(slope))*(cos(hsdir - aspect)));
+        vec4 hsLux = vec4(hs, hs, hs, 1.0);
         vec4 colorhsOverlay;
         if (hs < 0.5){
-            colorhsOverlay = 2.0 * color * vec4(hs, hs, hs, 1.0);
+            colorhsOverlay = (2.0 * color * hsLux)/sqrt(cos(hsalt))*sin(hsalt);
         } else {
-            colorhsOverlay = 1.0 - 2.0*(1.0-color)*(1.0-vec4(hs, hs, hs, 1.0));
+            colorhsOverlay = (1.0 - 2.0*(1.0-color)*(1.0-hsLux))/sqrt(cos(hsalt))*sin(hsalt);
         }
         // another way of mixing color and hillshading
-        // vec4 colorhspegtop = (1.0 - 2.0*color)*vec4(hs, hs, hs, 1.0)*vec4(hs, hs, hs, 1.0) + 2.0*vec4(hs, hs, hs, 1.0)*color;
+        // vec4 colorhspegtop = (1.0 - 2.0*color)*hsLux*hsLux + 2.0*hsLux*color;
         gl_FragColor = colorhsOverlay;
     } else {
         gl_FragColor = color;
