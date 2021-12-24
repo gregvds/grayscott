@@ -682,8 +682,8 @@ class Canvas(app.Canvas):
         k = self.P[0, 0, 3]
         self.P[:, :, 2] -= f
         self.P[:, :, 3] -= k
-        self.P[:, :, 2] = self.P[:, :, 2] + np.clip(f + 0.00075 * fModAmount, 0.0, 0.08)
-        self.P[:, :, 3] = self.P[:, :, 3] + np.clip(k + 0.001 * kModAmount, 0.03, 0.07)
+        self.P[:, :, 2] = np.clip(self.P[:, :, 2] + (f + 0.00075 * fModAmount), 0.0, 0.08)
+        self.P[:, :, 3] = np.clip(self.P[:, :, 3] + (k + 0.001 * kModAmount), 0.03, 0.07)
         self.compute["params"] = self.P
 
     def modulateF(self, event):
