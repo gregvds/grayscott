@@ -20,6 +20,7 @@ which I discovered is very close to this:
 (http://vispy.org/examples/demo/gloo/terrain.html)
 
 Primary Sources
+1. [Paper of John E. Pearson](https://arxiv.org/pdf/patt-sol/9304003.pdf)
 1. [Karl Sims Original](http://karlsims.com/rd.html)
 1. [Detailed discussion of Gray-Scott Model](http://mrob.com/pub/comp/xmorphia/)
 1. [Coding Train Reaction-Diffusion (based on Karl Sims)](https://www.youtube.com/watch?v=BV9ny785UNc&t=2100s)
