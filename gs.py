@@ -216,7 +216,7 @@ def createColormaps():
             'aliceblue',
             'skyblue'
         ],
-        nodes=[0.0, 0.48, 0.5, 0.53, 0.6, 1.0])
+        nodes=[0.0, 0.48, 0.5, 0.51, 0.57, 1.0])
     createAndRegisterLinearSegmentedCmap(
         'Lochinver', [
             'floralwhite',
@@ -410,7 +410,7 @@ class Canvas(app.Canvas):
         'à': 'krasnoiarsk_r'
     }
     createColormaps()
-    cm = get_colormap('malmo_r')
+    # cm = get_colormap('irkoutsk')
 
     specie = 'lambda_left'
 
@@ -458,7 +458,7 @@ class Canvas(app.Canvas):
 
     def __init__(self, size=(1024, 1024), scale=0.5):
         super().__init__(size=size,
-                         title='Gray-Scott Reaction-Diffusion - GregVDS',
+                         title='Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie,
                          keys='interactive',
                          resizable=False,
                          dpi=221)
@@ -471,52 +471,30 @@ class Canvas(app.Canvas):
     def initialize(self):
         self.h, self.w = self.cwidth, self.cheight
         self.species = import_pearsons_types()
-        print('Pearson\'s Pattern %s' % self.specie)
-        print(self.species[self.specie][4])
-        print('        dU  dV  f     k \n        %s %s %s %s' % (self.species[self.specie][0],
-                                                 self.species[self.specie][1],
-                                                 self.species[self.specie][2],
-                                                 self.species[self.specie][3]))
         # definition of parameters for du, dv, f, k
-        self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
-        self.P[:, :] = self.species[self.specie][0:4]
-        self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.setSpecie(self.specie)
         # grid initialization, with central random patch
-        self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
-        self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
-        self.UV += np.random.uniform(0.0, 0.01, (self.h, self.w, 4))
-        self.UV[:, :, 2] = self.UV[:, :, 0]
-        self.UV[:, :, 3] = self.UV[:, :, 1]
-        # hillshading parameters computation
-        self.hsdir, self.hsalt = self.getHsDirAlt()
-        # setting the programs
-        self.compute["params"] = self.params
-        self.texture = gloo.texture.Texture2D(data=self.UV, format=gl.GL_RGBA, internalformat='rgba32f')
-        self.compute["texture"] = self.texture
-        self.compute["texture"].interpolation = gl.GL_NEAREST
-        self.compute["texture"].wrapping = gl.GL_REPEAT
+        self.initializeGrid()
         self.compute["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
+        self.render["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
         self.compute["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
-        self.compute['dt'] = self.dt
+        self.render["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
         self.compute['dx'] = 1.0 / self.w
+        self.render['dx'] = 1.0 / self.w
         self.compute['dy'] = 1.0 / self.h
+        self.render['dy'] = 1.0 / self.h
         self.compute['dd'] = self.dd
         self.compute['pingpong'] = self.pingpong
+        self.render['pingpong'] = self.pingpong
+        self.compute['dt'] = self.dt
         self.compute['brush'] = self.brush
         self.compute['brushtype'] = self.brushType
+        self.hsdir, self.hsalt = self.getHsDirAlt()
         self.render["hsdir"] = self.hsdir
         self.render["hsalt"] = self.hsalt
         self.render["hsz"] = self.hsz
-        self.render['dx'] = 1.0 / self.w
-        self.render['dy'] = 1.0 / self.h
-        self.render["texture"] = self.compute["texture"]
-        self.render["texture"].interpolation = gl.GL_LINEAR
-        self.render["texture"].wrapping = gl.GL_REPEAT
-        self.render["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
-        self.render["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
-        self.render["cmap"] = self.cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
+        self.setColormap('irkoutsk')
         self.render["reagent"] = 1
-        self.render['pingpong'] = self.pingpong
 
     def on_draw(self, event):
         # holding rendering output
@@ -614,13 +592,13 @@ class Canvas(app.Canvas):
 
     def on_key_press(self, event):
         if event.text == ' ':
-            self.reinitializeGrid()
+            self.initializeGrid()
         elif event.text in self.speciesDictionnary.keys():
-            self.switchSpecie(self.speciesDictionnary[event.text])
+            self.setSpecie(self.speciesDictionnary[event.text])
         elif event.text == '/':
             self.switchReagent()
         elif event.text in self.colormapDictionnary.keys():
-            self.switchColormap(self.colormapDictionnary[event.text])
+            self.setColormap(self.colormapDictionnary[event.text])
         elif event.text == '$':
             self.toggleHillshading()
         elif event.text == '*':
@@ -639,14 +617,17 @@ class Canvas(app.Canvas):
             print(' dd: %1.2f' % self.dd, end='\r')
         # print(event.key.name)
 
-    def reinitializeGrid(self):
-        print('Reinitialization of the grid.')
+    def initializeGrid(self):
+        print('Initialization of the grid.')
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
         self.UV += np.random.uniform(-0.02, 0.1, (self.h, self.w, 4))
         self.UV[:, :, 2] = self.UV[:, :, 0]
         self.UV[:, :, 3] = self.UV[:, :, 1]
-        self.texture.set_data(self.UV)
+        if not hasattr(self, 'texture'):
+            self.texture = gloo.texture.Texture2D(data=self.UV, format=gl.GL_RGBA, internalformat='rgba32f')
+        else:
+            self.texture.set_data(self.UV)
         self.compute["texture"] = self.texture
         self.compute["texture"].interpolation = gl.GL_NEAREST
         self.compute["texture"].wrapping = gl.GL_REPEAT
@@ -654,15 +635,9 @@ class Canvas(app.Canvas):
         self.render["texture"].interpolation = gl.GL_LINEAR
         self.render["texture"].wrapping = gl.GL_REPEAT
 
-    def switchSpecie(self, specie):
+    def setSpecie(self, specie):
         self.specie = specie
-        self.title = 'Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
-        print('Pearson\'s Pattern %s' % self.specie)
-        print(self.species[self.specie][4])
-        print('        dU  dV  f     k \n        %s %s %s %s' % (self.species[self.specie][0],
-                                                 self.species[self.specie][1],
-                                                 self.species[self.specie][2],
-                                                 self.species[self.specie][3]))
+        self.printPearsonPatternDescription()
         self.P[:, :] = self.species[specie][0:4]
         self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
         self.compute["params"] = self.params
@@ -688,7 +663,7 @@ class Canvas(app.Canvas):
 
     def modulateF(self, event):
         f = self.P[0, 0, 2]
-        self.fModAmount += 0.00375 * (event.pos[0]/self.size[0] - self.mousePressAltPos[0])
+        self.fModAmount += 0.00075 * (event.pos[0]/self.size[0] - self.mousePressAltPos[0])
         rows = self.h
         cols = self.w
         sins = np.sin(np.linspace(0.0, 2*np.pi, cols))
@@ -700,7 +675,7 @@ class Canvas(app.Canvas):
 
     def modulateK(self, event):
         k = self.P[0, 0, 3]
-        self.kModAmount += 0.005 * (1 - event.pos[1]/self.size[1] - self.mousePressAltPos[1])
+        self.kModAmount += 0.001 * (1 - event.pos[1]/self.size[1] - self.mousePressAltPos[1])
         rows = self.h
         cols = self.w
         sins = np.sin(np.linspace(0.0, 2*np.pi, rows))
@@ -731,7 +706,7 @@ class Canvas(app.Canvas):
         if self.cycle < 1:
             self.cycle = 0
 
-    def switchColormap(self, name):
+    def setColormap(self, name):
         print('Using colormap %s.' % name)
         self.cm = get_colormap(name)
         self.render["cmap"] = self.cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
@@ -774,6 +749,15 @@ class Canvas(app.Canvas):
             self.interpolationMode = 'linear'
             self.render["texture"].interpolation = gl.GL_LINEAR
         print('Interpolation mode: %s.' % self.interpolationMode)
+
+    def printPearsonPatternDescription(self):
+        self.title = 'Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
+        print('Pearson\'s Pattern %s' % self.specie)
+        print(self.species[self.specie][4])
+        print('        dU  dV  f     k \n        %s %s %s %s' % (self.species[self.specie][0],
+                                                 self.species[self.specie][1],
+                                                 self.species[self.specie][2],
+                                                 self.species[self.specie][3]))
 
     def getHsDirAlt(self, lightDirection=315, lightAltitude=20):
         hsdir = 360.0 - lightDirection + 90.0
@@ -821,6 +805,7 @@ class Canvas(app.Canvas):
 if __name__ == '__main__':
     print(__doc__)
 
+    # 'debug' just to show the colormaps
     gradient = np.linspace(0, 1, 256)
     gradient = np.vstack((gradient, gradient))
     plot_color_gradients("Custom colormaps", [Canvas.colormapDictionnary[each] for each in Canvas.colormapDictionnary.keys()])
