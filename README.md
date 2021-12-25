@@ -64,14 +64,17 @@ Pearson's pattern can be switched with keys:
         'x': '*xi_left',
         'z': 'zeta_left',
         'Z': 'zeta_right'
-- Several colormaps are available via 1 - 8, shift for reversed versions.
+- Several colormaps are available via 1 - 0, shift for reversed versions.
 - Mouse left click in the grid refills reagent v at 0.5.
 - Mouse right click in the grid put reagent v at 0.
-- Ctrl + Mouse click and drag to modify feed and kill rates.
+- Ctrl + Mouse click and drag to modify globaly feed and kill rates.
+- Alt + Mouse click and drag to vary sinusoidally feed and kill rates.
 - Shift + Mouse click and drag modifies the hillshading parameters.
-- Key / switch presentation between u and v.
-- Key * toggles hillshading on or off.
+- key / switch presentation between u and v.
+- key * toggles hillshading on or off.
 - key $ toggles interpolation on or off.
+- key Up/Down arrows to multiply computation cycles/frame
+- key Left/right decreases/increases dD of the model
 - Spacebar reseeds the grid.
 
 Greg
