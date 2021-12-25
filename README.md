@@ -38,6 +38,8 @@ vispy requires a backend such as pyside2, pyside6, wx, Pyqt5...
 
 To launch, simply type python3 gs.py
 
+Help available with python3 gs.py -h
+
 Pearson's pattern can be switched with keys:
 -       'a': 'alpha_left',
         'A': 'alpha_right',
