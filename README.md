@@ -73,6 +73,7 @@ Pearson's pattern can be switched with keys:
 - Ctrl + Mouse click and drag to modify globaly feed and kill rates.
 - Alt + Mouse click and drag to vary sinusoidally feed and kill rates.
 - Shift + Mouse click and drag modifies the hillshading parameters.
+- key = reset the spatial variation of feed and kill to their Pattern values
 - key + toggle showing guidelines when modifying/modulatin feed and kill rates.
 - key / switch presentation between u and v.
 - key * toggles hillshading on or off.

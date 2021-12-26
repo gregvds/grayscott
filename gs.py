@@ -56,6 +56,7 @@
     Ctrl + Mouse click and drag to modify globaly feed and kill rates.
     Alt + Mouse click and drag to vary sinusoidally feed and kill rates.
     Shift + Mouse click and drag modifies the hillshading parameters.
+    key = reset the spatial variation of feed and kill to their Pattern values
     key + toggle showing guidelines when modifying/modulatin feed and kill rates.
     key / switch presentation between u and v.
     key * toggles hillshading on or off.
@@ -505,13 +506,13 @@ class Canvas(app.Canvas):
 
         self.lines["position"] = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
         color = np.zeros((7+self.cwidth + self.cheight, 4), np.float32)
-        color[0] = (0,0,0,0)                                           # starting point
-        color[1:3] = (.25,.25,.25,0)                                   # x baseline
-        color[3:self.cwidth+3] = (.5,.5,.5,0)                          # x profile
-        color[self.cwidth+3] = color[0]                                # hidden point
-        color[self.cwidth+4:self.cwidth+6] = (.25,.25,.25,0)           # y baseline
-        color[self.cwidth+6:self.cwidth+self.cheight+6] = (.5,.5,.5,0) # y profile
-        color[-1] = color[0]                                           # endpoint
+        color[0] = (0,0,0,0)                                              # starting point
+        color[1:3] = (.5,.5,.5,0)                                         # x baseline
+        color[3:self.cwidth+3] = (.75,.75,.75,0)                          # x profile
+        color[self.cwidth+3] = color[0]                                   # hidden point
+        color[self.cwidth+4:self.cwidth+6] = (.5,.5,.5,0)                 # y baseline
+        color[self.cwidth+6:self.cwidth+self.cheight+6] = (.75,.75,.75,0) # y profile
+        color[-1] = color[0]                                              # endpoint
         self.lines["color"] = color
 
 
@@ -521,6 +522,7 @@ class Canvas(app.Canvas):
         self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.P[:, :] = self.species[specie][0:4]
         self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.modulateFK()
         self.compute["params"] = self.params
 
     def initializeGrid(self):
@@ -674,6 +676,10 @@ class Canvas(app.Canvas):
             self.toggleInterpolation()
         elif event.text == '+':
             self.guildelines = not self.guildelines
+        elif event.text == '=':
+            self.fModAmount = 0.0
+            self.kModAmount = 0.0
+            self.modulateFK(event=None)
         elif event.key and event.key.name == 'Up':
             self.increaseCycle()
             print('Number of cycles: %2.0f' % (1 + 2* self.cycle), end='\r')
@@ -715,11 +721,12 @@ class Canvas(app.Canvas):
         self.dt += amount
         self.compute['dt'] = self.dt
 
-    def modulateFK(self, event):
+    def modulateFK(self, event=None):
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
-        self.fModAmount += 0.001 * (1 - event.pos[1]/self.size[1] - self.mousePressAltPos[1])
-        self.kModAmount += 0.00075 * (event.pos[0]/self.size[0] - self.mousePressAltPos[0])
+        if event:
+            self.fModAmount += 0.001 * (1 - event.pos[1]/self.size[1] - self.mousePressAltPos[1])
+            self.kModAmount += 0.00075 * (event.pos[0]/self.size[0] - self.mousePressAltPos[0])
         rows = self.h
         cols = self.w
         sinsF = np.sin(np.linspace(0.0, 2*np.pi, cols))
