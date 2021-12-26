@@ -83,7 +83,7 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
 from shaders import vertex_shader, compute_fragment, render_hs_fragment
 from shaders import lines_vertex, lines_fragment
-from systems import pearson
+from systems import pearson, PearsonGrid, PearsonCurve
 
 
 def get_colormap(name, size=256):
@@ -358,6 +358,10 @@ def setup_grid(rows, cols, blob_scale=0.1):
 
 class Canvas(app.Canvas):
     # Pearson's patterns related variables
+    fMin = 0.0
+    fMax = 0.08
+    kMin = 0.03
+    kMax = 0.07
     species = {}
     speciesDictionnary = {
         'a': 'alpha_left',
@@ -447,6 +451,8 @@ class Canvas(app.Canvas):
     render = gloo.Program(vertex_shader, render_hs_fragment, count=4)
 
     lines = gloo.Program(lines_vertex, lines_fragment)
+    grid = gloo.Program(lines_vertex, lines_fragment)
+    curve = gloo.Program(lines_vertex, lines_fragment)
 
     def __init__(self,
                  size=(1024, 1024),
@@ -505,16 +511,21 @@ class Canvas(app.Canvas):
         self.render["reagent"]    = 1
 
         self.lines["position"] = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
-        color = np.zeros((7+self.cwidth + self.cheight, 4), np.float32)
-        color[0] = (0,0,0,0)                                              # starting point
-        color[1:3] = (.5,.5,.5,0)                                         # x baseline
-        color[3:self.cwidth+3] = (.75,.75,.75,0)                          # x profile
-        color[self.cwidth+3] = color[0]                                   # hidden point
-        color[self.cwidth+4:self.cwidth+6] = (.5,.5,.5,0)                 # y baseline
-        color[self.cwidth+6:self.cwidth+self.cheight+6] = (.75,.75,.75,0) # y profile
-        color[-1] = color[0]                                              # endpoint
+        color = np.ones((7+self.cwidth + self.cheight, 4), np.float32)
+        color[0] *= 0                                          # starting point
+        color[1:3] *= .5                                       # x baseline
+        color[3:self.cwidth+3] *= .75                          # x profile
+        color[self.cwidth+3] = color[0]                        # hidden point
+        color[self.cwidth+4:self.cwidth+6] *= .5               # y baseline
+        color[self.cwidth+6:self.cwidth+self.cheight+6] *= .75 # y profile
+        color[-1] = color[0]                                   # endpoint
         self.lines["color"] = color
 
+        self.grid["position"] = np.zeros((len(PearsonGrid), 2), np.float32)
+        self.grid["color"] = np.ones((len(PearsonGrid), 4), np.float32) * .25
+
+        self.curve["position"] = np.zeros((len(PearsonCurve), 2), np.float32)
+        self.curve["color"] = np.ones((len(PearsonCurve), 4), np.float32)
 
     def setSpecie(self, specie):
         self.specie = specie
@@ -574,6 +585,8 @@ class Canvas(app.Canvas):
         self.compute["pingpong"] = self.pingpong
         self.render["pingpong"] = self.pingpong
 
+        self.grid.draw('line_strip')
+        self.curve.draw('line_strip')
         self.lines.draw('line_strip')
 
         self.update()
@@ -588,6 +601,8 @@ class Canvas(app.Canvas):
             self.mousePressControlPos = [event.pos[0]/self.size[0],
                                          1 - event.pos[1]/self.size[1]]
             if self.guildelines:
+                self.grid["position"] = PearsonGrid
+                self.curve["position"] = PearsonCurve
                 self.plotLines(event)
             print(' Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2],
                                                self.P[0, 0, 3]), end="\r")
@@ -601,6 +616,8 @@ class Canvas(app.Canvas):
             dk = (self.P[int(self.h/4), int(self.w
             /4), 3] - self.P[int(self.h*3/4), int(self.w*3/4), 3])/2
             if self.guildelines:
+                self.grid["position"] = PearsonGrid
+                self.curve["position"] = PearsonCurve
                 self.plotLines(event)
             print(' Current df and dk: ±%1.4f, ±%1.4f' % (df, dk), end="\r")
         else:
@@ -617,6 +634,8 @@ class Canvas(app.Canvas):
                 # update f and k values according to the x and y movements
                 self.updateFK(event)
                 if self.guildelines:
+                    self.grid["position"] = PearsonGrid
+                    self.curve["position"] = PearsonCurve
                     self.plotLines(event)
                 self.mousePressControlPos = [event.pos[0]/self.size[0],
                                              1 - event.pos[1]/self.size[1]]
@@ -630,6 +649,8 @@ class Canvas(app.Canvas):
                 df = (self.P[int(self.h/4), int(self.w/4), 2] - self.P[int(self.h*3/4), int(self.w*3/4), 2])/2
                 dk = (self.P[int(self.h/4), int(self.w/4), 3] - self.P[int(self.h*3/4), int(self.w*3/4), 3])/2
                 if self.guildelines:
+                    self.grid["position"] = PearsonGrid
+                    self.curve["position"] = PearsonCurve
                     self.plotLines(event)
                 self.mousePressAltPos = [event.pos[0]/self.size[0],
                                              1 - event.pos[1]/self.size[1]]
@@ -647,6 +668,8 @@ class Canvas(app.Canvas):
         elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
             print('     New df and dk: %1.4f, %1.4f' % (self.P[int(self.h/4), int(self.w/4), 2],
                                                self.P[int(self.h/4), int(self.w/4), 3]), end="\n")
+        self.grid["position"] = np.zeros((len(PearsonGrid), 2), np.float32)
+        self.curve["position"] = np.zeros((len(PearsonCurve), 2), np.float32)
         self.lines["position"] = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
 
     def on_mouse_wheel(self, event):
@@ -709,8 +732,8 @@ class Canvas(app.Canvas):
         k = self.P[0, 0, 3]
         self.P[:, :, 2] -= f
         self.P[:, :, 3] -= k
-        self.P[:, :, 2] = np.clip(self.P[:, :, 2] + (f + 0.00075 * fModAmount), 0.0, 0.08)
-        self.P[:, :, 3] = np.clip(self.P[:, :, 3] + (k + 0.001 * kModAmount), 0.03, 0.07)
+        self.P[:, :, 2] = np.clip(self.P[:, :, 2] + (f + 0.006 * fModAmount), self.fMin, self.fMax)
+        self.P[:, :, 3] = np.clip(self.P[:, :, 3] + (k + 0.003 * kModAmount), self.kMin, self.kMax)
         self.compute["params"] = self.P
 
     def updatedd(self, amount):
@@ -725,16 +748,16 @@ class Canvas(app.Canvas):
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
         if event:
-            self.fModAmount += 0.001 * (1 - event.pos[1]/self.size[1] - self.mousePressAltPos[1])
-            self.kModAmount += 0.00075 * (event.pos[0]/self.size[0] - self.mousePressAltPos[0])
+            self.fModAmount += 0.002 * (1 - event.pos[1]/self.size[1] - self.mousePressAltPos[1])
+            self.kModAmount += 0.001 * (event.pos[0]/self.size[0] - self.mousePressAltPos[0])
         rows = self.h
         cols = self.w
         sinsF = np.sin(np.linspace(0.0, 2*np.pi, cols))
         sinsK = np.sin(np.linspace(0.0, 2*np.pi, rows))
         for i in range(rows):
-            self.P[i, :, 2] = np.clip(f + self.fModAmount*sinsF, 0.0, 0.08)
+            self.P[i, :, 2] = np.clip(f + self.fModAmount*sinsF, self.fMin, self.fMax)
         for i in range(cols):
-            self.P[:, i, 3] = np.clip(k + self.kModAmount*sinsK, 0.03, 0.07)
+            self.P[:, i, 3] = np.clip(k + self.kModAmount*sinsK, self.kMin, self.kMax)
         self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
         self.compute["params"] = self.params
 
@@ -801,8 +824,8 @@ class Canvas(app.Canvas):
 
     def plotLines(self, event):
         # get f and k base values and scale them between -1 and 1
-        xf = ((self.P[0, 0, 2] - 0.0)/(0.08 - 0.0)-0.5)*2
-        yf = ((self.P[0, 0, 3] - 0.03)/(0.07 - 0.03)-0.5)*2
+        xf = ((self.P[0, 0, 2] - self.fMin)/(self.fMax - self.fMin) - 0.5) * 2
+        yf = ((self.P[0, 0, 3] - self.kMin)/(self.kMax - self.kMin) - 0.5) * 2
 
         P = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
 
@@ -822,11 +845,11 @@ class Canvas(app.Canvas):
 
         #
         x_profile[1:-1, 0] = np.linspace(-1, 1, self.cwidth-2)
-        x_profile[1:-1, 1] = (((self.P[0, :, 2] - 0.0)/(0.08 - 0.0) - 0.5)*2)[1:-1]
+        x_profile[1:-1, 1] = (((self.P[0, :, 2] - self.fMin)/(self.fMax - self.fMin) - 0.5) * 2)[1:-1]
         x_profile[0] = (-1, xf)
         x_profile[-1] = (1.01, xf)
         #
-        y_profile[1:-1, 0] = (((self.P[:, 0, 3] - 0.03)/(0.07 - 0.03) -0.5)*2)[1:-1]
+        y_profile[1:-1, 0] = (((self.P[:, 0, 3] - self.kMin)/(self.kMax - self.kMin) - 0.5) * 2)[1:-1]
         y_profile[1:-1, 1] = np.linspace(-1, 1, self.cheight-2)
         y_profile[0] = (yf, -1.01)
         y_profile[-1] = (yf, 1)
