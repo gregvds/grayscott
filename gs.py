@@ -62,7 +62,8 @@
     key * toggles hillshading on or off.
     key $ toggles interpolation on or off.
     key Up/Down arrows to multiply computation cycles/frame
-    key Left/right decreases/increases dD of the model
+    key Left/right decreases/increases globally dD of the model
+    key Shift + Left/right decreases/increases gaussian variation of dD
     Spacebar reseeds the grid.
 """
 
@@ -362,6 +363,9 @@ class Canvas(app.Canvas):
     fMax = 0.08
     kMin = 0.03
     kMax = 0.07
+    ddMin = 0.2
+    ddMax = 1.3
+    ddMod = 0.0
     species = {}
     speciesDictionnary = {
         'a': 'alpha_left',
@@ -489,18 +493,17 @@ class Canvas(app.Canvas):
         self.setSpecie(self.specie)
         # grid initialization, with central random patch
         self.initializeGrid()
+        self.initializeParams2()
         self.compute["position"]  = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
         self.render["position"]   = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
         self.compute["texcoord"]  = [(0, 0), (0, 1), (1, 0), (1, 1)]
         self.render["texcoord"]   = [(0, 0), (0, 1), (1, 0), (1, 1)]
-        self.compute['dx']        = 1.0 / self.w
         self.render['dx']         = 1.0 / self.w
-        self.compute['dy']        = 1.0 / self.h
         self.render['dy']         = 1.0 / self.h
-        self.compute['dd']        = self.dd
+        self.compute['ddmin']     = self.ddMin
+        self.compute['ddmax']     = self.ddMax
         self.compute['pingpong']  = self.pingpong
         self.render['pingpong']   = self.pingpong
-        self.compute['dt']        = self.dt
         self.compute['brush']     = self.brush
         self.compute['brushtype'] = self.brushType
         self.hsdir, self.hsalt    = self.getHsDirAlt()
@@ -553,6 +556,15 @@ class Canvas(app.Canvas):
         self.render["texture"] = self.compute["texture"]
         self.render["texture"].interpolation = gl.GL_LINEAR
         self.render["texture"].wrapping = gl.GL_REPEAT
+
+    def initializeParams2(self):
+        print('Initialization of model parameters')
+        self.P2 = np.ones((self.h, self.w, 4), dtype=np.float32)
+        self.P2[:, :, 0] = 1.0 / self.w
+        self.P2[:, :, 1] = 1.0 / self.h
+        self.P2[:, :, 2] = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
+        self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["params2"] = self.params2
 
     def setColormap(self, name):
         print('Using colormap %s.' % name)
@@ -699,10 +711,12 @@ class Canvas(app.Canvas):
             self.toggleInterpolation()
         elif event.text == '+':
             self.guildelines = not self.guildelines
+            print('Guidelines: %s' % self.guildelines)
         elif event.text == '=':
             self.fModAmount = 0.0
             self.kModAmount = 0.0
             self.modulateFK(event=None)
+            print('f and k constants.')
         elif event.key and event.key.name == 'Up':
             self.increaseCycle()
             print('Number of cycles: %2.0f' % (1 + 2* self.cycle), end='\r')
@@ -710,12 +724,22 @@ class Canvas(app.Canvas):
             self.decreaseCycle()
             print('Number of cycles: %2.0f' % (1 + 2* self.cycle), end='\r')
         elif event.key and event.key.name == 'Right':
-            self.updatedd(0.01)
-            print(' dd: %1.2f' % self.dd, end='\r')
+            if len(event.modifiers) == 0:
+                self.updatedd(0.01)
+                print(' dd: %1.2f' % self.dd, end='\r')
+            elif event.modifiers[0] == 'Shift':
+                self.ddMod = np.clip(self.ddMod + 0.02, 0, 1)
+                self.modulateDd(self.ddMod)
+                print(' ddMod: %1.2f' % self.ddMod, end='\r')
         elif event.key and event.key.name == 'Left':
-            self.updatedd(-0.01)
-            print(' dd: %1.2f' % self.dd, end='\r')
-        # print(event.key.name)
+            if len(event.modifiers) == 0:
+                self.updatedd(-0.01)
+                print(' dd: %1.2f' % self.dd, end='\r')
+            elif event.modifiers[0] == 'Shift':
+                self.ddMod = np.clip(self.ddMod - 0.02, 0, 1)
+                self.modulateDd(self.ddMod)
+                print(' ddMod: %1.2f' % self.ddMod, end='\r')
+        # print(event.key.name, event.modifiers)
 
     def switchReagent(self):
         if self.render["reagent"] == 1:
@@ -737,12 +761,30 @@ class Canvas(app.Canvas):
         self.compute["params"] = self.P
 
     def updatedd(self, amount):
-        self.dd = np.clip(self.dd + amount, .2, 1.3)
-        self.compute['dd'] = np.clip(self.dd, .2, 1.3)
+        # !!! still erases all dd modulations created by modulateDd !!!
+        self.dd = np.clip(self.dd + amount, self.ddMin, self.ddMax)
+        self.P2[:, :, 2] = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
+        self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["params2"] = self.params2
+
+    def modulateDd(self, amount):
+        ddPivot = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
+        ddUpperProportion = (self.ddMax - self.dd) / (self.ddMax - self.ddMin)
+        ddLowerProportion = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
+        gaussGrid = self.gauss(sigma = 0.5)
+        self.P2[:, :, 2] = (1 - amount) * ddPivot \
+                             + (amount) * (ddPivot \
+                                         + (gaussGrid * ddUpperProportion) \
+                                         - ((1-gaussGrid) * ddLowerProportion)
+                                          )
+        self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["params2"] = self.params2
 
     def updatedt(self, amount):
         self.dt += amount
-        self.compute['dt'] = self.dt
+        self.P2[:, :, 3] = self.dt
+        self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["params2"] = self.params2
 
     def modulateFK(self, event=None):
         f = self.P[0, 0, 2]
@@ -864,6 +906,11 @@ class Canvas(app.Canvas):
         hsalt = (90 - lightAltitude) * math.pi / 180.0
         return (hsdir, hsalt)
 
+    def gauss(self, sigma = 1, muu = 0.000):
+        x, y = np.meshgrid(np.linspace(-1, 1, self.h), np.linspace(-1, 1, self.w))
+        dst = np.sqrt(x*x+y*y)
+        return np.exp(-( (dst-muu)**2 / ( 2.0 * sigma**2 ) ) )
+
     def measure_fps2(self, window=1, callback=' %1.1f FPS                   '):
         """Measure the current FPS
 
@@ -916,7 +963,7 @@ if __name__ == '__main__':
     python3 gs.py
     python3 gs.py -c osmort -l 0
     python3 gs.py -s 512 -p kappa_left -c oslo -l 1.5 -d .5 -t 2.0
-    python3 gs.py -s 512 -p alpha_left -c detroit -l 0.8 -d .3"""),
+    python3 gs.py -s 512 -p alpha_left -c detroit -l 0.8 -d .3 -g"""),
                                      formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-s",
                         "--Size",
@@ -961,6 +1008,7 @@ if __name__ == '__main__':
     gradient = np.vstack((gradient, gradient))
     # plot_color_gradients("Custom colormaps", [Canvas.colormapDictionnary[each] for each in Canvas.colormapDictionnary.keys()])
     # plt.show()
+    # just close the window to run the model
 
     c = Canvas(size=(args.Size, args.Size),
                specie=args.Pattern,

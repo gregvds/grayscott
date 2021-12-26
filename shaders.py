@@ -122,10 +122,9 @@ compute_fragment = """
 uniform int pingpong;
 uniform highp sampler2D texture;                           // U,V:= r,g or b,a following pingpong
 uniform highp sampler2D params;                            // rU,rV,f,k := r,g,b,a
-uniform float dx;                                          // horizontal distance between texels
-uniform float dy;                                          // vertical distance between texels
-uniform float dd;                                          // unit of distance
-uniform float dt;                                          // unit of time
+uniform highp sampler2D params2;                           // dX,dY,dD,dT = r,g,b,a
+uniform float ddmin;                                       // scaling of dd
+uniform float ddmax;                                       // scaling of dd
 uniform highp vec2 brush;                                  // coordinates of mouse down
 uniform int brushtype;
 varying highp vec2 v_texcoord;
@@ -133,16 +132,22 @@ varying highp vec2 v_texcoord;
 void main(void)
 {
     // Original way of computing the diffusion Laplacian
-    float center = -1.0 * (sqrt(2.0) * 4.0 + 4.0);         // -1 * other weights
+    float center = -1.0 * (sqrt(2.0) * 4.0 + 4.0);          // -1 * other weights
     float diag   =  1.0;                                    // weight for diagonals
     float neibor =  1.0 * sqrt(2.0);                        // weight for neighbours
 
-    vec2 highp p = v_texcoord;                             // center coordinates
+    vec2 highp p = v_texcoord;                              // center coordinates
     vec2 highp c;
     vec2 highp l;
 
+    vec4 parameters2 = texture2D(params2, p).rgba;
+    float dx = parameters2.r;
+    float dy = parameters2.g;
+    float dd = parameters2.b*(ddmax-ddmin)+ddmin;
+    float dt = parameters2.a;
+
     if( pingpong == 0 ) {
-        c = texture2D(texture, p).rg;                      // central value
+        c = texture2D(texture, p).rg;                       // central value
         // Compute Laplacian
         l = ( texture2D(texture, p + vec2(-dx,-dy)).rg
             + texture2D(texture, p + vec2( dx,-dy)).rg

@@ -79,7 +79,8 @@ Pearson's pattern can be switched with keys:
 - key * toggles hillshading on or off.
 - key $ toggles interpolation on or off.
 - key Up/Down arrows to multiply computation cycles/frame
-- key Left/right decreases/increases dD of the model
+- key Left/right decreases/increases globally dD of the model
+- key Shift + Left/right decreases/increases gaussian variation of dD
 - Spacebar reseeds the grid.
 
 Greg
