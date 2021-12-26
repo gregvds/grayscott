@@ -74,13 +74,15 @@ Pearson's pattern can be switched with keys:
 - Alt + Mouse click and drag to vary sinusoidally feed and kill rates.
 - Shift + Mouse click and drag modifies the hillshading parameters.
 - key = reset the spatial variation of feed and kill to their Pattern values
-- key + toggle showing guidelines when modifying/modulatin feed and kill rates.
-- key / switch presentation between u and v.
+- key + toggles guidelines when modifying/modulatin feed and kill rates.
+- key / switches presentation between u and v.
 - key * toggles hillshading on or off.
 - key $ toggles interpolation on or off.
-- key Up/Down arrows to multiply computation cycles/frame
+- key Up/Down arrows multiply computation cycles per frame
 - key Left/right decreases/increases globally dD of the model
 - key Shift + Left/right decreases/increases gaussian variation of dD
 - Spacebar reseeds the grid.
+
+keys =, l, spacebar should get you back to something normal ;-).
 
 Greg
