@@ -568,6 +568,7 @@ class Canvas(app.Canvas):
         self.P2[:, :, 0] = 1.0 / self.w
         self.P2[:, :, 1] = 1.0 / self.h
         self.P2[:, :, 2] = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
+        self.P2[:, :, 3] = self.dt
         self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
         self.compute["params2"] = self.params2
 
@@ -622,8 +623,7 @@ class Canvas(app.Canvas):
                 self.pearsonsGrid["position"] = PearsonGrid
                 self.pearsonsCurve["position"] = PearsonCurve
                 self.plotFKLines(event)
-            print(' Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2],
-                                               self.P[0, 0, 3]), end="\r")
+            print(' Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2], self.P[0, 0, 3]), end="\r")
         elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
             self.updateHillshading(event)
             print(' Current Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdir, self.hsalt), end="\r")
@@ -631,8 +631,7 @@ class Canvas(app.Canvas):
             self.mousePressAltPos = [event.pos[0]/self.size[0],
                                          1 - event.pos[1]/self.size[1]]
             df = (self.P[int(self.h/4), int(self.w/4), 2] - self.P[int(self.h*3/4), int(self.w*3/4), 2])/2
-            dk = (self.P[int(self.h/4), int(self.w
-            /4), 3] - self.P[int(self.h*3/4), int(self.w*3/4), 3])/2
+            dk = (self.P[int(self.h/4), int(self.w/4), 3] - self.P[int(self.h*3/4), int(self.w*3/4), 3])/2
             if self.guidelines:
                 self.pearsonsGrid["position"] = PearsonGrid
                 self.pearsonsCurve["position"] = PearsonCurve
@@ -657,8 +656,7 @@ class Canvas(app.Canvas):
                     self.plotFKLines(event)
                 self.mousePressControlPos = [event.pos[0]/self.size[0],
                                              1 - event.pos[1]/self.size[1]]
-                print(' Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2],
-                                                   self.P[0, 0, 3]), end="\r")
+                print(' Current f and k: %1.4f, %1.4f' % (self.P[0, 0, 2], self.P[0, 0, 3]), end="\r")
             elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
                 self.updateHillshading(event)
                 print(' Current Hillshading Direction and altitude: %3.0f, %3.0f' % (self.hsdirection, self.hsaltitude), end="\r")
@@ -734,7 +732,7 @@ class Canvas(app.Canvas):
                 self.updatedd(0.01)
                 print(' dd: %1.2f' % self.dd, end='\r')
             elif event.modifiers[0] == 'Shift':
-                self.ddMod = np.clip(self.ddMod + 0.02, 0, 1)
+                self.ddMod = np.clip(self.ddMod + 0.02, -1, 1)
                 self.modulateDd(self.ddMod)
                 print(' ddMod: %1.2f' % self.ddMod, end='\r')
             self.plotDdLines(self.guidelines)
@@ -743,7 +741,7 @@ class Canvas(app.Canvas):
                 self.updatedd(-0.01)
                 print(' dd: %1.2f' % self.dd, end='\r')
             elif event.modifiers[0] == 'Shift':
-                self.ddMod = np.clip(self.ddMod - 0.02, 0, 1)
+                self.ddMod = np.clip(self.ddMod - 0.02, -1, 1)
                 self.modulateDd(self.ddMod)
                 print(' ddMod: %1.2f' % self.ddMod, end='\r')
             self.plotDdLines(self.guidelines)
@@ -767,29 +765,6 @@ class Canvas(app.Canvas):
         self.P[:, :, 3] = np.clip(self.P[:, :, 3] + (k + 0.003 * kModAmount), self.kMin, self.kMax)
         self.compute["params"] = self.P
 
-    def updatedd(self, amount):
-        self.dd = np.clip(self.dd + amount, self.ddMin, self.ddMax)
-        self.modulateDd(self.ddMod)
-
-    def modulateDd(self, amount):
-        ddPivot = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
-        ddUpperProportion = (self.ddMax - self.dd) / (self.ddMax - self.ddMin)
-        ddLowerProportion = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
-        gaussGrid = self.gauss(sigma = 0.33)
-        self.P2[:, :, 2] = (1 - amount) * ddPivot \
-                             + (amount) * (ddPivot \
-                                         + (gaussGrid * ddUpperProportion) \
-                                         - ((1-gaussGrid) * ddLowerProportion)
-                                          )
-        self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
-        self.compute["params2"] = self.params2
-
-    def updatedt(self, amount):
-        self.dt += amount
-        self.P2[:, :, 3] = self.dt
-        self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
-        self.compute["params2"] = self.params2
-
     def modulateFK(self, event=None):
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
@@ -806,6 +781,41 @@ class Canvas(app.Canvas):
             self.P[:, i, 3] = np.clip(k + self.kModAmount*sinsK, self.kMin, self.kMax)
         self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
         self.compute["params"] = self.params
+
+    def updatedd(self, amount):
+        self.dd = np.clip(self.dd + amount, self.ddMin, self.ddMax)
+        self.modulateDd(self.ddMod)
+
+    def modulateDd(self, amount):
+        ddPivot = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
+        if amount > 0.0:
+            ddUpperProportion = (self.ddMax - self.dd) / (self.ddMax - self.ddMin)
+            ddLowerProportion = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
+            gaussGrid = self.gauss(sigma = 0.33)
+            self.P2[:, :, 2] = (1 - amount) * ddPivot \
+                                 + (amount) * (ddPivot \
+                                             + (gaussGrid * ddUpperProportion) \
+                                             - ((1-gaussGrid) * ddLowerProportion)
+                                              )
+        elif amount < 0.0:
+            ddUpperProportion = (self.ddMax - self.dd) / (self.ddMax - self.ddMin)
+            ddLowerProportion = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
+            gaussGrid = self.gauss(sigma = 0.33)
+            self.P2[:, :, 2] = (1 - amount) * ddPivot \
+                                 + (amount) * (ddPivot \
+                                             - ((1-gaussGrid) * ddUpperProportion) \
+                                             + (gaussGrid * ddLowerProportion)
+                                              )
+        else:
+            self.P2[:, :, 2] = ddPivot
+        self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["params2"] = self.params2
+
+    def updatedt(self, amount):
+        self.dt += amount
+        self.P2[:, :, 3] = self.dt
+        self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.compute["params2"] = self.params2
 
     def increaseCycle(self):
         if not self.cycle:
