@@ -581,8 +581,8 @@ class Canvas(app.Canvas):
     def on_draw(self, event):
         # holding rendering output
         self.framebuffer.activate()
-        gl.glViewport(0, 0, self.cwidth, self.cheight)
-        self.compute.draw(gl.GL_TRIANGLE_STRIP)
+        gloo.set_viewport(0, 0, self.cwidth, self.cheight)
+        self.compute.draw('triangle_strip')
 
         for cycle in range(self.cycle):
             self.pingpong = 1 - self.pingpong
@@ -596,9 +596,9 @@ class Canvas(app.Canvas):
         self.framebuffer.deactivate()
 
         # rendering the state of the model
-        gloo.clear(color=True)
-        gl.glViewport(0, 0, self.physical_size[0], self.physical_size[1])
-        self.render.draw(gl.GL_TRIANGLE_STRIP)
+        gloo.clear(color=True, depth=True)
+        gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+        self.render.draw('triangle_strip')
         self.pingpong = 1 - self.pingpong
         self.compute["pingpong"] = self.pingpong
         self.render["pingpong"] = self.pingpong

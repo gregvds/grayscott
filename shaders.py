@@ -193,7 +193,7 @@ void main(void)
     // float highp du = weight3 * (ru * lu / weight4 * dd) - (weight1 * uvv) + weight2 * (f * (1.0 - u));   // Gray-Scott equation
     // float highp dv = weight3 * (rv * lv / weight5 * dd) + (weight1 * uvv) - weight2 * ((f + k) * v);   // diffusion+-reaction
     float highp du = ru * lu / weight4 * dd - uvv + f * (1.0 - u);   // Gray-Scott equation
-    float highp dv = rv * lv / weight5 * dd + uvv - (f + k) * v;   // diffusion+-reaction
+    float highp dv = rv * lv / weight5 * dd + uvv - (f + k) * v;     // diffusion+-reaction
 
     u += du * dt;
     v += dv * dt;
@@ -225,7 +225,7 @@ attribute vec4 color;
 varying vec4 v_color;
 void main()
 {
-    gl_Position = vec4(position, 0.0, 1.0 );
+    gl_Position = vec4(position, 0.0, 1.0);
     v_color = color;
 }
 """
