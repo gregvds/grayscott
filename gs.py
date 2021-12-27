@@ -713,20 +713,18 @@ class Canvas(app.Canvas):
         elif event.key and event.key.name == 'Right':
             if len(event.modifiers) == 0:
                 self.updatedd(0.01)
-                print(' dd: %1.2f' % self.dd, end='\r')
             elif event.modifiers[0] == 'Shift':
                 self.ddMod = np.clip(self.ddMod + 0.02, -1, 1)
                 self.modulateDd(self.ddMod)
-                print(' ddMod: %1.2f' % self.ddMod, end='\r')
+            self.printDd()
             self.plotDdLines(self.guidelines)
         elif event.key and event.key.name == 'Left':
             if len(event.modifiers) == 0:
                 self.updatedd(-0.01)
-                print(' dd: %1.2f' % self.dd, end='\r')
             elif event.modifiers[0] == 'Shift':
                 self.ddMod = np.clip(self.ddMod - 0.02, -1, 1)
                 self.modulateDd(self.ddMod)
-                print(' ddMod: %1.2f' % self.ddMod, end='\r')
+            self.printDd()
             self.plotDdLines(self.guidelines)
 
     def switchReagent(self):
@@ -891,6 +889,13 @@ class Canvas(app.Canvas):
             begin = '     New'
             end="\n"
         print('%s df and dk: ±%1.4f, ±%1.4f' % (begin, df, dk), end=end)
+
+    def printDd(self):
+        dDVals = [self.dd]
+        dDCorner = (self.P2[0,             0,            2])*(self.ddMax - self.ddMin) + self.ddMin
+        dDCenter = (self.P2[int(self.h/2), int(self.w/2),2])*(self.ddMax - self.ddMin) + self.ddMin
+        dDVals += sorted([dDCorner, dDCenter])
+        print("dD: %1.2f, dDMin: %1.2f, dDMax: %1.2f" % (dDVals[0], dDVals[1], dDVals[2]), end="\r")
 
     def plotFKLines(self):
         # get f and k base values and scale them between -1 and 1
