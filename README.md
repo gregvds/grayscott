@@ -64,7 +64,7 @@ Pearson's pattern can be switched with keys:
         'p': 'pi_left',
         't': 'theta_left',
         'T': 'theta_right',
-        'x': '*xi_left',
+        'x': 'xi_left',
         'z': 'zeta_left',
         'Z': 'zeta_right'
 - Several colormaps are available via 1 - 0, shift for reversed versions.
@@ -81,6 +81,9 @@ Pearson's pattern can be switched with keys:
 - key Up/Down arrows multiply computation cycles per frame
 - key Left/right decreases/increases globally dD of the model
 - key Shift + Left/right decreases/increases gaussian variation of dD
+    If guidelines are on, the dD general value and modulation curve will be drawn;
+    Currently, to make these disappear, one has to switch off guidelines with
+    key +, and make another modification do general dD or dD modulation.
 - Spacebar reseeds the grid.
 
 keys =, l, spacebar should get you back to something normal ;-).
