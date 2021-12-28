@@ -102,7 +102,8 @@ void main()
             }
         }
         float hs = ((cos(hsalt)*cos(slope)) + (sin(hsalt)*sin(slope))*(cos(hsdir - aspect)));
-        vec4 hsLux = vec4(hs, hs, hs, 1.0);
+        vec4 hsLux = vec4(hs*(255./256), hs*(229./256), hs*(205./256), 1.0); //warm light
+        // vec4 hsLux = vec4(hs*(208./256), hs*(234./256), hs*(255./256), 1.0); //cold light
         vec4 colorhsOverlay;
         if (hs < 0.5){
             colorhsOverlay = (2.0 * color * hsLux)/sqrt(cos(hsalt))*sin(hsalt);

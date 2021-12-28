@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy import interpolate
 
 kernels = {
             "standard":  np.array([[0.05, 0.2, 0.05],
@@ -776,28 +778,22 @@ PearsonGrid = [(-1.01, 1.01), (1.01, 1.01),
                (-1.01, 1.01)]
 
 CurvePoints =  [[.03, .005],
-                [.034, .0065],
-                [.037, .0078],
                 [.04, .00975],
-                [.0433, .0122],
-                [.04725, .016],
                 [.05, .019],
-                [.052, .0215],
-                [.054, .0245],
-                [.056, .0283],
-                [.058, .0335],
                 [.06, .04],
-                [.061, .0445],
-                [.062, .0505],
-                [.0624, .0545],
-                [.06265, .06],
                 [.06275, .065],
                 [.0625, .0705],
-                [.0619, .076],
                 [.06125, .08]]
-PearsonCurve = []
+PearsonScaledPoints = []
 
 for each in CurvePoints:
     valf = ((each[0] - 0.03)/(0.07 - 0.03)-.5)*2
     valk = ((each[1] - 0.0)/(0.08 - 0.0)-.5)*2
-    PearsonCurve.append((valf, valk))
+    PearsonScaledPoints.append((valf, valk))
+[y, x] = [[row[i] for row in PearsonScaledPoints] for i in range(2)]
+f = interpolate.interp1d(x, y, kind='cubic')
+yNew = np.arange(min(x), max(x), 0.002)
+xNew = f(yNew)
+PearsonCurve = list(zip(xNew, yNew))
+# plt.plot(y, x, 'o', xNew, yNew, '-')
+# plt.show()

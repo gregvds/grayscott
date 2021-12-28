@@ -455,10 +455,11 @@ class Canvas(app.Canvas):
     render = gloo.Program(vertex_shader, render_hs_fragment, count=4)
 
     # Programs to render grids, curves, lines and others
-    fkLines = gloo.Program(lines_vertex, lines_fragment)
-    ddLines = gloo.Program(lines_vertex, lines_fragment)
     pearsonsGrid = gloo.Program(lines_vertex, lines_fragment)
     pearsonsCurve = gloo.Program(lines_vertex, lines_fragment)
+    fkLines = gloo.Program(lines_vertex, lines_fragment)
+    ddLines = gloo.Program(lines_vertex, lines_fragment)
+    hsLines = gloo.Program(lines_vertex, lines_fragment)
 
     def __init__(self,
                  size=(1024, 1024),
@@ -552,8 +553,11 @@ class Canvas(app.Canvas):
         self.updateComputeParams2()
 
     def initializePlots(self):
-        self.ddLines["position"] = np.zeros((2 + self.cwidth, 2), np.float32)
-        self.ddLines["color"] = np.ones((2 + self.cwidth, 4), np.float32)
+        self.pearsonsGrid["position"] = np.zeros((len(PearsonGrid), 2), np.float32)
+        self.pearsonsGrid["color"] = np.ones((len(PearsonGrid), 4), np.float32) * .25
+
+        self.pearsonsCurve["position"] = np.zeros((len(PearsonCurve), 2), np.float32)
+        self.pearsonsCurve["color"] = np.ones((len(PearsonCurve), 4), np.float32)
 
         self.fkLines["position"] = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
         color = np.ones((7+self.cwidth + self.cheight, 4), np.float32)
@@ -566,11 +570,11 @@ class Canvas(app.Canvas):
         color[-1] = color[0]                                   # endpoint
         self.fkLines["color"] = color
 
-        self.pearsonsGrid["position"] = np.zeros((len(PearsonGrid), 2), np.float32)
-        self.pearsonsGrid["color"] = np.ones((len(PearsonGrid), 4), np.float32) * .25
+        self.ddLines["position"] = np.zeros((2 + self.cwidth, 2), np.float32)
+        self.ddLines["color"] = np.ones((2 + self.cwidth, 4), np.float32)
 
-        self.pearsonsCurve["position"] = np.zeros((len(PearsonCurve), 2), np.float32)
-        self.pearsonsCurve["color"] = np.ones((len(PearsonCurve), 4), np.float32)
+        self.hsLines["position"] = np.zeros((2, 2), np.float32)
+        self.hsLines["color"] = np.ones((2, 4), np.float32)
 
     def setColormap(self, name):
         print('Using colormap %s.' % name)
@@ -607,6 +611,7 @@ class Canvas(app.Canvas):
         self.pearsonsCurve.draw('line_strip')
         self.fkLines.draw('line_strip')
         self.ddLines.draw('line_strip')
+        self.hsLines.draw('line_strip')
 
         self.update()
 
@@ -624,6 +629,7 @@ class Canvas(app.Canvas):
             self.printFK(event)
         elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
             self.updateHillshading((xpos, ypos))
+            self.plotHsLines((xpos, ypos))
             self.printHS(event)
         elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
             self.mousePressAltPos = [xpos, ypos]
@@ -650,6 +656,7 @@ class Canvas(app.Canvas):
                 self.printFK(event)
             elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
                 self.updateHillshading((xpos, ypos))
+                self.plotHsLines((xpos, ypos))
                 self.printHS(event)
             elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
                 self.modulateFK(pos=(xpos, ypos))
@@ -667,6 +674,7 @@ class Canvas(app.Canvas):
             self.printFK(event)
         elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
             self.printHS(event)
+            self.hideHsLines()
         elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
             self.printDfDk(event)
         self.hideFKLines()
@@ -953,6 +961,14 @@ class Canvas(app.Canvas):
             self.ddLines["position"] = P
         else:
             self.ddLines["position"] = np.zeros((2 + self.cwidth, 2), np.float32)
+
+    def plotHsLines(self, pos):
+        hsLine = np.zeros((2,2), np.float32)
+        hsLine[0] = ((pos[0]-0.5)*2.0, (pos[1]-0.5)*2.0)
+        self.hsLines["position"] = hsLine
+
+    def hideHsLines(self):
+        self.hsLines["position"] = np.zeros((2, 2), np.float32)
 
     def getHsDirAlt(self, lightDirection=315, lightAltitude=20):
         hsdir = 360.0 - lightDirection + 90.0
