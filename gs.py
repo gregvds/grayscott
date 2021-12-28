@@ -289,6 +289,16 @@ def createColormaps():
             'gold'
         ],
         nodes=[0.0, 0.3, 0.47, 0.5, 0.53, 0.7, 1.0])
+    createAndRegisterLinearSegmentedCmap(
+        'hs', [
+            'black',
+            '#100926',
+            'grey',
+            'gold',
+            'lemonchiffon',
+            'azure'
+        ],
+        nodes=[0.0, 0.2, 0.5, 0.6, 0.7, 1.0])
 
 
 def plot_color_gradients(cmap_category, cmap_list):
@@ -513,6 +523,7 @@ class Canvas(app.Canvas):
         self.render["hsdir"]      = self.hsdir
         self.render["hsalt"]      = self.hsalt
         self.render["hsz"]        = self.hsz
+        self.render["hscmap"]     = get_colormap('hs').map(np.linspace(0.0, 1.0, 1024)).astype('float32')
         self.setColormap(self.cmapName)
         self.render["reagent"]    = 1
         self.initializePlots()

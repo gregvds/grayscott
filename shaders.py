@@ -24,11 +24,12 @@ uniform float dx;                // horizontal distance between texels
 uniform float dy;                // vertical distance between texels
 uniform highp sampler2D texture; // u:= r or b following pinpong
 uniform sampler1D cmap;          // colormap used to render reagent concentration
+uniform sampler1D hscmap;        // colormap used for hillshade lighting
 varying highp vec2 v_texcoord;
 void main()
 {
     float u;
-    // pingpong between layers and choice or reagent
+    // pingpong between layers and choice of reagent
     if(pingpong == 0) {
         if(reagent == 1){
             u = texture2D(texture, v_texcoord).r;
@@ -43,6 +44,7 @@ void main()
         }
     }
 
+    // color to render
     vec4 color = texture1D(cmap, u);
 
     // Hillshading
@@ -102,12 +104,16 @@ void main()
             }
         }
         float hs = ((cos(hsalt)*cos(slope)) + (sin(hsalt)*sin(slope))*(cos(hsdir - aspect)));
-        vec4 hsLux = vec4(hs*(255./256), hs*(229./256), hs*(205./256), 1.0); //warm light
+        // vec4 hsLux = vec4(hs, hs, hs, 1.0);
+        // vec4 hsLux = vec4(hs*(255./256), hs*(229./256), hs*(205./256), 1.0); //warm light
         // vec4 hsLux = vec4(hs*(208./256), hs*(234./256), hs*(255./256), 1.0); //cold light
+        vec4 hsLux = texture1D(hscmap, hs);
         vec4 colorhsOverlay;
         if (hs < 0.5){
+            // colorhsOverlay = (2.0 * color * hsLux);
             colorhsOverlay = (2.0 * color * hsLux)/sqrt(cos(hsalt))*sin(hsalt);
         } else {
+            // colorhsOverlay = (1.0 - 2.0*(1.0-color)*(1.0-hsLux));
             colorhsOverlay = (1.0 - 2.0*(1.0-color)*(1.0-hsLux))/sqrt(cos(hsalt))*sin(hsalt);
         }
         // another way of mixing color and hillshading
@@ -142,14 +148,15 @@ void main(void)
     vec2 highp l;
 
     vec4 parameters2 = texture2D(params2, p).rgba;
-    float dx = parameters2.r;
-    float dy = parameters2.g;
-    float dd = parameters2.b*(ddmax-ddmin)+ddmin;
-    float dt = parameters2.a;
+    float dx = parameters2.r;                               // usually constant
+    float dy = parameters2.g;                               // usually constant
+    float dd = parameters2.b*(ddmax-ddmin)+ddmin;           // Can be varrying accross the grid
+    float dt = parameters2.a;                               // usually constant.
+    // Shows some interaction with dD value, as if dD * dT should not go above a limit
 
     if( pingpong == 0 ) {
         c = texture2D(texture, p).rg;                       // central value
-        // Compute Laplacian
+                                                            // Compute Laplacian
         l = ( texture2D(texture, p + vec2(-dx,-dy)).rg
             + texture2D(texture, p + vec2( dx,-dy)).rg
             + texture2D(texture, p + vec2(-dx, dy)).rg
@@ -160,8 +167,8 @@ void main(void)
             + texture2D(texture, p + vec2(0.0, dy)).rg) * neibor
             + c * center;
     } else {
-        c = texture2D(texture, p).ba;    // central value
-        // Compute Laplacian
+        c = texture2D(texture, p).ba;                       // central value
+                                                            // Compute Laplacian
         l = ( texture2D(texture, p + vec2(-dx,-dy)).ba
             + texture2D(texture, p + vec2( dx,-dy)).ba
             + texture2D(texture, p + vec2(-dx, dy)).ba
@@ -173,23 +180,23 @@ void main(void)
             + c * center;
     }
 
-    float highp u = c.r;           // compute some temporary
-    float highp v = c.g;           // values which might save
-    float highp lu = l.r;          // a few GPU cycles
+    float highp u = c.r;                                    // compute some temporary
+    float highp v = c.g;                                    // values which might save
+    float highp lu = l.r;                                   // a few GPU cycles
     float highp lv = l.g;
     float highp uvv = u * v * v;
 
     vec4 highp q = texture2D(params, p).rgba;
-    float ru = q.r;          // rate of diffusion of U
-    float rv = q.g;          // rate of diffusion of V
-    float f  = q.b;          // feed of U
-    float k  = q.a;          // kill of V
+    float ru = q.r;                                         // rate of diffusion of U
+    float rv = q.g;                                         // rate of diffusion of V
+    float f  = q.b;                                         // feed of U
+    float k  = q.a;                                         // kill of V
 
     // float weight1 = 1.0;     // Reaction part weight
     // float weight2 = 1.0;     // Feed Kill part weight
     // float weight3 = 1.0 ;    // Diffusion part weight
-    float weight4 = sqrt(2.0) * 4.0 + 4.0;    // Ratio of Diffusion U
-    float weight5 = sqrt(2.0) * 4.0 + 4.0;    // Ratio of Diffusion V
+    float weight4 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion U
+    float weight5 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion V
 
     // float highp du = weight3 * (ru * lu / weight4 * dd) - (weight1 * uvv) + weight2 * (f * (1.0 - u));   // Gray-Scott equation
     // float highp dv = weight3 * (rv * lv / weight5 * dd) + (weight1 * uvv) - weight2 * ((f + k) * v);   // diffusion+-reaction
@@ -202,6 +209,8 @@ void main(void)
     // Manual mouse feed or kill
     vec2 highp diff;
     float dist;
+
+    // allow to force V concentrations locally
     if (brush.x > 0.0) {
         diff = (p - brush)/dx;
         dist = dot(diff, diff);
@@ -210,6 +219,7 @@ void main(void)
         if((brushtype == 2) && (dist < 9.0))
             v = 0.0;
     }
+
     vec4 highp color;
     if( pingpong == 1 ) {
         color = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), c);
