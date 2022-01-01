@@ -84,7 +84,7 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
 from shaders import vertex_shader, compute_fragment, render_hs_fragment
 from shaders import lines_vertex, lines_fragment
-from systems import pearson, PearsonGrid, PearsonCurve
+from systems import pearson, PearsonGrid, PearsonCurve, PearsonCurve2
 
 
 def get_colormap(name, size=256):
@@ -172,15 +172,6 @@ def createColormaps():
             'pink_r',
             'YlOrBr_r'],
         proportions=[960, 160, 160, 960])
-    # createAndRegisterCmap(
-    #     'seattle', [
-    #         'bone_r',
-    #         'Blues_r',
-    #         'bone_r',
-    #         'gray',
-    #         'pink_r',
-    #         'YlOrBr_r'],
-    #     proportions=[160, 480, 3200, 640, 640, 3840])
     createAndRegisterLinearSegmentedCmap(
         'detroit', [
             'white',
@@ -309,6 +300,8 @@ def plot_color_gradients(cmap_category, cmap_list):
     fig.subplots_adjust(top=1-.35/figh, bottom=.15/figh, left=0.2, right=0.99)
 
     axs[0].set_title(cmap_category + ' colormaps', fontsize=14)
+    gradient = np.linspace(0, 1, 256)
+    gradient = np.vstack((gradient, gradient))
 
     for ax, cmap_name in zip(axs, cmap_list):
         ax.imshow(gradient, aspect='auto', cmap=cmap_name)
@@ -368,14 +361,14 @@ def setup_grid(rows, cols, blob_scale=0.1):
 
 
 class Canvas(app.Canvas):
+    # Gray-Scott model related variables
+    (fMin, fMax)            = (0.0, 0.08)
+    (kMin, kMax)            = (0.03, 0.07)
+    (ddMin, ddMax)          = (0.2, 1.3)
+    fModAmount, kModAmount  = 0, 0
+    ddMod                   = 0.0
+
     # Pearson's patterns related variables
-    fMin = 0.0
-    fMax = 0.08
-    kMin = 0.03
-    kMax = 0.07
-    ddMin = 0.2
-    ddMax = 1.3
-    ddMod = 0.0
     species = {}
     speciesDictionnary = {
         'a': 'alpha_left',
@@ -429,47 +422,28 @@ class Canvas(app.Canvas):
         'à': 'krasnoiarsk_r'
     }
     createColormaps()
+    cmapName = ''
 
     # brush to add reagent v
     brush                   = np.zeros((1, 1, 2), dtype=np.float32)
     brushType               = 0
 
-    mouseDown = False
+    mouseDown               = False
     mousePressControlPos    = [0.0, 0.0]
     mousePressAltPos        = [0.0, 0.0]
-    fModAmount              = 0
-    kModAmount              = 0
-
-    # pipeline toggling parameter
-    pingpong                = 1
 
     # Hillshading lightning parameters
-    hsdirection             = 0
-    hsaltitude              = 0
-    hsdir                   = 0
-    hsalt                   = 0
+    hsdirection, hsaltitude = 0, 0
+    hsdir, hsalt            = 0, 0
 
     # interpolation
     interpolationMode       = 'linear'
 
-    # cycle of computation per frame
-    cycle                   = 0
-
-    # ? better computation for diffusion and concentration ?
-    gl.GL_FRAGMENT_PRECISION_HIGH = 1
-
-    # program for computation of Gray-Scott reaction-diffusion sim
-    compute = gloo.Program(vertex_shader, compute_fragment, count=4)
-
-    # program for rendering u or v reagent concentration
-    render = gloo.Program(vertex_shader, render_hs_fragment, count=4)
-
-    # Programs to render grids, curves, lines and others
-    pearsonsGrid = gloo.Program(lines_vertex, lines_fragment)
-    pearsonsCurve = gloo.Program(lines_vertex, lines_fragment)
-    fkLines = gloo.Program(lines_vertex, lines_fragment)
-    ddLines = gloo.Program(lines_vertex, lines_fragment)
-    hsLines = gloo.Program(lines_vertex, lines_fragment)
+    # put all instance attribute names here
+    __slots__ = ('w','h','cwidth','cheight','dt','dd','specie','compute','render',
+                 'pearsonsGrid','pearsonsCurve','pearsonsCurve2','fkLines','ddLines','hsLines',
+                 'hsz','lastHsz','guidelines','cycle','P','P2','UV','params','params2','texture',
+                 'pingpong','framebuffer','keyactionDictionnary')
 
     def __init__(self,
                  size=(1024, 1024),
@@ -493,14 +467,53 @@ class Canvas(app.Canvas):
         self.cmapName               = cmap
         self.hsz                    = hsz
         self.lastHsz                = 2.0
-        self.guidelines            = guidelines
+        self.guidelines             = guidelines
+        # cycle of computation per frame
+        self.cycle                  = 0
+        # pipeline toggling parameter
+        self.pingpong               = 1
+
+        # ? better computation for diffusion and concentration ?
+        gl.GL_FRAGMENT_PRECISION_HIGH = 1
+
+        # Dictionnary to map key commands to function
+        self.keyactionDictionnary = {
+            ' '    : self.initializeGrid,
+            '/'    : self.switchReagent,
+            '$'    : self.toggleHillshading,
+            '*'    : self.toggleInterpolation,
+            'Up'   : self.increaseCycle,
+            'Down' : self.decreaseCycle,
+            'Right': self.modifyDd,
+            'Left' : self.modifyDd,
+            '+'    : self.toggleGuidelines,
+            '='    : self.resetFK
+        }
+        for key in Canvas.colormapDictionnary.keys():
+            self.keyactionDictionnary[key] = self.pickColorMap
+        for key in Canvas.speciesDictionnary.keys():
+            self.keyactionDictionnary[key] = self.pickSpecie
+
         self.initialize()
         self.framebuffer = gloo.FrameBuffer(color=self.compute["texture"],
-                                            depth=gloo.RenderBuffer((self.w, self.h)))
+                                            depth=gloo.RenderBuffer((self.w, self.h), format='depth'))
+        # gloo.set_state(depth_test=True)
         self.show()
 
     def initialize(self):
-        self.h, self.w            = self.cwidth, self.cheight
+        self.h, self.w      = self.cwidth, self.cheight
+        # program for computation of Gray-Scott reaction-diffusion sim
+        self.compute        = gloo.Program(vertex_shader, compute_fragment, count=4)
+        # program for rendering u or v reagent concentration
+        self.render         = gloo.Program(vertex_shader, render_hs_fragment, count=4)
+        # Programs to render grids, curves, lines and others
+        self.pearsonsGrid   = gloo.Program(lines_vertex, lines_fragment)
+        self.pearsonsCurve  = gloo.Program(lines_vertex, lines_fragment)
+        self.pearsonsCurve2 = gloo.Program(lines_vertex, lines_fragment)
+        self.fkLines        = gloo.Program(lines_vertex, lines_fragment)
+        self.ddLines        = gloo.Program(lines_vertex, lines_fragment)
+        self.hsLines        = gloo.Program(lines_vertex, lines_fragment)
+
         self.species              = import_pearsons_types()
         # definition of parameters for du, dv, f, k
         self.setSpecie(self.specie)
@@ -532,11 +545,11 @@ class Canvas(app.Canvas):
         self.specie = specie
         self.printPearsonPatternDescription()
         self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
-        self.P[:, :] = self.species[specie][0:4]
+        self.P[:, :] = self.species[self.specie][0:4]
         self.modulateFK()
         self.updateComputeParams()
 
-    def initializeGrid(self):
+    def initializeGrid(self, event=None):
         print('Initialization of the grid.')
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
@@ -564,13 +577,13 @@ class Canvas(app.Canvas):
         self.updateComputeParams2()
 
     def initializePlots(self):
-        self.pearsonsGrid["position"] = np.zeros((len(PearsonGrid), 2), np.float32)
+        self.plotFKLines(display=False)
+        self.plotDdLines(display=False)
+        self.plotHsLines(display=False)
+
         self.pearsonsGrid["color"] = np.ones((len(PearsonGrid), 4), np.float32) * .25
-
-        self.pearsonsCurve["position"] = np.zeros((len(PearsonCurve), 2), np.float32)
         self.pearsonsCurve["color"] = np.ones((len(PearsonCurve), 4), np.float32)
-
-        self.fkLines["position"] = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
+        self.pearsonsCurve2["color"] = np.ones((len(PearsonCurve2), 4), np.float32)
         color = np.ones((7+self.cwidth + self.cheight, 4), np.float32)
         color[0] *= 0                                          # starting point
         color[1:3] *= .5                                       # x baseline
@@ -580,39 +593,31 @@ class Canvas(app.Canvas):
         color[self.cwidth+6:self.cwidth+self.cheight+6] *= .75 # y profile
         color[-1] = color[0]                                   # endpoint
         self.fkLines["color"] = color
-
-        self.ddLines["position"] = np.zeros((2 + self.cwidth, 2), np.float32)
         self.ddLines["color"] = np.ones((2 + self.cwidth, 4), np.float32)
-
-        self.hsLines["position"] = np.zeros((2, 2), np.float32)
         self.hsLines["color"] = np.ones((2, 4), np.float32)
 
     def setColormap(self, name):
         print('Using colormap %s.' % name)
         self.cmapName = name
-        self.cm = get_colormap(self.cmapName)
-        self.render["cmap"] = self.cm.map(np.linspace(0.0, 1.0, 1024)).astype('float32')
+        self.render["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
 
     def on_draw(self, event):
-        # holding rendering output
-        self.framebuffer.activate()
-        gloo.set_viewport(0, 0, self.cwidth, self.cheight)
-        self.compute.draw('triangle_strip')
+        with self.framebuffer:
+            gloo.set_viewport(0, 0, self.cwidth, self.cheight)
+            self.compute.draw('triangle_strip')
 
-        for cycle in range(self.cycle):
-            self.pingpong = 1 - self.pingpong
-            self.compute["pingpong"] = self.pingpong
-            self.compute.draw(gl.GL_TRIANGLE_STRIP)
-            self.pingpong = 1 - self.pingpong
-            self.compute["pingpong"] = self.pingpong
-            self.compute.draw(gl.GL_TRIANGLE_STRIP)
-
-        # releasing rendering output
-        self.framebuffer.deactivate()
+            for cycle in range(self.cycle):
+                self.pingpong = 1 - self.pingpong
+                self.compute["pingpong"] = self.pingpong
+                self.compute.draw('triangle_strip')
+                self.pingpong = 1 - self.pingpong
+                self.compute["pingpong"] = self.pingpong
+                self.compute.draw('triangle_strip')
 
         # rendering the state of the model
         gloo.clear(color=True, depth=True)
         gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+        # gloo.set_state(depth_test=True)
         self.render.draw('triangle_strip')
         self.pingpong = 1 - self.pingpong
         self.compute["pingpong"] = self.pingpong
@@ -620,6 +625,7 @@ class Canvas(app.Canvas):
 
         self.pearsonsGrid.draw('line_strip')
         self.pearsonsCurve.draw('line_strip')
+        self.pearsonsCurve2.draw('line_strip')
         self.fkLines.draw('line_strip')
         self.ddLines.draw('line_strip')
         self.hsLines.draw('line_strip')
@@ -628,131 +634,99 @@ class Canvas(app.Canvas):
 
     def on_mouse_press(self, event):
         self.mouseDown = True
-        xpos = event.pos[0]/self.size[0]
-        ypos = 1 - event.pos[1]/self.size[1]
+        (x, y) = event.pos
+        (sx, sy) = self.size
+        xpos = x/sx
+        ypos = 1 - y/sy
         if len(event.modifiers) == 0:
             self.compute['brush'] = [xpos, ypos]
             self.compute['brushtype'] = event.button
         elif len(event.modifiers) == 1 and 'control' in event.modifiers:
             self.mousePressControlPos = [xpos, ypos]
             if self.guidelines:
-                self.plotFKLines()
+                self.plotFKLines(display=True)
             self.printFK(event)
-        elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
-            self.updateHillshading((xpos, ypos))
-            self.plotHsLines((xpos, ypos))
-            self.printHS(event)
         elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
             self.mousePressAltPos = [xpos, ypos]
             if self.guidelines:
-                self.plotFKLines()
+                self.plotFKLines(display=True)
             self.printDfDk(event)
+        elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
+            self.updateHillshading((xpos, ypos))
+            self.plotHsLines((xpos, ypos), display=True)
+            self.printHS(event)
         else:
             print(event.modifiers)
 
     def on_mouse_move(self, event):
         if(self.mouseDown):
-            xpos = event.pos[0]/self.size[0]
-            ypos = 1 - event.pos[1]/self.size[1]
+            (x, y) = event.pos
+            (sx, sy) = self.size
+            xpos = x/sx
+            ypos = 1 - y/sy
             if len(event.modifiers) == 0:
                 # update brush coords here
                 self.compute['brush'] = [xpos, ypos]
                 self.compute['brushtype'] = event.button
             elif len(event.modifiers) == 1 and 'control' in event.modifiers:
-                # update f and k values according to the x and y movements
                 self.updateFK((xpos, ypos))
                 if self.guidelines:
-                    self.plotFKLines()
+                    self.plotFKLines(display=True)
                 self.mousePressControlPos = [xpos, ypos]
                 self.printFK(event)
-            elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
-                self.updateHillshading((xpos, ypos))
-                self.plotHsLines((xpos, ypos))
-                self.printHS(event)
             elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
                 self.modulateFK(pos=(xpos, ypos))
                 if self.guidelines:
-                    self.plotFKLines()
+                    self.plotFKLines(display=True)
                 self.mousePressAltPos = [xpos, ypos]
                 self.printDfDk(event)
+            elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
+                self.updateHillshading((xpos, ypos))
+                self.plotHsLines((xpos, ypos), display=True)
+                self.printHS(event)
 
     def on_mouse_release(self, event):
         self.mouseDown = False
-        if len(event.modifiers) == 0:
-            self.compute['brush'] = [0, 0]
-            self.compute['brushtype'] = 0
-        elif len(event.modifiers) == 1 and 'control' in event.modifiers:
+        self.compute['brush'] = [0, 0]
+        self.compute['brushtype'] = 0
+        self.plotHsLines(display=False)
+        self.plotFKLines(display=False)
+        if len(event.modifiers) == 1 and 'control' in event.modifiers:
             self.printFK(event)
-        elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
-            self.printHS(event)
-            self.hideHsLines()
         elif len(event.modifiers) == 1 and 'Alt' in event.modifiers:
             self.printDfDk(event)
-        self.hideFKLines()
+        elif len(event.modifiers) == 1 and 'shift' in event.modifiers:
+            self.printHS(event)
 
     def on_mouse_wheel(self, event):
         if self.hsz > 0.0:
-            delta = event.delta[1]
-            hsz = self.hsz
-            if delta < 0:
-                hsz += 0.1
-            elif delta > 0:
-                hsz -= 0.1
-            self.hsz = np.clip(hsz, 0.5, 2.5)
+            self.hsz = np.clip(self.hsz - event.delta[1]/(13/3), 0.5, 2.5)
             print(' Hillshade Z: %1.2f                       ' % self.hsz, end='\r')
             self.render["hsz"] = self.hsz
 
     def on_key_press(self, event):
-        if event.text == ' ':
-            self.initializeGrid()
-        elif event.text in self.speciesDictionnary.keys():
-            self.setSpecie(self.speciesDictionnary[event.text])
-        elif event.text == '/':
-            self.switchReagent()
-        elif event.text in self.colormapDictionnary.keys():
-            self.setColormap(self.colormapDictionnary[event.text])
-        elif event.text == '$':
-            self.toggleHillshading()
-        elif event.text == '*':
-            self.toggleInterpolation()
-        elif event.text == '+':
-            self.guidelines = not self.guidelines
-            print('Guidelines: %s' % self.guidelines)
-        elif event.text == '=':
-            self.fModAmount = 0.0
-            self.kModAmount = 0.0
-            self.modulateFK(pos=None)
-            print('f and k constants.')
-        elif event.key and event.key.name == 'Up':
-            self.increaseCycle()
-            print('Number of cycles: %2.0f' % (1 + 2* self.cycle), end='\r')
-        elif event.key and event.key.name == 'Down':
-            self.decreaseCycle()
-            print('Number of cycles: %2.0f' % (1 + 2* self.cycle), end='\r')
-        elif event.key and event.key.name == 'Right':
-            if len(event.modifiers) == 0:
-                self.updatedd(0.01)
-            elif event.modifiers[0] == 'Shift':
-                self.ddMod = np.clip(self.ddMod + 0.02, -1, 1)
-                self.modulateDd(self.ddMod)
-            self.printDd()
-            self.plotDdLines(self.guidelines)
-        elif event.key and event.key.name == 'Left':
-            if len(event.modifiers) == 0:
-                self.updatedd(-0.01)
-            elif event.modifiers[0] == 'Shift':
-                self.ddMod = np.clip(self.ddMod - 0.02, -1, 1)
-                self.modulateDd(self.ddMod)
-            self.printDd()
-            self.plotDdLines(self.guidelines)
-
-    def switchReagent(self):
-        if self.render["reagent"] == 1:
-            self.render["reagent"] = 0
-            print('Displaying V.')
+        if len(event.text) > 0:
+            key = event.text
         else:
-            self.render["reagent"] = 1
-            print('Displaying U.')
+            key = event.key.name
+        action = self.keyactionDictionnary.get(key)
+        if action is not None:
+            action(event)
+
+    def switchReagent(self, event=None):
+        self.render["reagent"] = 1 - self.render["reagent"]
+        reagents = ('U', 'V')
+        print('Displaying %s reagent concentration.' % reagents[int(self.render["reagent"])])
+
+    def pickColorMap(self, event):
+        colorMapName = self.colormapDictionnary.get(event.text)
+        if colorMapName is not None:
+            self.setColormap(colorMapName)
+
+    def pickSpecie(self, event):
+        specieName = self.speciesDictionnary.get(event.text)
+        if specieName is not None:
+            self.setSpecie(specieName)
 
     def updateFK(self, pos):
         fModAmount = pos[1] - self.mousePressControlPos[1]
@@ -771,8 +745,7 @@ class Canvas(app.Canvas):
         if pos:
             self.fModAmount += 0.002 * (pos[1] - self.mousePressAltPos[1])
             self.kModAmount += 0.001 * (pos[0] - self.mousePressAltPos[0])
-        rows = self.h
-        cols = self.w
+        rows, cols = self.h, self.w
         sinsF = np.sin(np.linspace(0.0, 2*np.pi, cols))
         sinsK = np.sin(np.linspace(0.0, 2*np.pi, rows))
         for i in range(rows):
@@ -781,25 +754,28 @@ class Canvas(app.Canvas):
             self.P[:, i, 3] = np.clip(k + self.kModAmount*sinsK, self.kMin, self.kMax)
         self.updateComputeParams()
 
+    def resetFK(self, event=None):
+        self.fModAmount = 0.0
+        self.kModAmount = 0.0
+        self.modulateFK(pos=None)
+        print('f and k constants.')
+
     def updatedd(self, amount):
         self.dd = np.clip(self.dd + amount, self.ddMin, self.ddMax)
         self.modulateDd(self.ddMod)
 
     def modulateDd(self, amount):
         ddPivot = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
+        ddUpperProportion = (self.ddMax - self.dd) / (self.ddMax - self.ddMin)
+        ddLowerProportion = ddPivot
+        gaussGrid = self.gauss(sigma = 0.33)
         if amount > 0.0:
-            ddUpperProportion = (self.ddMax - self.dd) / (self.ddMax - self.ddMin)
-            ddLowerProportion = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
-            gaussGrid = self.gauss(sigma = 0.33)
             self.P2[:, :, 2] = (1 - amount) * ddPivot \
                                  + (amount) * (ddPivot \
                                              + (gaussGrid * ddUpperProportion) \
                                              - ((1-gaussGrid) * ddLowerProportion)
                                               )
         elif amount < 0.0:
-            ddUpperProportion = (self.ddMax - self.dd) / (self.ddMax - self.ddMin)
-            ddLowerProportion = (self.dd - self.ddMin) / (self.ddMax - self.ddMin)
-            gaussGrid = self.gauss(sigma = 0.33)
             self.P2[:, :, 2] = (1 - amount) * ddPivot \
                                  + (amount) * (ddPivot \
                                              - ((1-gaussGrid) * ddUpperProportion) \
@@ -808,6 +784,20 @@ class Canvas(app.Canvas):
         else:
             self.P2[:, :, 2] = ddPivot
         self.updateComputeParams2()
+
+    def modifyDd(self, event):
+        modDd = 0
+        if event.key.name == 'Right':
+            modDd = 0.01
+        elif event.key.name == 'Left':
+            modDd = -0.01
+        if len(event.modifiers) == 0:
+            self.updatedd(modDd)
+        elif event.modifiers[0] == 'Shift':
+            self.ddMod = np.clip(self.ddMod - 2*modDd, -1, 1)
+            self.modulateDd(self.ddMod)
+        self.printDd()
+        self.plotDdLines(self.guidelines)
 
     def updatedt(self, amount):
         self.dt += amount
@@ -822,20 +812,22 @@ class Canvas(app.Canvas):
         self.params2 = gloo.texture.Texture2D(data=self.P2, format=gl.GL_RGBA, internalformat='rgba32f')
         self.compute["params2"] = self.params2
 
-    def increaseCycle(self):
+    def increaseCycle(self, event=None):
         if not self.cycle:
             self.cycle = 1
         else:
             self.cycle *= 2
         if self.cycle > 64:
             self.cycle = 64
+        print('Number of cycles: %2.0f' % (1 + 2 * self.cycle), end='\r')
 
-    def decreaseCycle(self):
+    def decreaseCycle(self, event=None):
         self.cycle = int(self.cycle/2)
         if self.cycle < 1:
             self.cycle = 0
+        print('Number of cycles: %2.0f' % (1 + 2 * self.cycle), end='\r')
 
-    def toggleHillshading(self):
+    def toggleHillshading(self, event=None):
         if self.hsz > 0.0:
             self.lastHsz = self.hsz
             self.hsz = 0.0
@@ -851,7 +843,6 @@ class Canvas(app.Canvas):
             (pos[1] - 0.5)*2
         )
         self.hsdirection = 360 + hsdir if hsdir < 0.0 else hsdir
-        # self.hsdirection -= 180
         self.hsaltitude = 90 - (180.0/math.pi*math.atan(
             math.sqrt(
                 ((pos[0] - 0.5)*2) *
@@ -865,7 +856,7 @@ class Canvas(app.Canvas):
         self.render["hsdir"] = self.hsdir
         self.render["hsalt"] = self.hsalt
 
-    def toggleInterpolation(self):
+    def toggleInterpolation(self, event=None):
         if self.interpolationMode == 'linear':
             self.interpolationMode = 'nearest'
             self.render["texture"].interpolation = gl.GL_NEAREST
@@ -873,6 +864,10 @@ class Canvas(app.Canvas):
             self.interpolationMode = 'linear'
             self.render["texture"].interpolation = gl.GL_LINEAR
         print('Interpolation mode: %s.' % self.interpolationMode)
+
+    def toggleGuidelines(self, event=None):
+        self.guidelines = not self.guidelines
+        print('Guidelines: %s' % self.guidelines)
 
     def printPearsonPatternDescription(self):
         self.title = 'Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
@@ -916,49 +911,51 @@ class Canvas(app.Canvas):
         dDVals += sorted([dDCorner, dDCenter])
         print("dD: %1.2f, dDMin: %1.2f, dDMax: %1.2f" % (dDVals[0], dDVals[1], dDVals[2]), end="\r")
 
-    def plotFKLines(self):
-        # get f and k base values and scale them between -1 and 1
-        xf = ((self.P[0, 0, 2] - self.fMin)/(self.fMax - self.fMin) - 0.5) * 2
-        yf = ((self.P[0, 0, 3] - self.kMin)/(self.kMax - self.kMin) - 0.5) * 2
+    def plotFKLines(self, display=True):
+        if display is True:
+            # get f and k base values and scale them between -1 and 1
+            xf = ((self.P[0, 0, 2] - self.fMin)/(self.fMax - self.fMin) - 0.5) * 2
+            yf = ((self.P[0, 0, 3] - self.kMin)/(self.kMax - self.kMin) - 0.5) * 2
 
-        P = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
+            P = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
 
-        startingPoint = P[0]
-        x_baseline = P[1:3]
-        x_profile = P[3:self.cwidth+3]
-        hiddenPoint = P[self.cwidth+3]
-        y_baseline = P[self.cwidth+4:self.cwidth+4+2]
-        y_profile = P[self.cwidth+4+2:self.cwidth+self.cheight+4+2]
-        endingPoint = P[-1]
-        #
-        startingPoint[...] = (-1, xf)
-        x_baseline[...] = (-1, xf), (1, xf)
-        hiddenPoint[...] = (1.01, -1.01)
-        y_baseline[...] = (yf, -1), (yf, 1)
-        endingPoint[...] = (yf, 1)
+            startingPoint = P[0]
+            x_baseline = P[1:3]
+            x_profile = P[3:self.cwidth+3]
+            hiddenPoint = P[self.cwidth+3]
+            y_baseline = P[self.cwidth+4:self.cwidth+4+2]
+            y_profile = P[self.cwidth+4+2:self.cwidth+self.cheight+4+2]
+            endingPoint = P[-1]
+            #
+            startingPoint[...] = (-1, xf)
+            x_baseline[...] = (-1, xf), (1, xf)
+            hiddenPoint[...] = (1.01, -1.01)
+            y_baseline[...] = (yf, -1), (yf, 1)
+            endingPoint[...] = (yf, 1)
 
-        #
-        x_profile[1:-1, 0] = np.linspace(-1, 1, self.cwidth-2)
-        x_profile[1:-1, 1] = (((self.P[0, :, 2] - self.fMin)/(self.fMax - self.fMin) - 0.5) * 2)[1:-1]
-        x_profile[0] = (-1, xf)
-        x_profile[-1] = (1.01, xf)
-        #
-        y_profile[1:-1, 0] = (((self.P[:, 0, 3] - self.kMin)/(self.kMax - self.kMin) - 0.5) * 2)[1:-1]
-        y_profile[1:-1, 1] = np.linspace(-1, 1, self.cheight-2)
-        y_profile[0] = (yf, -1.01)
-        y_profile[-1] = (yf, 1)
+            #
+            x_profile[1:-1, 0] = np.linspace(-1, 1, self.cwidth-2)
+            x_profile[1:-1, 1] = (((self.P[0, :, 2] - self.fMin)/(self.fMax - self.fMin) - 0.5) * 2)[1:-1]
+            x_profile[0] = (-1, xf)
+            x_profile[-1] = (1.01, xf)
+            #
+            y_profile[1:-1, 0] = (((self.P[:, 0, 3] - self.kMin)/(self.kMax - self.kMin) - 0.5) * 2)[1:-1]
+            y_profile[1:-1, 1] = np.linspace(-1, 1, self.cheight-2)
+            y_profile[0] = (yf, -1.01)
+            y_profile[-1] = (yf, 1)
 
-        self.pearsonsGrid["position"] = PearsonGrid
-        self.pearsonsCurve["position"] = PearsonCurve
-        self.fkLines["position"] = P
-
-    def hideFKLines(self):
-        self.pearsonsGrid["position"] = np.zeros((len(PearsonGrid), 2), np.float32)
-        self.pearsonsCurve["position"] = np.zeros((len(PearsonCurve), 2), np.float32)
-        self.fkLines["position"] = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
+            self.pearsonsGrid["position"] = PearsonGrid
+            self.pearsonsCurve["position"] = PearsonCurve
+            self.pearsonsCurve2["position"] = PearsonCurve2
+            self.fkLines["position"] = P
+        else:
+            self.pearsonsGrid["position"] = np.zeros((len(PearsonGrid), 2), np.float32)
+            self.pearsonsCurve["position"] = np.zeros((len(PearsonCurve), 2), np.float32)
+            self.pearsonsCurve2["position"] = np.zeros((len(PearsonCurve2), 2), np.float32)
+            self.fkLines["position"] = np.zeros((7+self.cwidth + self.cheight, 2), np.float32)
 
     def plotDdLines(self, display=True):
-        if display:
+        if display is True:
             ddPivot = (((self.dd - self.ddMin) / (self.ddMax - self.ddMin))-0.5) *2
             P = np.zeros((2 + self.cwidth, 2), np.float32)
             baseline = P[0:2]
@@ -973,13 +970,13 @@ class Canvas(app.Canvas):
         else:
             self.ddLines["position"] = np.zeros((2 + self.cwidth, 2), np.float32)
 
-    def plotHsLines(self, pos):
-        hsLine = np.zeros((2,2), np.float32)
-        hsLine[0] = ((pos[0]-0.5)*2.0, (pos[1]-0.5)*2.0)
-        self.hsLines["position"] = hsLine
-
-    def hideHsLines(self):
-        self.hsLines["position"] = np.zeros((2, 2), np.float32)
+    def plotHsLines(self, pos=None, display=True):
+        if display is True and pos is not None:
+            hsLine = np.zeros((2, 2), np.float32)
+            hsLine[0] = ((pos[0]-0.5)*2.0, (pos[1]-0.5)*2.0)
+            self.hsLines["position"] = hsLine
+        else:
+            self.hsLines["position"] = np.zeros((2, 2), np.float32)
 
     def getHsDirAlt(self, lightDirection=315, lightAltitude=20):
         hsdir = 360.0 - lightDirection + 90.0
@@ -989,10 +986,10 @@ class Canvas(app.Canvas):
         hsalt = (90 - lightAltitude) * math.pi / 180.0
         return (hsdir, hsalt)
 
-    def gauss(self, sigma = 1, muu = 0.000):
+    def gauss(self, sigma=1, muu=0.000):
         x, y = np.meshgrid(np.linspace(-1, 1, self.h), np.linspace(-1, 1, self.w))
         dst = np.sqrt(x*x+y*y)
-        return np.exp(-( (dst-muu)**2 / ( 2.0 * sigma**2 ) ) )
+        return np.exp(-((dst - muu)**2 / (2.0 * sigma**2)))
 
     def measure_fps2(self, window=1, callback=' %1.1f FPS                   '):
         """Measure the current FPS
@@ -1086,9 +1083,7 @@ if __name__ == '__main__':
                         help="plot guidelines when modifing/modulating f and k values")
     args = parser.parse_args()
 
-    # 'debug' just to show the colormaps
-    gradient = np.linspace(0, 1, 256)
-    gradient = np.vstack((gradient, gradient))
+    # 'debug' to show the colormaps
     # plot_color_gradients("Custom colormaps", [Canvas.colormapDictionnary[each] for each in Canvas.colormapDictionnary.keys()])
     # plt.show()
     # just close the window to run the model

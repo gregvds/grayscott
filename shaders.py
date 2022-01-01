@@ -52,33 +52,42 @@ void main()
         vec2 highp p = v_texcoord;                  // center coordinates
         vec2 highp dzdx;
         vec2 highp dzdy;
+
+        // a b c
+        // d e f
+        // g h i
+        // [dz/dx] = ((c + 2f + i) - (a + 2d + g)) / 8
+        // [dz/dy] = ((g + 2h + i) - (a + 2b + c)) / 8
+        vec2 highp a;
+        vec2 highp b;
+        vec2 highp c;
+        vec2 highp d;
+        vec2 highp f;
+        vec2 highp g;
+        vec2 highp h;
+        vec2 highp i;
+
         if( pingpong == 0 ) {
-            dzdx = (( texture2D(texture, p + vec2( dx,-dy)).rg
-                  + 2*texture2D(texture, p + vec2( dx,0.0)).rg
-                  +   texture2D(texture, p + vec2( dx, dy)).rg)
-                  - ( texture2D(texture, p + vec2(-dx,-dy)).rg
-                  + 2*texture2D(texture, p + vec2(-dx,0.0)).rg
-                  +   texture2D(texture, p + vec2(-dx, dy)).rg)) / 8;
-            dzdy = (( texture2D(texture, p + vec2(-dx, dy)).rg
-                  + 2*texture2D(texture, p + vec2(0.0, dy)).rg
-                  +   texture2D(texture, p + vec2( dx, dy)).rg)
-                  - ( texture2D(texture, p + vec2(-dx,-dy)).rg
-                  + 2*texture2D(texture, p + vec2(0.0,-dy)).rg
-                  +   texture2D(texture, p + vec2( dx,-dy)).rg)) / 8;  //
+            a = texture2D(texture, p + vec2(-dx,-dy)).rg;
+            b = texture2D(texture, p + vec2(0.0,-dy)).rg;
+            c = texture2D(texture, p + vec2( dx,-dy)).rg;
+            d = texture2D(texture, p + vec2(-dx,0.0)).rg;
+            f = texture2D(texture, p + vec2( dx,0.0)).rg;
+            g = texture2D(texture, p + vec2(-dx, dy)).rg;
+            h = texture2D(texture, p + vec2(0.0, dy)).rg;
+            i = texture2D(texture, p + vec2( dx, dy)).rg;
         } else {
-            dzdx = (( texture2D(texture, p + vec2( dx,-dy)).ba
-                  + 2*texture2D(texture, p + vec2( dx,0.0)).ba
-                  +   texture2D(texture, p + vec2( dx, dy)).ba)
-                  - ( texture2D(texture, p + vec2(-dx,-dy)).ba
-                  + 2*texture2D(texture, p + vec2(-dx,0.0)).ba
-                  +   texture2D(texture, p + vec2(-dx, dy)).ba)) / 8;
-            dzdy = (( texture2D(texture, p + vec2(-dx, dy)).ba
-                  + 2*texture2D(texture, p + vec2(0.0, dy)).ba
-                  +   texture2D(texture, p + vec2( dx, dy)).ba)
-                  - ( texture2D(texture, p + vec2(-dx,-dy)).ba
-                  + 2*texture2D(texture, p + vec2(0.0,-dy)).ba
-                  +   texture2D(texture, p + vec2( dx,-dy)).ba)) / 8;  //
+            a = texture2D(texture, p + vec2(-dx,-dy)).ba;
+            b = texture2D(texture, p + vec2(0.0,-dy)).ba;
+            c = texture2D(texture, p + vec2( dx,-dy)).ba;
+            d = texture2D(texture, p + vec2(-dx,0.0)).ba;
+            f = texture2D(texture, p + vec2( dx,0.0)).ba;
+            g = texture2D(texture, p + vec2(-dx, dy)).ba;
+            h = texture2D(texture, p + vec2(0.0, dy)).ba;
+            i = texture2D(texture, p + vec2( dx, dy)).ba;
         }
+        dzdx = ((c + 2*f + i) - (a + 2*d + g)) / 8;
+        dzdy = ((g + 2*h + i) - (a + 2*b + c)) / 8;
 
         float gradzx, gradzy;
         if(reagent==1){

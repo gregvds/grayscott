@@ -795,5 +795,30 @@ f = interpolate.interp1d(x, y, kind='cubic')
 yNew = np.arange(min(x), max(x), 0.002)
 xNew = f(yNew)
 PearsonCurve = list(zip(xNew, yNew))
+
+CurvePoints2 =  [[.03, .009],
+                [.035, .012],
+                [.038, .014],
+                [.040, .0155],
+                [.044, .019],
+                [.048, .023],
+                [.05, .0255],
+                [.054, .0315],
+                [.058, .039],
+                [.060, .044],
+                [.062, .0545],
+                [.0625, .062]]
+PearsonScaledPoints2 = []
+
+for each in CurvePoints2:
+    valf = ((each[0] - 0.03)/(0.07 - 0.03)-.5)*2
+    valk = ((each[1] - 0.0)/(0.08 - 0.0)-.5)*2
+    PearsonScaledPoints2.append((valf, valk))
+[y, x] = [[row[i] for row in PearsonScaledPoints2] for i in range(2)]
+f = interpolate.interp1d(x, y, kind='quadratic')
+yNew = np.arange(min(x), max(x), 0.002)
+xNew = f(yNew)
+PearsonCurve2 = list(zip(xNew, yNew))
+
 # plt.plot(y, x, 'o', xNew, yNew, '-')
 # plt.show()
