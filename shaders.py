@@ -248,7 +248,7 @@ compute_vertex = """
 attribute vec2 position;
 attribute vec2 texcoord;
 // Data (to be interpolated) that is passed on to the fragment shader
-varying vec2 v_texcoord;
+varying highp vec2 v_texcoord;
 
 void main()
 {
@@ -263,11 +263,12 @@ uniform int pingpong;
 uniform float dx;                // horizontal distance between texels
 uniform float dy;                // vertical distance between texels
 uniform highp sampler2D texture; // u:= r or b following pinpong
+uniform highp sampler2D params;  // rU,rV,f,k := r,g,b,a
 uniform highp vec2 brush;        // coordinates of mouse down
 uniform int brushtype;
 
 // Data coming from the vertex shader
-varying vec2 v_texcoord;
+varying highp vec2 v_texcoord;
 
 void main()
 {
@@ -311,13 +312,13 @@ void main()
     float highp lv = l.g;
     float highp uvv = u * v * v;
 
-    // Currently values stubbed waiting for them to be properly imported.
-    float ru = 1.0;                                         // rate of diffusion of U
-    float rv = 0.5;                                         // rate of diffusion of V
+    vec4 highp q = texture2D(params, p).rgba;
+    float ru = q.r;                                         // rate of diffusion of U
+    float rv = q.g;                                         // rate of diffusion of V
+    float f  = q.b;                                         // feed of U
+    float k  = q.a;                                         // kill of V
     float dd = 1.0;
     float dt = 1.0;
-    float f = 0.026;
-    float k = 0.061;
     float weight4 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion U
     float weight5 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion V
     // Gray-Scott equation diffusion+-reaction
@@ -358,6 +359,7 @@ uniform mat4 u_projection;
 uniform float dx;                // horizontal distance between texels
 uniform float dy;                // vertical distance between texels
 uniform int pingpong;
+uniform int reagent;             // toggle render between reagent u and v
 uniform highp sampler2D texture; // u:= r or b following pinpong
 
 // Light model
@@ -379,39 +381,55 @@ void main()
 {
     // Here position.z is received from texture
     // and adjacent position.z are extracted too from texture
-    vec2 p = texcoord;
+    highp vec2 p = texcoord;
     // read neightbor heights using an arbitrary small offset
     // Offset should be 1 / width height
-    vec3 off = vec3(dx, dy, 0.0);
-    float c;
-    float hL;
-    float hR;
-    float hD;
-    float hU;
+    highp vec3 off = vec3(dx, dy, 0.0);
+    highp float c;
+    highp float hL;
+    highp float hR;
+    highp float hD;
+    highp float hU;
 
     if( pingpong == 0 ) {
-        c = texture2DLod(texture, p, 0).g;                       // central value
-        hL = texture2DLod(texture, p - off.xz, 0).g;
-        hR = texture2DLod(texture, p + off.xz, 0).g;
-        hD = texture2DLod(texture, p - off.zy, 0).g;
-        hU = texture2DLod(texture, p + off.zy, 0).g;
+        if(reagent == 1){
+            c = texture2DLod(texture, p, 0).r;                       // central value
+            hL = texture2DLod(texture, p - off.xz, 0).r;
+            hR = texture2DLod(texture, p + off.xz, 0).r;
+            hD = texture2DLod(texture, p - off.zy, 0).r;
+            hU = texture2DLod(texture, p + off.zy, 0).r;
+        } else {
+            c = texture2DLod(texture, p, 0).g;                       // central value
+            hL = texture2DLod(texture, p - off.xz, 0).g;
+            hR = texture2DLod(texture, p + off.xz, 0).g;
+            hD = texture2DLod(texture, p - off.zy, 0).g;
+            hU = texture2DLod(texture, p + off.zy, 0).g;
+        }
     } else {
-        c = texture2DLod(texture, p, 0).a;                       // central value
-        hL = texture2DLod(texture, p - off.xz, 0).a;
-        hR = texture2DLod(texture, p + off.xz, 0).a;
-        hD = texture2DLod(texture, p - off.zy, 0).a;
-        hU = texture2DLod(texture, p + off.zy, 0).a;
+        if(reagent == 1){
+            c = texture2DLod(texture, p, 0).b;                       // central value
+            hL = texture2DLod(texture, p - off.xz, 0).b;
+            hR = texture2DLod(texture, p + off.xz, 0).b;
+            hD = texture2DLod(texture, p - off.zy, 0).b;
+            hU = texture2DLod(texture, p + off.zy, 0).b;
+        } else {
+            c = texture2DLod(texture, p, 0).a;                       // central value
+            hL = texture2DLod(texture, p - off.xz, 0).a;
+            hR = texture2DLod(texture, p + off.xz, 0).a;
+            hD = texture2DLod(texture, p - off.zy, 0).a;
+            hU = texture2DLod(texture, p + off.zy, 0).a;
+        }
     }
-    vec3 position2 = vec3(position.x, position.y, c);
+    highp vec3 position2 = vec3(position.x, position.y, 1.-c);
 
     // Perform the model and view transformations on the vertex and pass this
     // location to the fragment shader.
     v_position = vec3(u_view * u_model * vec4(position2, 1.0));
 
     // Here since position has been realtime modified, normals have to be computed again
-    vec3 N;
-    N.x = (hL - hR)/dx;
-    N.y = (hD - hU)/dy;
+    highp vec3 N;
+    N.x = ((1.-hL) - (1.-hR))/dx;
+    N.y = ((1.-hD) - (1.-hU))/dy;
     N.z = 2.0;
     N = normalize(N);
 
@@ -419,8 +437,7 @@ void main()
     // and pass this normal vector to the fragment shader.
     v_normal = vec3(u_view * u_model * vec4(N, 0.0));
 
-    // Pass the vertex's color to the fragment shader.
-    // v_color = vec4(c, c, c, 0);
+    // Pass the texcoord to the fragment shader.
     v_texcoord = texcoord;
 
     // Transform the location of the vertex for the rest of the graphics pipeline
@@ -430,6 +447,7 @@ void main()
 
 render_3D_fragment = """
 uniform int pingpong;
+uniform int reagent;             // toggle render between reagent u and v
 
 // Light model
 uniform vec3 u_light_position;
@@ -441,11 +459,12 @@ uniform float c2;
 uniform float c3;
 
 uniform highp sampler2D texture; // u:= r or b following pinpong
+uniform highp sampler1D cmap;          // colormap used to render reagent concentration
 
 // Data coming from the vertex shader
 varying vec3 v_position;
 varying vec3 v_normal;
-varying vec2 v_texcoord;
+varying highp vec2 v_texcoord;
 
 void main()
 {
@@ -462,7 +481,6 @@ void main()
     float attenuation;
 
     float u;
-    int reagent = 0;
     // pingpong between layers and choice of reagent
     if(pingpong == 0) {
         if(reagent == 1){
@@ -477,7 +495,7 @@ void main()
             u = texture2D(texture, v_texcoord).a;
         }
     }
-    vec4 v_color = vec4(u, u, u, 0);
+    vec4 v_color = texture1D(cmap, u);
 
     // Calculate the ambient color as a percentage of the surface color
     ambient_color = u_Ambient_color * vec3(v_color);
