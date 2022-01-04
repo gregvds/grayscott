@@ -361,6 +361,7 @@ uniform float dy;                // vertical distance between texels
 uniform int pingpong;
 uniform int reagent;             // toggle render between reagent u and v
 uniform highp sampler2D texture; // u:= r or b following pinpong
+uniform highp float scalingFactor;
 
 // Light model
 uniform vec4 u_color;
@@ -420,7 +421,6 @@ void main()
             hU = texture2DLod(texture, p + off.zy, 0).a;
         }
     }
-    highp float scalingFactor = 30.;
     c = (1.0 - c)/scalingFactor;
     hL = (1.0 - hL)/scalingFactor;
     hR = (1.0 - hR)/scalingFactor;

@@ -5,8 +5,76 @@
 # Author: Gregoire Vandenschrick
 # Date:   30/12/2021
 # -----------------------------------------------------------------------------
+# Parts of this is based on the following:
+#
+# https://github.com/soilstack/react_diffuse/
+# which uses Matplotlib and hence is quite slow.
+# I reused its systems.py and the setup_grid function.
+#
+# https://github.com/pmneila/jsexp
+# while it's using Javascript and THREE.js, it was a source of understanding
+# and inspiration, for the brush tool for example.
+#
+# https://github.com/glumpy/glumpy/blob/master/examples/grayscott.py
+#
+# which I discovered is very close to this:
+# http://vispy.org/examples/demo/gloo/terrain.html
+#
+# Primary Sources
+# 1. [Karl Sims Original](http://karlsims.com/rd.html)
+# 1. [Detailed discussion of Gray-Scott Model](http://mrob.com/pub/comp/xmorphia/)
+# 1. [Coding Train Reaction-Diffusion (based on Karl Sims)](https://www.youtube.com/watch?v=BV9ny785UNc&t=2100s)
+# 1. [Pearson canonical labelling of systems](https://arxiv.org/abs/patt-sol/9304003)
+#
+# This alternative version display the patterns using a 3D plane that can be oriented
+# I followed a good part of the lighting explanations found here for the 3D render fragment:
+# http://learnwebgl.brown37.net/index.html
+# -----------------------------------------------------------------------------
+"""
+    Gray-Scott reaction-diffusion model
+    -----------------------------------
+
+    Pearson's pattern can be switched with keys:
+            'a': 'alpha_left',
+            'A': 'alpha_right',
+            'b': 'beta_left',
+            'B': 'beta_right',
+            'd': 'delta_left',
+            'D': 'delta_right',
+            'e': 'epsilon_left',
+            'E': 'epsilon_right',
+            'g': 'gamma_left',
+            'G': 'gamma_right',
+            'h': 'eta',
+            'i': 'iota',
+            'k': 'kappa_left',
+            'K': 'kappa_right',
+            'l': 'lambda_left',
+            'L': 'lambda_right',
+            'm': 'mu_left',
+            'M': 'mu_right',
+            'n': 'nu_left',
+            'p': 'pi_left',
+            't': 'theta_left',
+            'T': 'theta_right',
+            'x': 'xi_left',
+            'z': 'zeta_left',
+            'Z': 'zeta_right'
+    Several colormaps are available via keys 1 - 0, shifted for reversed version.
+    Mouse left click in the grid refills reagent v at 0.5.
+    Mouse right click in the grid put reagent v at 0.
+    key / switch presentation between u and v.
+    Spacebar reseeds the grid.
+    key Up/Down and Left/right rotates the camera around the plane
+    mouse scroll dolly in/out
+    Shift key + mouse scroll dolly in/out the light source
+"""
 
 from math import sqrt
+
+import argparse
+import textwrap
+
 import numpy as np
 
 from vispy import gloo, app
@@ -24,18 +92,73 @@ from shaders import render_3D_vertex
 from shaders import render_3D_fragment
 ################################################################################
 
+
 class Canvas(app.Canvas):
+
+    colormapDictionnary = {
+        '1': 'Boston_r',
+        '&': 'Boston',
+        '2': 'malmo',
+        'é': 'malmo_r',
+        '3': 'uppsala',
+        '"': 'uppsala_r',
+        '4': 'oslo_r',
+        '\'': 'oslo',
+        '5': 'Lochinver',
+        '(': 'Lochinver_r',
+        '6': 'Rejkjavik',
+        '§': 'Rejkjavik_r',
+        '7': 'detroit',
+        'è': 'antidetroit',
+        '8': 'tromso',
+        '!': 'osmort',
+        '9': 'irkoutsk',
+        'ç': 'irkoutsk_r',
+        '0': 'krasnoiarsk',
+        'à': 'krasnoiarsk_r'
+    }
+
+    speciesDictionnary = {
+        'a': 'alpha_left',
+        'A': 'alpha_right',
+        'b': 'beta_left',
+        'B': 'beta_right',
+        'd': 'delta_left',
+        'D': 'delta_right',
+        'e': 'epsilon_left',
+        'E': 'epsilon_right',
+        'g': 'gamma_left',
+        'G': 'gamma_right',
+        'h': 'eta',
+        'i': 'iota',
+        'k': 'kappa_left',
+        'K': 'kappa_right',
+        'l': 'lambda_left',
+        'L': 'lambda_right',
+        'm': 'mu_left',
+        'M': 'mu_right',
+        'n': 'nu_left',
+        'p': 'pi_left',
+        't': 'theta_left',
+        'T': 'theta_right',
+        'x': 'xi_left',
+        'z': 'zeta_left',
+        'Z': 'zeta_right'
+    }
+
     def __init__(self,
+                 size=(1024, 1024),
+                 modelSize=(512,512),
                  specie='alpha_left',
                  cmap='irkoutsk'):
         app.Canvas.__init__(self,
-                            size=(1024, 1024),
+                            size=size,
                             title='3D Gray-Scott Reaction-Diffusion: - GregVDS',
                             keys='interactive')
 
         # General constants definition
         # --------------------------------------
-        (self.w, self.h)                   = (512, 512)
+        (self.w, self.h)                   = modelSize
         (self.fMin, self.fMax)             = (0.0, 0.08)
         (self.kMin, self.kMax)             = (0.03, 0.07)
         # (self.ddMin, self.ddMax)           = (0.2, 1.3)
@@ -73,71 +196,22 @@ class Canvas(app.Canvas):
 
         # light Parameters: direction, shininess exponant, attenuation parameters, ambientLight intensity
         # --------------------------------------
-        self.lightDirection = np.array([-.4, .4, -2.49])
+        self.lightDirection = np.array([-.4, .4, -2.1])
         self.shininess = 91.0
         self.c1 = 1.0
         self.c2 = 1.0
         self.c3 = 0.13
-        self.ambientLight = 0.6
+        self.ambientLight = 0.5
 
         # Colormaps related variables
         # --------------------------------------
         self.cmapName = cmap
-        self.colormapDictionnary = {
-            '1': 'Boston_r',
-            '&': 'Boston',
-            '2': 'malmo',
-            'é': 'malmo_r',
-            '3': 'uppsala',
-            '"': 'uppsala_r',
-            '4': 'oslo_r',
-            '\'': 'oslo',
-            '5': 'Lochinver',
-            '(': 'Lochinver_r',
-            '6': 'Rejkjavik',
-            '§': 'Rejkjavik_r',
-            '7': 'detroit',
-            'è': 'antidetroit',
-            '8': 'tromso',
-            '!': 'osmort',
-            '9': 'irkoutsk',
-            'ç': 'irkoutsk_r',
-            '0': 'krasnoiarsk',
-            'à': 'krasnoiarsk_r'
-        }
         createColormaps()
 
         # Pearson's patterns related variables
         # definition of parameters for du, dv, f, k
         # --------------------------------------
         self.specie = specie
-        self.speciesDictionnary = {
-            'a': 'alpha_left',
-            'A': 'alpha_right',
-            'b': 'beta_left',
-            'B': 'beta_right',
-            'd': 'delta_left',
-            'D': 'delta_right',
-            'e': 'epsilon_left',
-            'E': 'epsilon_right',
-            'g': 'gamma_left',
-            'G': 'gamma_right',
-            'h': 'eta',
-            'i': 'iota',
-            'k': 'kappa_left',
-            'K': 'kappa_right',
-            'l': 'lambda_left',
-            'L': 'lambda_right',
-            'm': 'mu_left',
-            'M': 'mu_right',
-            'n': 'nu_left',
-            'p': 'pi_left',
-            't': 'theta_left',
-            'T': 'theta_right',
-            'x': 'xi_left',
-            'z': 'zeta_left',
-            'Z': 'zeta_right'
-        }
         self.species = import_pearsons_types()
         self.setSpecie(self.specie)
 
@@ -155,9 +229,9 @@ class Canvas(app.Canvas):
             ' ': self.initializeGrid,
             '/': self.switchReagent
         }
-        for key in self.colormapDictionnary.keys():
+        for key in Canvas.colormapDictionnary.keys():
             self.keyactionDictionnary[key] = self.pickColorMap
-        for key in self.speciesDictionnary.keys():
+        for key in Canvas.speciesDictionnary.keys():
             self.keyactionDictionnary[key] = self.pickSpecie
 
         gl.GL_FRAGMENT_PRECISION_HIGH = 1
@@ -184,6 +258,7 @@ class Canvas(app.Canvas):
         self.renderProgram["texture"] = self.computeProgram["texture"]
         self.renderProgram["texture"].interpolation = gl.GL_LINEAR
         self.renderProgram["texture"].wrapping = gl.GL_REPEAT
+        self.renderProgram["scalingFactor"] = 30. * (self.w/512)
         self.renderProgram["u_light_position"] = self.lightDirection
         self.renderProgram["u_light_intensity"] = 1, 1, 1
         self.renderProgram["u_Ambient_color"] = self.ambientLight, self.ambientLight, self.ambientLight
@@ -245,13 +320,15 @@ class Canvas(app.Canvas):
         self.renderProgram['u_projection'] = projection
 
     def on_mouse_wheel(self, event):
-        print(event.delta)
-        print(event.modifiers)
         # Move the plane in z
+        # no shift modifier key
         self.viewCoordinates[2] += event.delta[1]
+        self.lightDirection[2] += event.delta[1]
         self.view = translate((self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
         self.renderProgram["u_view"] = self.view
+        self.renderProgram["u_light_position"] = self.lightDirection
         # Move the light in z
+        # shift modifier key
         self.lightDirection[2] += event.delta[0]
         self.renderProgram["u_light_position"] = self.lightDirection
 
@@ -302,11 +379,11 @@ class Canvas(app.Canvas):
             # self.lightDirection[1] -= .1
             # self.renderProgram["u_light_position"] = self.lightDirection
         elif event.key.name == "Right":
-            self.modelDirection += 2
+            self.modelDirection -= 2
             # self.lightDirection[0] += .1
             # self.renderProgram["u_light_position"] = self.lightDirection
         elif event.key.name == "Left":
-            self.modelDirection -= 2
+            self.modelDirection += 2
             # self.lightDirection[0] -= .1
             # self.renderProgram["u_light_position"] = self.lightDirection
         self.modelAzimuth = np.clip(self.modelAzimuth, -90, 0)
@@ -378,7 +455,7 @@ class Canvas(app.Canvas):
         self.updateComputeParams()
 
     def pickSpecie(self, event):
-        specieName = self.speciesDictionnary.get(event.text)
+        specieName = Canvas.speciesDictionnary.get(event.text)
         if specieName is not None:
             self.setSpecie(specieName)
 
@@ -408,7 +485,7 @@ class Canvas(app.Canvas):
         self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
 
     def pickColorMap(self, event):
-        colorMapName = self.colormapDictionnary.get(event.text)
+        colorMapName = Canvas.colormapDictionnary.get(event.text)
         if colorMapName is not None:
             self.setColormap(colorMapName)
 
@@ -430,5 +507,38 @@ class Canvas(app.Canvas):
 
 
 if __name__ == '__main__':
-    c = Canvas()
+    parser = argparse.ArgumentParser(description=textwrap.dedent(__doc__),
+                                     epilog= textwrap.dedent("""Examples:
+    python3 gs3D.py
+    python3 gs3D.py -c osmort
+    python3 gs3D.py -s 512 -p kappa_left -c oslo
+    python3 gs3D.py -s 512 -w 800 -p alpha_left -c detroit"""),
+                                     formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("-s",
+                        "--Size",
+                        type=int,
+                        default=512,
+                        help="Size of model")
+    parser.add_argument("-w",
+                        "--Window",
+                        type=int,
+                        default=1024,
+                        help="Size of window")
+    parser.add_argument("-p",
+                        "--Pattern",
+                        choices=Canvas.speciesDictionnary.values(),
+                        default="lambda_left",
+                        help="Pearson\' pattern")
+    parser.add_argument("-c",
+                        "--Colormap",
+                        choices=Canvas.colormapDictionnary.values(),
+                        default="irkoutsk",
+                        help="Colormap used")
+    args = parser.parse_args()
+
+
+    c = Canvas(modelSize=(args.Size, args.Size),
+               size=(args.Window, args.Window),
+               specie=args.Pattern,
+               cmap=args.Colormap)
     app.run()
