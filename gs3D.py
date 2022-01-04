@@ -68,6 +68,7 @@
     key Up/Down and Left/right rotates the camera around the plane
     mouse scroll dolly in/out
     Shift key + mouse scroll dolly in/out the light source
+    +/- keys to increase/decrease computation cycles per frame
 """
 
 from math import sqrt
@@ -227,7 +228,9 @@ class Canvas(app.Canvas):
         # All these functions will receive the calling event.
         self.keyactionDictionnary = {
             ' ': self.initializeGrid,
-            '/': self.switchReagent
+            '/': self.switchReagent,
+            '+': self.increaseCycle,
+            '-': self.decreaseCycle
         }
         for key in Canvas.colormapDictionnary.keys():
             self.keyactionDictionnary[key] = self.pickColorMap
@@ -276,6 +279,8 @@ class Canvas(app.Canvas):
 
         self.framebuffer = FrameBuffer(color=self.computeProgram["texture"],
                                        depth=gloo.RenderBuffer((self.h, self.w), format='depth'))
+        # cycle of computation per frame
+        self.cycle                  = 0
 
         self.activate_zoom()
 
@@ -294,6 +299,13 @@ class Canvas(app.Canvas):
             gloo.set_state(depth_test=False, clear_color='black', polygon_offset=(0, 0))
             # gloo.set_viewport(0, 0, self.h, self.w)
             self.computeProgram.draw('triangle_strip')
+            for cycle in range(self.cycle):
+                self.pingpong = 1 - self.pingpong
+                self.computeProgram["pingpong"] = self.pingpong
+                self.computeProgram.draw('triangle_strip')
+                self.pingpong = 1 - self.pingpong
+                self.computeProgram["pingpong"] = self.pingpong
+                self.computeProgram.draw('triangle_strip')
         gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
         gloo.set_state(blend=False, depth_test=True,
                        clear_color=(0.30, 0.30, 0.35, 1.00),
@@ -478,6 +490,21 @@ class Canvas(app.Canvas):
         self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
         if hasattr(self, 'computeProgram'):
             self.computeProgram["params"] = self.params
+
+    def increaseCycle(self, event=None):
+        if not self.cycle:
+            self.cycle = 1
+        else:
+            self.cycle *= 2
+        if self.cycle > 64:
+            self.cycle = 64
+        print('Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
+
+    def decreaseCycle(self, event=None):
+        self.cycle = int(self.cycle/2)
+        if self.cycle < 1:
+            self.cycle = 0
+        print('Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
 
     def setColormap(self, name):
         print('Using colormap %s.' % name)
