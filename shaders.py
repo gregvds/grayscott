@@ -420,7 +420,13 @@ void main()
             hU = texture2DLod(texture, p + off.zy, 0).a;
         }
     }
-    highp vec3 position2 = vec3(position.x, position.y, 1.-c);
+    highp float scalingFactor = 30.;
+    c = (1.0 - c)/scalingFactor;
+    hL = (1.0 - hL)/scalingFactor;
+    hR = (1.0 - hR)/scalingFactor;
+    hD = (1.0 - hD)/scalingFactor;
+    hU = (1.0 - hU)/scalingFactor;
+    highp vec3 position2 = vec3(position.x, position.y, c);
 
     // Perform the model and view transformations on the vertex and pass this
     // location to the fragment shader.
@@ -428,8 +434,8 @@ void main()
 
     // Here since position has been realtime modified, normals have to be computed again
     highp vec3 N;
-    N.x = ((1.-hL) - (1.-hR))/dx;
-    N.y = ((1.-hD) - (1.-hU))/dy;
+    N.x = (hL - hR)/dx;
+    N.y = (hD - hU)/dy;
     N.z = 2.0;
     N = normalize(N);
 

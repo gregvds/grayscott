@@ -11,7 +11,7 @@ import numpy as np
 
 from vispy import gloo, app
 from vispy.gloo import gl, Program, VertexBuffer, IndexBuffer, FrameBuffer
-from vispy.util.transforms import perspective, translate
+from vispy.util.transforms import perspective, translate, rotate
 from vispy.geometry import create_plane
 
 from gs_lib import (get_colormap, invertCmapName, createAndRegisterCmap,
@@ -64,13 +64,16 @@ class Canvas(app.Canvas):
 
         # Build view, model, projection
         # --------------------------------------
-        self.viewCoordinates = [0, 0, -39.3]
+        self.viewCoordinates = [0, 0, -2.5]
         self.view = translate((self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
-        model = np.eye(4, dtype=np.float32)
+        print(self.view)
+        self.model = np.eye(4, dtype=np.float32)
+        self.modelAzimuth = 0
+        self.modelDirection = 0
 
         # light Parameters: direction, shininess exponant, attenuation parameters, ambientLight intensity
         # --------------------------------------
-        self.lightDirection = np.array([-.4, .4, -40.8])
+        self.lightDirection = np.array([-.4, .4, -2.49])
         self.shininess = 91.0
         self.c1 = 1.0
         self.c2 = 1.0
@@ -184,7 +187,7 @@ class Canvas(app.Canvas):
         self.renderProgram["u_light_position"] = self.lightDirection
         self.renderProgram["u_light_intensity"] = 1, 1, 1
         self.renderProgram["u_Ambient_color"] = self.ambientLight, self.ambientLight, self.ambientLight
-        self.renderProgram["u_model"] = model
+        self.renderProgram["u_model"] = self.model
         self.renderProgram["dx"] = 1./self.w
         self.renderProgram["dy"] = 1./self.h
         self.renderProgram["u_view"] = self.view
@@ -236,9 +239,9 @@ class Canvas(app.Canvas):
 
     def activate_zoom(self):
         gloo.set_viewport(0, 0, *self.physical_size)
-        projection = perspective(1.50, self.size[0] / float(self.size[1]),
+        projection = perspective(24, self.size[0] / float(self.size[1]),
                                  0.5, 100.0)
-        print(projection)
+        # print(projection)
         self.renderProgram['u_projection'] = projection
 
     def on_mouse_wheel(self, event):
@@ -291,17 +294,26 @@ class Canvas(app.Canvas):
             action(event)
 
         if event.key.name == "Up":
-            self.lightDirection[1] += .1
-            self.renderProgram["u_light_position"] = self.lightDirection
+            self.modelAzimuth += 2
+            # self.lightDirection[1] += .1
+            # self.renderProgram["u_light_position"] = self.lightDirection
         elif event.key.name == "Down":
-            self.lightDirection[1] -= .1
-            self.renderProgram["u_light_position"] = self.lightDirection
+            self.modelAzimuth -= 2
+            # self.lightDirection[1] -= .1
+            # self.renderProgram["u_light_position"] = self.lightDirection
         elif event.key.name == "Right":
-            self.lightDirection[0] += .1
-            self.renderProgram["u_light_position"] = self.lightDirection
+            self.modelDirection += 2
+            # self.lightDirection[0] += .1
+            # self.renderProgram["u_light_position"] = self.lightDirection
         elif event.key.name == "Left":
-            self.lightDirection[0] -= .1
-            self.renderProgram["u_light_position"] = self.lightDirection
+            self.modelDirection -= 2
+            # self.lightDirection[0] -= .1
+            # self.renderProgram["u_light_position"] = self.lightDirection
+        self.modelAzimuth = np.clip(self.modelAzimuth, -90, 0)
+        self.modelDirection = np.clip(self.modelDirection, -90, 90)
+        azRotationMatrix = rotate(self.modelAzimuth, (1, 0, 0))
+        diRotationMatrix = rotate(self.modelDirection, (0, 0, 1))
+        self.renderProgram["u_model"] = np.matmul(np.matmul(self.model, diRotationMatrix), azRotationMatrix)
         # elif event.text == "z":
         #     self.shininess *= sqrt(2)
         #     self.shininess = np.clip(self.shininess, 0.1, 8192)
