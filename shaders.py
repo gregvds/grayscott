@@ -322,6 +322,7 @@ void main()
     float weight4 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion U
     float weight5 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion V
     // Gray-Scott equation diffusion+-reaction
+    // U + 2V -> V + 2V
     float highp du = ru * lu / weight4 * dd - uvv + f * (1.0 - u);
     float highp dv = rv * lv / weight5 * dd + uvv - (f + k) * v;
     u += du * dt;
@@ -353,15 +354,20 @@ void main()
 
 render_3D_vertex = """
 // Scene transformations
-uniform mat4 u_model;
-uniform mat4 u_view;
 uniform mat4 u_projection;
-uniform float dx;                // horizontal distance between texels
-uniform float dy;                // vertical distance between texels
+uniform mat4 u_view;
+uniform mat4 u_model;
+// uniform mat4 u_Shadowmap_transform; // The pv transform used to render the shadow map
+uniform mat4 u_Shadowmap_projection;
+uniform mat4 u_Shadowmap_view;
+
+// Model parameters
+uniform highp sampler2D texture; // u:= r or b following pinpong
 uniform int pingpong;
 uniform int reagent;             // toggle render between reagent u and v
-uniform highp sampler2D texture; // u:= r or b following pinpong
 uniform highp float scalingFactor;
+uniform float dx;                // horizontal distance between texels
+uniform float dy;                // vertical distance between texels
 
 // Light model
 uniform vec4 u_color;
@@ -377,6 +383,7 @@ varying vec3 v_position;
 varying vec3 v_normal;
 varying vec4 v_color;
 varying vec2 v_texcoord;
+varying vec4 v_Vertex_relative_to_light;
 
 void main()
 {
@@ -432,6 +439,11 @@ void main()
     // location to the fragment shader.
     v_position = vec3(u_view * u_model * vec4(position2, 1.0));
 
+    // Calculate this vertex's location from the light source. This is
+    // used in the fragment shader to determine if fragments receive direct light.
+    // v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * u_model * vec4(position2, 1.0);
+    v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * vec4(position2, 1.0);
+
     // Here since position has been realtime modified, normals have to be computed again
     highp vec3 N;
     N.x = (hL - hR)/dx;
@@ -467,10 +479,72 @@ uniform float c3;
 uniform highp sampler2D texture; // u:= r or b following pinpong
 uniform highp sampler1D cmap;          // colormap used to render reagent concentration
 
+uniform highp sampler2D shadowMap;
+uniform highp float near;
+uniform highp float far;
+uniform float u_Tolerance_constant;
+
+uniform bool ambient;
+uniform bool diffuse;
+uniform bool specular;
+uniform bool shadow;
+
+
 // Data coming from the vertex shader
 varying vec3 v_position;
 varying vec3 v_normal;
 varying highp vec2 v_texcoord;
+varying vec4 v_Vertex_relative_to_light;
+
+//-------------------------------------------------------------------------
+// Determine if this fragment is in a shadow. Returns true or false.
+bool in_shadow(void) {
+
+  // The vertex location rendered from the light source is almost in Normalized
+  // Device Coordinates (NDC), but the perspective division has not been
+  // performed yet. Perform the perspective divide. The (x,y,z) vertex location
+  // components are now each in the range [-1.0,+1.0].
+  vec3 vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
+
+  // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
+  // to the range [0.0,1.0]. This mapping is done by scaling
+  // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
+  // shifting the values by +0.5.
+  vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
+
+  // Get the z value of this fragment in relationship to the light source.
+  // This value was stored in the shadow map (depth buffer of the frame buffer)
+  // which was passed to the shader as a texture map.
+  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
+
+  // The texture map contains a single depth value for each pixel. However,
+  // the texture2D sampler always returns a color from a texture. For a
+  // gl.DEPTH_COMPONENT texture, the color contains the depth value in
+  // each of the color components. If the value was d, then the color returned
+  // is (d,d,d,1). This is a "color" (depth) value between [0.0,+1.0].
+  // float shadowmap_distance = near + (far - near) * shadowmap_color.r;
+  float shadowmap_distance = shadowmap_color.r;
+
+  // Test the distance between this fragment and the light source as
+  // calculated using the shadowmap transformation (vertex_relative_to_light.z) and
+  // the smallest distance between the closest fragment to the light source
+  // for this location, as stored in the shadowmap. When the closest
+  // distance to the light source was saved in the shadowmap, some
+  // precision was lost. Therefore we need a small tolerance factor to
+  // compensate for the lost precision.
+  if ( vertex_relative_to_light.z <= shadowmap_distance + u_Tolerance_constant ) {
+  // if ( vertex_relative_to_light.z <= shadowmap_distance ) {
+    // This surface receives full light because it is the closest surface
+    // to the light.
+    return false;
+  } else {
+    // This surface is in a shadow because there is a closer surface to
+    // the light source.
+    return true;
+  }
+}
+
+//-------------------------------------------------------------------------
 
 void main()
 {
@@ -504,7 +578,18 @@ void main()
     vec4 v_color = texture1D(cmap, u);
 
     // Calculate the ambient color as a percentage of the surface color
-    ambient_color = u_Ambient_color * vec3(v_color);
+    if (ambient) {
+        ambient_color = u_Ambient_color * vec3(v_color);
+    } else {
+        ambient_color = vec3(0, 0, 0);
+    }
+
+    if (in_shadow() && shadow) {
+        // This fragment only receives ambient light because it is in a shadow.
+        gl_FragColor = vec4(ambient_color, v_color.a);
+        // gl_FragColor = vec4(.1, .1, .1, v_color.a);
+        return;
+    }
 
     // Calculate a vector from the fragment location to the light source
     to_light = u_light_position - v_position;
@@ -512,7 +597,7 @@ void main()
     // while computing this vector, let's compute its length and the attenuation
     // due to it before normalizing it
     light_distance = length(to_light);
-    attenuation = 1.0/(c1 + c2*light_distance + c3*light_distance*light_distance);
+    attenuation = 1.0/(c1 + c2 * light_distance + c3 * light_distance * light_distance);
     to_light = normalize( to_light );
 
     // The vertex's normal vector is being interpolated across the primitive
@@ -525,7 +610,11 @@ void main()
     cos_angle = clamp(cos_angle, 0.0, 1.0);
 
     // Scale the color of this fragment based on its angle to the light.
-    diffuse_color = vec3(v_color) * cos_angle;
+    if (diffuse) {
+        diffuse_color = vec3(v_color) * cos_angle;
+    } else {
+        diffuse_color = vec3(0, 0, 0);
+    }
 
     // Calculate the reflection vector
     reflection = 2.0 * dot(vertex_normal,to_light) * vertex_normal - to_light;
@@ -543,11 +632,11 @@ void main()
     cos_angle = pow(cos_angle, u_Shininess);
 
     // The specular color is from the light source, not the object
-    if (cos_angle > 0.0) {
-    specular_color = u_light_intensity * cos_angle;
-    diffuse_color = diffuse_color * (1.0 - cos_angle);
+    if (cos_angle > 0.0 && specular) {
+        specular_color = u_light_intensity * cos_angle;
+        diffuse_color = diffuse_color * (1.0 - cos_angle);
     } else {
-    specular_color = vec3(0.0, 0.0, 0.0);
+        specular_color = vec3(0.0, 0.0, 0.0);
     }
 
     // don't really know on which part of the light sources should the attenuation play
@@ -555,6 +644,114 @@ void main()
     color = ambient_color + attenuation * (diffuse_color + specular_color);
 
     gl_FragColor = vec4(color, v_color.a);
+}
+"""
+
+# This vertex shader is somehow the same as the render_3D_vertex
+shadow_vertex = """
+// Scene transformations
+uniform mat4 u_model;
+uniform mat4 u_view;
+uniform mat4 u_projection;
+
+// Model parameters
+uniform highp sampler2D texture; // u:= r or b following pinpong
+uniform int pingpong;
+uniform int reagent;             // toggle render between reagent u and v
+uniform highp float scalingFactor;
+uniform float dx;                // horizontal distance between texels
+uniform float dy;                // vertical distance between texels
+
+// Light model
+uniform vec4 u_color;
+
+// Original model data
+attribute vec3 position;
+attribute vec2 texcoord;
+attribute vec3 normal;
+attribute vec4 color;
+
+// Data (to be interpolated) that is passed on to the fragment shader
+varying vec3 v_position;
+varying vec4 w_position;
+varying vec2 v_texcoord;
+
+void main()
+{
+    // Here position.z is received from texture
+    highp vec2 p = texcoord;
+    highp float c;
+
+    if( pingpong == 0 ) {
+        if(reagent == 1){
+            c = texture2DLod(texture, p, 0).r;                       // central value
+        } else {
+            c = texture2DLod(texture, p, 0).g;                       // central value
+        }
+    } else {
+        if(reagent == 1){
+            c = texture2DLod(texture, p, 0).b;                       // central value
+        } else {
+            c = texture2DLod(texture, p, 0).a;                       // central value
+        }
+    }
+    c = (1.0 - c)/scalingFactor;
+    highp vec3 position2 = vec3(position.x, position.y, c);
+
+    // Perform the model and view transformations on the vertex and pass this
+    // location to the fragment shader.
+    v_position = vec3(u_view * u_model * vec4(position2, 1.0));
+    w_position = u_projection * u_view * u_model * vec4(position2, 1.0);
+    // w_position = u_view * u_model * vec4(position2, 1.0);
+
+    // Pass the texcoord to the fragment shader.
+    v_texcoord = texcoord;
+
+    // Transform the location of the vertex for the rest of the graphics pipeline
+    gl_Position = u_projection * u_view * u_model * vec4(position2, 1.0);
+}
+"""
+
+# this one is currently identical to render_3D_fragment
+# but could be simplified as the render color do not interest us, only the
+# depth render buffer is important
+shadow_fragment = """
+uniform int pingpong;
+uniform int reagent;             // toggle render between reagent u and v
+
+uniform highp sampler2D texture; // u:= r or b following pinpong
+uniform highp float near;
+uniform highp float far;
+
+// Data coming from the vertex shader
+varying vec3 v_position;
+varying vec4 w_position;
+varying highp vec2 v_texcoord;
+
+void main()
+{
+    //float u;
+    // pingpong between layers and choice of reagent
+    //if(pingpong == 0) {
+    //    if(reagent == 1){
+    //        u = texture2D(texture, v_texcoord).r;
+    //    } else {
+    //        u = texture2D(texture, v_texcoord).g;
+    //    }
+    //} else {
+    //    if(reagent == 1){
+    //        u = texture2D(texture, v_texcoord).b;
+    //    } else {
+    //        u = texture2D(texture, v_texcoord).a;
+    //    }
+    //}
+
+    float depth = w_position.z / w_position.w;
+    depth = depth * 0.5 + 0.5;
+    gl_FragColor = vec4(depth, depth, depth, 1.0);
+
+    // just output of grayscale to have something to look at from cam
+    // gl_FragColor = vec4(u, u, u, 1);
 }
 """
 

@@ -71,7 +71,7 @@
     +/- keys to increase/decrease computation cycles per frame
 """
 
-from math import sqrt
+from math import tan, atan, pi, pow
 
 import argparse
 import textwrap
@@ -91,6 +91,8 @@ from shaders import compute_vertex
 from shaders import compute_fragment_2 as compute_fragment
 from shaders import render_3D_vertex
 from shaders import render_3D_fragment
+from shaders import shadow_vertex
+from shaders import shadow_fragment
 ################################################################################
 
 
@@ -162,8 +164,8 @@ class Canvas(app.Canvas):
         (self.w, self.h)                   = modelSize
         (self.fMin, self.fMax)             = (0.0, 0.08)
         (self.kMin, self.kMax)             = (0.03, 0.07)
-        # (self.ddMin, self.ddMax)           = (0.2, 1.3)
         (self.fModAmount, self.kModAmount) = (0, 0)
+        # (self.ddMin, self.ddMax)           = (0.2, 1.3)
 
         # Build plane data
         # --------------------------------------
@@ -204,6 +206,35 @@ class Canvas(app.Canvas):
         self.c3 = 0.13
         self.ambientLight = 0.5
 
+        # Build view, projection for shadowCam
+        # --------------------------------------
+        self.shadowViewCoordinates = [self.lightDirection[1], self.lightDirection[0], self.lightDirection[2]]
+        self.shadowView = translate((self.shadowViewCoordinates[0], self.shadowViewCoordinates[1], self.shadowViewCoordinates[2]))
+
+        self.shadowCamFoV = 24
+        self.shadowCamNear = .3
+        self.shadowCamFar = 8.
+        self.shadowProjection = perspective(self.shadowCamFoV,
+                                            self.size[0] / float(self.size[1]),
+                                            self.shadowCamNear,
+                                            self.shadowCamFar)
+        self.focus = [.3, -.3, 0]
+        self.updateLightCam()
+
+        self.shadowMapSize = 1024
+        self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
+        self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
+        # self.shadowTexture = gloo.RenderBuffer((self.h, self.w), format='depth')
+
+        # To debug, show shadowmap view
+        self.showLightCameraPOV = False
+
+
+        self.ambient = True
+        self.diffuse = True
+        self.specular = True
+        self.shadow = False
+
         # Colormaps related variables
         # --------------------------------------
         self.cmapName = cmap
@@ -225,7 +256,8 @@ class Canvas(app.Canvas):
         self.brushType = 0
 
         # Dictionnary to map key commands to function
-        # All these functions will receive the calling event.
+        # All these functions will receive the calling event even if not used.
+        # --------------------------------------
         self.keyactionDictionnary = {
             ' ': self.initializeGrid,
             '/': self.switchReagent,
@@ -237,6 +269,8 @@ class Canvas(app.Canvas):
         for key in Canvas.speciesDictionnary.keys():
             self.keyactionDictionnary[key] = self.pickSpecie
 
+        # ? better computation for diffusion and concentration ?
+        # --------------------------------------
         gl.GL_FRAGMENT_PRECISION_HIGH = 1
 
         # Build compute program
@@ -261,24 +295,65 @@ class Canvas(app.Canvas):
         self.renderProgram["texture"] = self.computeProgram["texture"]
         self.renderProgram["texture"].interpolation = gl.GL_LINEAR
         self.renderProgram["texture"].wrapping = gl.GL_REPEAT
+        self.renderProgram["dx"] = 1./self.w
+        self.renderProgram["dy"] = 1./self.h
+        self.renderProgram['pingpong'] = self.pingpong
+        self.renderProgram["reagent"] = 1
+        self.renderProgram["shadowMap"] = self.shadowTexture
+        self.renderProgram["shadowMap"].interpolation = gl.GL_LINEAR
+        self.renderProgram["shadowMap"].wrapping = gl.GL_CLAMP_TO_EDGE
+        self.renderProgram["near"] = self.shadowCamNear
+        self.renderProgram["far"] = self.shadowCamFar
+        # self.renderProgram["u_Shadowmap_transform"] = np.matmul(self.shadowProjection, self.shadowView)
+        self.renderProgram["u_Shadowmap_projection"] = self.shadowProjection
+        self.renderProgram["u_Shadowmap_view"] = self.shadowView
+        # self.renderProgram["u_Shadowmap_transform"] = np.matmul(self.shadowView, self.model)
+        self.renderProgram["u_Tolerance_constant"] = 0.001
         self.renderProgram["scalingFactor"] = 30. * (self.w/512)
+        self.renderProgram["u_view"] = self.view
+        self.renderProgram["u_model"] = self.model
+        self.renderProgram["ambient"] = self.ambient
+        self.renderProgram["diffuse"] = self.diffuse
+        self.renderProgram["specular"] = self.specular
+        self.renderProgram["shadow"] = self.shadow
         self.renderProgram["u_light_position"] = self.lightDirection
         self.renderProgram["u_light_intensity"] = 1, 1, 1
         self.renderProgram["u_Ambient_color"] = self.ambientLight, self.ambientLight, self.ambientLight
-        self.renderProgram["u_model"] = self.model
-        self.renderProgram["dx"] = 1./self.w
-        self.renderProgram["dy"] = 1./self.h
-        self.renderProgram["u_view"] = self.view
         self.renderProgram['u_Shininess'] = self.shininess
         self.renderProgram['c1'] = self.c1
         self.renderProgram['c2'] = self.c2
         self.renderProgram['c3'] = self.c3
-        self.renderProgram['pingpong'] = self.pingpong
-        self.renderProgram["reagent"] = 1
         self.setColormap(self.cmapName)
 
+        # Build shadowmap render program
+        # --------------------------------------
+        self.shadowProgram = Program(shadow_vertex, shadow_fragment)
+        self.shadowProgram.bind(vertices)
+        self.shadowProgram["texture"] = self.computeProgram["texture"]
+        self.shadowProgram["texture"].interpolation = gl.GL_LINEAR
+        self.shadowProgram["texture"].wrapping = gl.GL_REPEAT
+        self.shadowProgram['pingpong'] = self.pingpong
+        self.shadowProgram["reagent"] = 1
+        self.shadowProgram["scalingFactor"] = 30. * (self.w/512)
+        self.shadowProgram["dx"] = 1./self.w
+        self.shadowProgram["dy"] = 1./self.h
+        self.shadowProgram["u_view"] = self.shadowView
+        self.shadowProgram["u_model"] = self.model
+        self.shadowProgram['u_projection'] = self.shadowProjection
+        self.shadowProgram["near"] = self.shadowCamNear
+        self.shadowProgram["far"] = self.shadowCamFar
+
+        # Define a FrameBuffer to update model state in texture
+        # --------------------------------------
         self.framebuffer = FrameBuffer(color=self.computeProgram["texture"],
                                        depth=gloo.RenderBuffer((self.h, self.w), format='depth'))
+
+        # Define a DepthBuffer to render the shadowmap from the light
+        # --------------------------------------
+        self.shadowBuffer = FrameBuffer(color=self.renderProgram["shadowMap"],
+                                       depth=gloo.RenderBuffer((self.shadowMapSize, self.shadowMapSize), format='depth'))
+
+
         # cycle of computation per frame
         self.cycle                  = 0
 
@@ -294,11 +369,13 @@ class Canvas(app.Canvas):
         self.show()
 
     def on_draw(self, event):
+        # Here one renders next model state into buffer which is the texture itself
         with self.framebuffer:
             gloo.set_viewport(0, 0, self.h, self.w)
             gloo.set_state(depth_test=False, clear_color='black', polygon_offset=(0, 0))
             # gloo.set_viewport(0, 0, self.h, self.w)
             self.computeProgram.draw('triangle_strip')
+            # repeat model state computation several time to speed up slow patterns
             for cycle in range(self.cycle):
                 self.pingpong = 1 - self.pingpong
                 self.computeProgram["pingpong"] = self.pingpong
@@ -306,15 +383,36 @@ class Canvas(app.Canvas):
                 self.pingpong = 1 - self.pingpong
                 self.computeProgram["pingpong"] = self.pingpong
                 self.computeProgram.draw('triangle_strip')
-        gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
-        gloo.set_state(blend=False, depth_test=True,
-                       clear_color=(0.30, 0.30, 0.35, 1.00),
-                       blend_func=('src_alpha', 'one_minus_src_alpha'),
-                       polygon_offset=(1, 1),
-                       polygon_offset_fill=True)
-        gloo.clear(color=True, depth=True)
-        self.renderProgram.draw('triangles', self.faces)
-        # exchange between rg and ba sets of texture
+
+        # Here one should render into a buffer to have the shadowmap
+        if self.shadow:
+            with self.shadowBuffer:
+                gloo.set_viewport(0, 0, self.shadowMapSize, self.shadowMapSize)
+                # gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+                gloo.set_state(depth_test=True,
+                               polygon_offset=(1, 1),
+                               polygon_offset_fill=True)
+                gloo.clear(color=True, depth=True)
+                self.shadowProgram.draw('triangles', self.faces)
+        # To debug, show shadowmap view in normal viewport
+        if self.showLightCameraPOV:
+            gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+            gloo.set_state(depth_test=True,
+                           polygon_offset=(1, 1),
+                           polygon_offset_fill=True)
+            gloo.clear(color=True, depth=True)
+            self.shadowProgram.draw('triangles', self.faces)
+        else:
+            # Here is the true colored render of the state of the model
+            gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+            gloo.set_state(blend=False, depth_test=True,
+                           clear_color=(0.30, 0.30, 0.35, 1.00),
+                           blend_func=('src_alpha', 'one_minus_src_alpha'),
+                           polygon_offset=(1, 1),
+                           polygon_offset_fill=True)
+            gloo.clear(color=True, depth=True)
+            self.renderProgram.draw('triangles', self.faces)
+        # exchange between rg and ba sets in texture
         self.pingpong = 1 - self.pingpong
         self.computeProgram["pingpong"] = self.pingpong
         self.renderProgram["pingpong"] = self.pingpong
@@ -327,23 +425,25 @@ class Canvas(app.Canvas):
     def activate_zoom(self):
         gloo.set_viewport(0, 0, *self.physical_size)
         projection = perspective(24, self.size[0] / float(self.size[1]),
-                                 0.5, 100.0)
-        # print(projection)
+                                 0.1, 20.0)
         self.renderProgram['u_projection'] = projection
 
-    def on_mouse_wheel(self, event):
-        # Move the plane in z
-        # no shift modifier key
-        self.viewCoordinates[2] += event.delta[1]
-        self.lightDirection[2] += event.delta[1]
-        self.view = translate((self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
-        self.renderProgram["u_view"] = self.view
-        self.renderProgram["u_light_position"] = self.lightDirection
-        # Move the light in z
-        # shift modifier key
-        self.lightDirection[2] += event.delta[0]
-        self.renderProgram["u_light_position"] = self.lightDirection
+    ############################################################################
+    # Mouse and keys interactions
 
+    def on_mouse_wheel(self, event):
+        # no shift modifier key
+        # Move the plane AND light in z
+        self.viewCoordinates[2] += event.delta[1]/2
+        self.viewCoordinates[2] = np.clip(self.viewCoordinates[2], -5.0, -0.8)
+        self.updateView()
+        self.lightDirection[2] += event.delta[1]/2
+        self.lightDirection[2] = np.clip(self.lightDirection[2], self.viewCoordinates[2]+.1, -0.9)
+        # shift modifier key
+        # Move only the light in z
+        self.lightDirection[2] += event.delta[0]/2
+        self.lightDirection[2] = np.clip(self.lightDirection[2], self.viewCoordinates[2]+.1, -0.9)
+        self.updateLight()
         print('view coordinates: %2.1f, %2.1f, %2.1f' % (self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
         print('light coordinates: %2.1f, %2.1f, %2.1f' % (self.lightDirection[0], self.lightDirection[1], self.lightDirection[2]))
 
@@ -374,6 +474,7 @@ class Canvas(app.Canvas):
         self.computeProgram['brushtype'] = 0
 
     def on_key_press(self, event):
+        # treats all key event that are defined in keyactionDictionnary
         if len(event.text) > 0:
             key = event.text
         else:
@@ -381,28 +482,46 @@ class Canvas(app.Canvas):
         action = self.keyactionDictionnary.get(key)
         if action is not None:
             action(event)
+        # treats other key events
+        else:
+            if len(event.modifiers) == 0:
+                # here the orientation of the model
+                if event.key.name == "Up":
+                    self.modelAzimuth += 2
+                elif event.key.name == "Down":
+                    self.modelAzimuth -= 2
+                elif event.key.name == "Right":
+                    self.modelDirection -= 2
+                elif event.key.name == "Left":
+                    self.modelDirection += 2
+                elif event.key.name == "=":
+                    self.modelAzimuth = 0
+                    self.modelDirection = 0
+                self.modelAzimuth = np.clip(self.modelAzimuth, -90, 0)
+                self.modelDirection = np.clip(self.modelDirection, -90, 90)
+                self.updateModel()
+            elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
+                if event.key.name == "#":
+                    self.showLightCameraPOV = not self.showLightCameraPOV
+            elif len(event.modifiers) == 1 and event.modifiers[0] == 'Control':
+                if event.key.name == ",":
+                    self.ambient = not self.ambient
+                    self.renderProgram["ambient"] = self.ambient
+                    print('Ambient light: %s' % self.ambient)
+                elif event.key.name == ";":
+                    self.diffuse = not self.diffuse
+                    self.renderProgram["diffuse"] = self.diffuse
+                    print('Diffuse light: %s' % self.diffuse)
+                elif event.key.name == ":":
+                    self.specular = not self.specular
+                    self.renderProgram["specular"] = self.specular
+                    print('Specular light: %s' % self.specular)
+                elif event.key.name == ")":
+                    self.shadow = not self.shadow
+                    self.renderProgram["shadow"] = self.shadow
+                    print('Shadows: %s' % self.shadow)
 
-        if event.key.name == "Up":
-            self.modelAzimuth += 2
-            # self.lightDirection[1] += .1
-            # self.renderProgram["u_light_position"] = self.lightDirection
-        elif event.key.name == "Down":
-            self.modelAzimuth -= 2
-            # self.lightDirection[1] -= .1
-            # self.renderProgram["u_light_position"] = self.lightDirection
-        elif event.key.name == "Right":
-            self.modelDirection -= 2
-            # self.lightDirection[0] += .1
-            # self.renderProgram["u_light_position"] = self.lightDirection
-        elif event.key.name == "Left":
-            self.modelDirection += 2
-            # self.lightDirection[0] -= .1
-            # self.renderProgram["u_light_position"] = self.lightDirection
-        self.modelAzimuth = np.clip(self.modelAzimuth, -90, 0)
-        self.modelDirection = np.clip(self.modelDirection, -90, 90)
-        azRotationMatrix = rotate(self.modelAzimuth, (1, 0, 0))
-        diRotationMatrix = rotate(self.modelDirection, (0, 0, 1))
-        self.renderProgram["u_model"] = np.matmul(np.matmul(self.model, diRotationMatrix), azRotationMatrix)
+        # DEBUG to adjust lighting parameters
         # elif event.text == "z":
         #     self.shininess *= sqrt(2)
         #     self.shininess = np.clip(self.shininess, 0.1, 8192)
@@ -437,6 +556,9 @@ class Canvas(app.Canvas):
         # print('Ambient light intensity: %1.1f' % self.ambientLight)
         # print('Light source position: %2.1f, %2.1f, %2.1f' % (self.lightDirection[0], self.lightDirection[1], self.lightDirection[2]))
         # print("Light attenuation parameters: 1/(%1.2f +%1.2f*d +%1.2f*d^2)" % (self.c1, self.c2, self.c3))
+
+    ############################################################################
+    # functions related to the Gray-Scott model parameters
 
     def initializeGrid(self, event=None):
         print('Initialization of the grid.')
@@ -506,6 +628,14 @@ class Canvas(app.Canvas):
             self.cycle = 0
         print('Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
 
+    ############################################################################
+    # functions related to the Gray-Scott model appearances/representation
+
+    def switchReagent(self, event=None):
+        self.renderProgram["reagent"] = 1 - self.renderProgram["reagent"]
+        reagents = ('U', 'V')
+        print('Displaying %s reagent concentration.' % reagents[int(self.renderProgram["reagent"])])
+
     def setColormap(self, name):
         print('Using colormap %s.' % name)
         self.cmapName = name
@@ -516,10 +646,92 @@ class Canvas(app.Canvas):
         if colorMapName is not None:
             self.setColormap(colorMapName)
 
-    def switchReagent(self, event=None):
-        self.renderProgram["reagent"] = 1 - self.renderProgram["reagent"]
-        reagents = ('U', 'V')
-        print('Displaying %s reagent concentration.' % reagents[int(self.renderProgram["reagent"])])
+    ############################################################################
+    # functions to manipulate orientations and positions of model, view, light
+
+    def updateModel(self):
+        model = self.rotateModel()
+        if hasattr(self, 'renderProgram'):
+            self.renderProgram["u_model"] = model
+        if hasattr(self, 'shadowProgram'):
+            self.shadowProgram["u_model"] = model
+
+    def rotateModel(self):
+        # model is able to rotate but does not move
+        # around x axis (vertical to horizontal plane)
+        azRotationMatrix = rotate(self.modelAzimuth, (1, 0, 0))
+        # print('azRotationMatrix:\n %s' % azRotationMatrix)
+        # around y axis (like a turntable)
+        diRotationMatrix = rotate(self.modelDirection, (0, 0, 1))
+        # print('diRotationMatrix:\n %s' % diRotationMatrix)
+        return np.matmul(np.matmul(self.model, diRotationMatrix), azRotationMatrix)
+
+    def updateLight(self):
+        # light is able to move along x,y,z axis
+        # currently only along z axis (in/out)
+        if hasattr(self, 'renderProgram'):
+            self.renderProgram["u_light_position"] = self.lightDirection
+        self.updateLightCam()
+
+    def updateView(self):
+        # view is able to move along z axis only (in/out)
+        self.view = translate((self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
+        if hasattr(self, 'renderProgram'):
+            self.renderProgram["u_view"] = self.view
+
+    def updateLightCam(self):
+        # lightcam is placed at the light coordinates
+        self.shadowViewCoordinates = [self.lightDirection[1], self.lightDirection[0], self.lightDirection[2]]
+        self.shadowView = translate((self.shadowViewCoordinates[0], self.shadowViewCoordinates[1], self.shadowViewCoordinates[2]))
+        # and should always point at the center of the model (or close to)
+        rotateToModelCenter, self.shadowCamFoV = self.lookAt(self.lightDirection, self.focus)
+        self.shadowView = np.matmul(rotateToModelCenter, self.shadowView)
+        # and should also adopt a perspective that fits the model in the image
+        self.shadowProjection = perspective(self.shadowCamFoV, self.size[0] / float(self.size[1]),
+                                            self.shadowCamNear, self.shadowCamFar)
+        if hasattr(self, 'shadowProgram'):
+            self.shadowProgram["u_view"] = self.shadowView
+            self.shadowProgram["u_projection"] = self.shadowProjection
+        if hasattr(self, 'renderProgram'):
+            self.renderProgram["u_Shadowmap_view"] = self.shadowView
+            self.renderProgram["u_Shadowmap_projection"] = self.shadowProjection
+
+    def lookAt(self, origin, focus, up=(0, 1, 0)):
+        # Coords of camera
+        origin = np.array(origin)
+        # Coords of focus point to look at
+        focus = np.array(focus)
+        # print('focus: %s' % focus)
+        # strict y axis, usually pointing up
+        up = np.array(up)
+
+        # z axis, being the vector from origin to focus
+        length = np.subtract(focus, origin)
+        forward = length/np.linalg.norm(length)
+        # print('distance cam - model center: %s' % np.linalg.norm(length))
+        # x axis, defined by the crossproduct of strict y axis and new z axis
+        right = np.cross(up/np.linalg.norm(up), forward)
+        # y axis, defined by the crossproduct of z axis and x axis
+        up = np.cross(forward, right)
+
+        # Rotation Matrix
+        camToWorld = np.zeros((4, 4), dtype=np.float32)
+        # is filled with x, y and z axis
+        camToWorld[0,0:3] = right
+        camToWorld[1,0:3] = up
+        camToWorld[2,0:3] = forward
+        # and coords of camera
+        camToWorld[3,0:3] = origin
+        # last columns is [0, 0, 0, 1]
+        camToWorld[3][3] = 1
+        # Attempt at computing a fov adequate to encompass the model, not perfect...
+        rampingTerm = pow(np.linalg.norm(length)+1.3, .8)
+        fov = (2 * atan(1.761 / np.linalg.norm(length) * tan(40 * pi / 180.)) * 180. / pi) / rampingTerm
+        # print('fov: %s°' % fov)
+        return camToWorld, fov
+
+    ############################################################################
+    # Output functions
 
     def printPearsonPatternDescription(self):
         self.title = '3D Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
@@ -529,6 +741,7 @@ class Canvas(app.Canvas):
                                                                  self.species[self.specie][1],
                                                                  self.species[self.specie][2],
                                                                  self.species[self.specie][3]))
+
 
 ################################################################################
 
