@@ -357,7 +357,6 @@ render_3D_vertex = """
 uniform mat4 u_projection;
 uniform mat4 u_view;
 uniform mat4 u_model;
-// uniform mat4 u_Shadowmap_transform; // The pv transform used to render the shadow map
 uniform mat4 u_Shadowmap_projection;
 uniform mat4 u_Shadowmap_view;
 
@@ -701,12 +700,12 @@ void main()
     // Perform the model and view transformations on the vertex and pass this
     // location to the fragment shader.
     v_position = vec3(u_view * u_model * vec4(position2, 1.0));
-    w_position = u_projection * u_view * u_model * vec4(position2, 1.0);
-    // w_position = u_view * u_model * vec4(position2, 1.0);
 
     // Pass the texcoord to the fragment shader.
     v_texcoord = texcoord;
 
+    // Export of the gl_position to the fragment to render depth
+    w_position = u_projection * u_view * u_model * vec4(position2, 1.0);
     // Transform the location of the vertex for the rest of the graphics pipeline
     gl_Position = u_projection * u_view * u_model * vec4(position2, 1.0);
 }
@@ -730,8 +729,15 @@ varying highp vec2 v_texcoord;
 
 void main()
 {
+    // We render a shadowmap, so we only need to compute depth.
+    // Currently this is a workaround to bypass my incapacity to have
+    // a Frambuffer(depth=...) accepting to draw in
+    float depth = w_position.z / w_position.w;
+    depth = depth * 0.5 + 0.5;
+    gl_FragColor = vec4(depth, depth, depth, 1.0);
+
+    // just output of grayscale to have something to look at from cam
     //float u;
-    // pingpong between layers and choice of reagent
     //if(pingpong == 0) {
     //    if(reagent == 1){
     //        u = texture2D(texture, v_texcoord).r;
@@ -745,13 +751,7 @@ void main()
     //        u = texture2D(texture, v_texcoord).a;
     //    }
     //}
-
-    float depth = w_position.z / w_position.w;
-    depth = depth * 0.5 + 0.5;
-    gl_FragColor = vec4(depth, depth, depth, 1.0);
-
-    // just output of grayscale to have something to look at from cam
-    // gl_FragColor = vec4(u, u, u, 1);
+    //gl_FragColor = vec4(u, u, u, 1);
 }
 """
 

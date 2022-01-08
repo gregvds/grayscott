@@ -199,7 +199,7 @@ class Canvas(app.Canvas):
 
         # light Parameters: direction, shininess exponant, attenuation parameters, ambientLight intensity
         # --------------------------------------
-        self.lightDirection = np.array([-.4, .4, -2.1])
+        self.lightCoordinates = np.array([-.4, .4, -2.1])
         self.shininess = 91.0
         self.c1 = 1.0
         self.c2 = 1.0
@@ -208,28 +208,30 @@ class Canvas(app.Canvas):
 
         # Build view, projection for shadowCam
         # --------------------------------------
-        self.shadowViewCoordinates = [self.lightDirection[1], self.lightDirection[0], self.lightDirection[2]]
+        self.shadowViewCoordinates = self.lightCoordinates
         self.shadowView = translate((self.shadowViewCoordinates[0], self.shadowViewCoordinates[1], self.shadowViewCoordinates[2]))
 
         self.shadowCamFoV = 24
         self.shadowCamNear = .3
         self.shadowCamFar = 8.
+        self.shadowCamAt = [0, 0, 0]
         self.shadowProjection = perspective(self.shadowCamFoV,
                                             self.size[0] / float(self.size[1]),
                                             self.shadowCamNear,
                                             self.shadowCamFar)
-        self.focus = [.3, -.3, 0]
         self.updateLightCam()
 
+        # Currently, the shadowmap is a simple image for I cannot set properly
+        # the FrameBuffer depth part (RenderBuffer)...
         self.shadowMapSize = 1024
         self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
         self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
-        # self.shadowTexture = gloo.RenderBuffer((self.h, self.w), format='depth')
 
         # To debug, show shadowmap view
         self.showLightCameraPOV = False
 
-
+        # DEBUG, toggles to switch on and off different parts of lighting
+        # --------------------------------------
         self.ambient = True
         self.diffuse = True
         self.specular = True
@@ -252,6 +254,7 @@ class Canvas(app.Canvas):
         self.mouseDown = False
         self.mousePressControlPos = [0.0, 0.0]
         self.mousePressAltPos     = [0.0, 0.0]
+        self.mousePressShiftPos   = [0.0, 0.0]
         self.brush     = np.zeros((1, 1, 2), dtype=np.float32)
         self.brushType = 0
 
@@ -262,7 +265,8 @@ class Canvas(app.Canvas):
             ' ': self.initializeGrid,
             '/': self.switchReagent,
             '+': self.increaseCycle,
-            '-': self.decreaseCycle
+            '-': self.decreaseCycle,
+            '=': self.resetModel
         }
         for key in Canvas.colormapDictionnary.keys():
             self.keyactionDictionnary[key] = self.pickColorMap
@@ -304,10 +308,8 @@ class Canvas(app.Canvas):
         self.renderProgram["shadowMap"].wrapping = gl.GL_CLAMP_TO_EDGE
         self.renderProgram["near"] = self.shadowCamNear
         self.renderProgram["far"] = self.shadowCamFar
-        # self.renderProgram["u_Shadowmap_transform"] = np.matmul(self.shadowProjection, self.shadowView)
         self.renderProgram["u_Shadowmap_projection"] = self.shadowProjection
         self.renderProgram["u_Shadowmap_view"] = self.shadowView
-        # self.renderProgram["u_Shadowmap_transform"] = np.matmul(self.shadowView, self.model)
         self.renderProgram["u_Tolerance_constant"] = 0.001
         self.renderProgram["scalingFactor"] = 30. * (self.w/512)
         self.renderProgram["u_view"] = self.view
@@ -316,7 +318,7 @@ class Canvas(app.Canvas):
         self.renderProgram["diffuse"] = self.diffuse
         self.renderProgram["specular"] = self.specular
         self.renderProgram["shadow"] = self.shadow
-        self.renderProgram["u_light_position"] = self.lightDirection
+        self.renderProgram["u_light_position"] = self.lightCoordinates
         self.renderProgram["u_light_intensity"] = 1, 1, 1
         self.renderProgram["u_Ambient_color"] = self.ambientLight, self.ambientLight, self.ambientLight
         self.renderProgram['u_Shininess'] = self.shininess
@@ -337,9 +339,9 @@ class Canvas(app.Canvas):
         self.shadowProgram["scalingFactor"] = 30. * (self.w/512)
         self.shadowProgram["dx"] = 1./self.w
         self.shadowProgram["dy"] = 1./self.h
+        self.shadowProgram['u_projection'] = self.shadowProjection
         self.shadowProgram["u_view"] = self.shadowView
         self.shadowProgram["u_model"] = self.model
-        self.shadowProgram['u_projection'] = self.shadowProjection
         self.shadowProgram["near"] = self.shadowCamNear
         self.shadowProgram["far"] = self.shadowCamFar
 
@@ -353,23 +355,23 @@ class Canvas(app.Canvas):
         self.shadowBuffer = FrameBuffer(color=self.renderProgram["shadowMap"],
                                        depth=gloo.RenderBuffer((self.shadowMapSize, self.shadowMapSize), format='depth'))
 
-
         # cycle of computation per frame
-        self.cycle                  = 0
+        self.cycle = 0
 
         self.activate_zoom()
 
         # OpenGL initialization
         # --------------------------------------
         gloo.set_state(clear_color=(0.30, 0.30, 0.35, 1.00), depth_test=True,
-                       # polygon_offset=(1, 1),
-                       # blend_func=('src_alpha', 'one_minus_src_alpha'),
                        line_width=0.75)
 
         self.show()
 
+    ############################################################################
+    #
+
     def on_draw(self, event):
-        # Here one renders next model state into buffer which is the texture itself
+        # Render next model state into buffer
         with self.framebuffer:
             gloo.set_viewport(0, 0, self.h, self.w)
             gloo.set_state(depth_test=False, clear_color='black', polygon_offset=(0, 0))
@@ -384,7 +386,7 @@ class Canvas(app.Canvas):
                 self.computeProgram["pingpong"] = self.pingpong
                 self.computeProgram.draw('triangle_strip')
 
-        # Here one should render into a buffer to have the shadowmap
+        # Render the shadowmap into buffer
         if self.shadow:
             with self.shadowBuffer:
                 gloo.set_viewport(0, 0, self.shadowMapSize, self.shadowMapSize)
@@ -394,7 +396,7 @@ class Canvas(app.Canvas):
                                polygon_offset_fill=True)
                 gloo.clear(color=True, depth=True)
                 self.shadowProgram.draw('triangles', self.faces)
-        # To debug, show shadowmap view in normal viewport
+        # DEBUG show shadowmap view in normal viewport
         if self.showLightCameraPOV:
             gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
             gloo.set_state(depth_test=True,
@@ -437,15 +439,15 @@ class Canvas(app.Canvas):
         self.viewCoordinates[2] += event.delta[1]/2
         self.viewCoordinates[2] = np.clip(self.viewCoordinates[2], -5.0, -0.8)
         self.updateView()
-        self.lightDirection[2] += event.delta[1]/2
-        self.lightDirection[2] = np.clip(self.lightDirection[2], self.viewCoordinates[2]+.1, -0.9)
+        self.lightCoordinates[2] += event.delta[1]/2
+        self.lightCoordinates[2] = np.clip(self.lightCoordinates[2], self.viewCoordinates[2]+.1, -0.9)
         # shift modifier key
         # Move only the light in z
-        self.lightDirection[2] += event.delta[0]/2
-        self.lightDirection[2] = np.clip(self.lightDirection[2], self.viewCoordinates[2]+.1, -0.9)
+        self.lightCoordinates[2] += event.delta[0]/2
+        self.lightCoordinates[2] = np.clip(self.lightCoordinates[2], self.viewCoordinates[2]+.1, -0.9)
         self.updateLight()
-        print('view coordinates: %2.1f, %2.1f, %2.1f' % (self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
-        print('light coordinates: %2.1f, %2.1f, %2.1f' % (self.lightDirection[0], self.lightDirection[1], self.lightDirection[2]))
+        # print('view coordinates: %2.1f, %2.1f, %2.1f' % (self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
+        # print('light coordinates: %2.1f, %2.1f, %2.1f' % (self.lightCoordinates[0], self.lightCoordinates[1], self.lightCoordinates[2]))
 
     def on_mouse_press(self, event):
         self.mouseDown = True
@@ -456,6 +458,8 @@ class Canvas(app.Canvas):
         if len(event.modifiers) == 0:
             self.computeProgram['brush'] = [xpos, ypos]
             self.computeProgram['brushtype'] = event.button
+        elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
+            self.mousePressShiftPos = [xpos, ypos]
 
     def on_mouse_move(self, event):
         if(self.mouseDown):
@@ -467,6 +471,13 @@ class Canvas(app.Canvas):
                 # update brush coords here
                 self.computeProgram['brush'] = [xpos, ypos]
                 self.computeProgram['brushtype'] = event.button
+            elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
+                self.modelAzimuth += 40. * (self.mousePressShiftPos[1] - ypos)
+                self.modelDirection -= 40. * (self.mousePressShiftPos[0] - xpos)
+                self.modelAzimuth = np.clip(self.modelAzimuth, -90, 0)
+                self.modelDirection = np.clip(self.modelDirection, -90, 90)
+                self.mousePressShiftPos = [xpos, ypos]
+                self.updateModel()
 
     def on_mouse_release(self, event):
         self.mouseDown = False
@@ -487,19 +498,21 @@ class Canvas(app.Canvas):
             if len(event.modifiers) == 0:
                 # here the orientation of the model
                 if event.key.name == "Up":
-                    self.modelAzimuth += 2
+                    self.lightCoordinates[1] += .05
+                    self.lightCoordinates[1] = np.clip(self.lightCoordinates[1], -1, 1)
+                    self.updateLight()
                 elif event.key.name == "Down":
-                    self.modelAzimuth -= 2
-                elif event.key.name == "Right":
-                    self.modelDirection -= 2
+                    self.lightCoordinates[1] -= .05
+                    self.lightCoordinates[1] = np.clip(self.lightCoordinates[1], -1, 1)
+                    self.updateLight()
                 elif event.key.name == "Left":
-                    self.modelDirection += 2
-                elif event.key.name == "=":
-                    self.modelAzimuth = 0
-                    self.modelDirection = 0
-                self.modelAzimuth = np.clip(self.modelAzimuth, -90, 0)
-                self.modelDirection = np.clip(self.modelDirection, -90, 90)
-                self.updateModel()
+                    self.lightCoordinates[0] -= .05
+                    self.lightCoordinates[0] = np.clip(self.lightCoordinates[0], -1, 1)
+                    self.updateLight()
+                elif event.key.name == "Right":
+                    self.lightCoordinates[0] += .05
+                    self.lightCoordinates[0] = np.clip(self.lightCoordinates[0], -1, 1)
+                    self.updateLight()
             elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
                 if event.key.name == "#":
                     self.showLightCameraPOV = not self.showLightCameraPOV
@@ -530,12 +543,6 @@ class Canvas(app.Canvas):
         #     self.shininess /= sqrt(2)
         #     self.shininess = np.clip(self.shininess, 0.1, 8192)
         #     self.renderProgram['u_Shininess'] = self.shininess
-        # elif event.text == "q":
-        #     self.ambientLight = np.clip(self.ambientLight - .01, 0, 1)
-        #     self.renderProgram["u_Ambient_color"] = self.ambientLight, self.ambientLight, self.ambientLight
-        # elif event.text == "s":
-        #     self.ambientLight = np.clip(self.ambientLight + .01, 0, 1)
-        #     self.renderProgram["u_Ambient_color"] = self.ambientLight, self.ambientLight, self.ambientLight
         # elif event.text == "e":
         #     self.c1 -= .1
         # elif event.text == "r":
@@ -548,14 +555,6 @@ class Canvas(app.Canvas):
         #     self.c3 -= .01
         # elif event.text == "v":
         #     self.c3 += .01
-        # self.renderProgram['c1'] = np.clip(self.c1, 1, 4)
-        # self.renderProgram['c2'] = np.clip(self.c2, 0, .2)
-        # self.renderProgram['c3'] = np.clip(self.c3, 0, .2)
-
-        # print('Specularity intensity: %3.0f' % self.shininess)
-        # print('Ambient light intensity: %1.1f' % self.ambientLight)
-        # print('Light source position: %2.1f, %2.1f, %2.1f' % (self.lightDirection[0], self.lightDirection[1], self.lightDirection[2]))
-        # print("Light attenuation parameters: 1/(%1.2f +%1.2f*d +%1.2f*d^2)" % (self.c1, self.c2, self.c3))
 
     ############################################################################
     # functions related to the Gray-Scott model parameters
@@ -649,6 +648,11 @@ class Canvas(app.Canvas):
     ############################################################################
     # functions to manipulate orientations and positions of model, view, light
 
+    def resetModel(self, event=None):
+        self.modelAzimuth = 0
+        self.modelDirection = 0
+        self.updateModel()
+
     def updateModel(self):
         model = self.rotateModel()
         if hasattr(self, 'renderProgram'):
@@ -670,7 +674,7 @@ class Canvas(app.Canvas):
         # light is able to move along x,y,z axis
         # currently only along z axis (in/out)
         if hasattr(self, 'renderProgram'):
-            self.renderProgram["u_light_position"] = self.lightDirection
+            self.renderProgram["u_light_position"] = self.lightCoordinates
         self.updateLightCam()
 
     def updateView(self):
@@ -681,12 +685,11 @@ class Canvas(app.Canvas):
 
     def updateLightCam(self):
         # lightcam is placed at the light coordinates
-        self.shadowViewCoordinates = [self.lightDirection[1], self.lightDirection[0], self.lightDirection[2]]
-        self.shadowView = translate((self.shadowViewCoordinates[0], self.shadowViewCoordinates[1], self.shadowViewCoordinates[2]))
-        # and should always point at the center of the model (or close to)
-        rotateToModelCenter, self.shadowCamFoV = self.lookAt(self.lightDirection, self.focus)
-        self.shadowView = np.matmul(rotateToModelCenter, self.shadowView)
-        # and should also adopt a perspective that fits the model in the image
+        self.shadowViewCoordinates = self.lightCoordinates
+        self.shadowView = translate((-self.shadowViewCoordinates[0],
+                                     -self.shadowViewCoordinates[1],
+                                     self.shadowViewCoordinates[2]))
+        self.shadowView, self.shadowCamFoV = self.rotateShadowView(self.shadowView, self.shadowViewCoordinates, self.shadowCamAt)
         self.shadowProjection = perspective(self.shadowCamFoV, self.size[0] / float(self.size[1]),
                                             self.shadowCamNear, self.shadowCamFar)
         if hasattr(self, 'shadowProgram'):
@@ -696,39 +699,15 @@ class Canvas(app.Canvas):
             self.renderProgram["u_Shadowmap_view"] = self.shadowView
             self.renderProgram["u_Shadowmap_projection"] = self.shadowProjection
 
-    def lookAt(self, origin, focus, up=(0, 1, 0)):
-        # Coords of camera
-        origin = np.array(origin)
-        # Coords of focus point to look at
-        focus = np.array(focus)
-        # print('focus: %s' % focus)
-        # strict y axis, usually pointing up
-        up = np.array(up)
-
-        # z axis, being the vector from origin to focus
-        length = np.subtract(focus, origin)
-        forward = length/np.linalg.norm(length)
-        # print('distance cam - model center: %s' % np.linalg.norm(length))
-        # x axis, defined by the crossproduct of strict y axis and new z axis
-        right = np.cross(up/np.linalg.norm(up), forward)
-        # y axis, defined by the crossproduct of z axis and x axis
-        up = np.cross(forward, right)
-
-        # Rotation Matrix
-        camToWorld = np.zeros((4, 4), dtype=np.float32)
-        # is filled with x, y and z axis
-        camToWorld[0,0:3] = right
-        camToWorld[1,0:3] = up
-        camToWorld[2,0:3] = forward
-        # and coords of camera
-        camToWorld[3,0:3] = origin
-        # last columns is [0, 0, 0, 1]
-        camToWorld[3][3] = 1
+    def rotateShadowView(self, shadowView, eye, at):
+        azimuth = 180. / pi * atan((eye[0]-at[0])/(eye[2]-at[2]))
+        declination = -180. / pi * atan((eye[1]-at[1])/(eye[2]-at[2]))
+        azRotationMatrix = rotate(azimuth, (0, 1, 0))
+        deRotationMatrix = rotate(declination, (1, 0, 0))
         # Attempt at computing a fov adequate to encompass the model, not perfect...
-        rampingTerm = pow(np.linalg.norm(length)+1.3, .8)
-        fov = (2 * atan(1.761 / np.linalg.norm(length) * tan(40 * pi / 180.)) * 180. / pi) / rampingTerm
-        # print('fov: %s°' % fov)
-        return camToWorld, fov
+        length = np.linalg.norm(np.subtract(at, eye))
+        fov = (2 * atan(1.761 / length * tan(28 * pi / 180.)) * 180. / pi)
+        return np.matmul(np.matmul(shadowView, deRotationMatrix), azRotationMatrix), fov
 
     ############################################################################
     # Output functions
