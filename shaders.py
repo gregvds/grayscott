@@ -4,7 +4,7 @@
 # -----------------------------------------------------------------------------
 
 ################################################################################
-# 3D shaders
+# 2D shaders (used in gs.py)
 
 
 vertex_shader = """
@@ -248,10 +248,10 @@ void main()
 
 
 ################################################################################
-# 3D shaders
+# 3D shaders (used in gs3D.py)
 
 
-# This one is identical to the vertex_shader
+# This one is identical to the 2D vertex_shader
 compute_vertex = """
 // model data
 attribute vec2 position;
@@ -266,7 +266,7 @@ void main()
 }
 """
 
-# This one will/should become identical to the compute_fragment
+# This one is identical to the 2D compute_fragment
 compute_fragment_2 = """
 uniform int pingpong;
 uniform float dx;                // horizontal distance between texels
@@ -454,7 +454,6 @@ void main()
     // Calculate this vertex's location from the light source. This is
     // used in the fragment shader to determine if fragments receive direct light.
     v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * u_model * vec4(position2, 1.0);
-    // v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * vec4(position2, 1.0);
 
     // Here since position has been realtime modified, normals have to be computed again
     highp vec3 N;
@@ -497,6 +496,7 @@ uniform highp float far;
 uniform float u_Tolerance_constant;
 
 uniform bool ambient;
+uniform bool attenuation;
 uniform bool diffuse;
 uniform bool specular;
 uniform bool shadow;
@@ -545,7 +545,6 @@ bool in_shadow(void) {
   // precision was lost. Therefore we need a small tolerance factor to
   // compensate for the lost precision.
   if ( vertex_relative_to_light.z <= shadowmap_distance + u_Tolerance_constant ) {
-  // if ( vertex_relative_to_light.z <= shadowmap_distance ) {
     // This surface receives full light because it is the closest surface
     // to the light.
     return false;
@@ -564,13 +563,13 @@ void main()
     vec3 vertex_normal;
     vec3 reflection;
     vec3 to_camera;
-    float cos_angle;
-    vec3 diffuse_color;
-    vec3 specular_color;
-    vec3 ambient_color;
+    float cos_angle = 0.0;
+    vec3 ambient_color = vec3(0, 0, 0);
+    vec3 diffuse_color = vec3(0, 0, 0);
+    vec3 specular_color = vec3(0, 0, 0);
     vec3 color;
     float light_distance;
-    float attenuation;
+    float attenuationFactor = 1.0;
 
     float u;
     // pingpong between layers and choice of reagent
@@ -592,14 +591,11 @@ void main()
     // Calculate the ambient color as a percentage of the surface color
     if (ambient) {
         ambient_color = u_Ambient_color * vec3(v_color);
-    } else {
-        ambient_color = vec3(0, 0, 0);
     }
 
-    if (in_shadow() && shadow) {
+    if (shadow && in_shadow()) {
         // This fragment only receives ambient light because it is in a shadow.
         gl_FragColor = vec4(ambient_color, v_color.a);
-        // gl_FragColor = vec4(.1, .1, .1, v_color.a);
         return;
     }
 
@@ -609,57 +605,59 @@ void main()
     // while computing this vector, let's compute its length and the attenuation
     // due to it before normalizing it
     light_distance = length(to_light);
-    attenuation = 1.0/(c1 + c2 * light_distance + c3 * light_distance * light_distance);
+    if (attenuation)
+    {
+        attenuationFactor = 1.0/(c1 + c2 * light_distance + c3 * light_distance * light_distance);
+    }
     to_light = normalize( to_light );
 
     // The vertex's normal vector is being interpolated across the primitive
     // which can make it un-normalized. So normalize the vertex's normal vector.
     vertex_normal = normalize( v_normal );
 
-    // Calculate the cosine of the angle between the vertex's normal vector
-    // and the vector going to the light.
-    cos_angle = dot(vertex_normal, to_light);
-    cos_angle = clamp(cos_angle, 0.0, 1.0);
-
-    // Scale the color of this fragment based on its angle to the light.
     if (diffuse) {
+        // Calculate the cosine of the angle between the vertex's normal vector
+        // and the vector going to the light.
+        cos_angle = dot(vertex_normal, to_light);
+        cos_angle = clamp(cos_angle, 0.0, 1.0);
+
+        // Scale the color of this fragment based on its angle to the light.
         diffuse_color = vec3(v_color) * cos_angle;
-    } else {
-        diffuse_color = vec3(0, 0, 0);
     }
 
-    // Calculate the reflection vector
-    reflection = 2.0 * dot(vertex_normal,to_light) * vertex_normal - to_light;
+    if (specular) {
+        // Calculate the reflection vector
+        reflection = 2.0 * dot(vertex_normal,to_light) * vertex_normal - to_light;
 
-    // Calculate a vector from the fragment location to the camera.
-    // The camera is at the origin, so negating the vertex location gives the vector
-    to_camera = -1.0 * v_position;
+        // Calculate a vector from the fragment location to the camera.
+        // The camera is at the origin, so negating the vertex location gives the vector
+        to_camera = -1.0 * v_position;
 
-    // Calculate the cosine of the angle between the reflection vector
-    // and the vector going to the camera.
-    reflection = normalize( reflection );
-    to_camera = normalize( to_camera );
-    cos_angle = dot(reflection, to_camera);
-    cos_angle = clamp(cos_angle, 0.0, 1.0);
-    cos_angle = pow(cos_angle, u_Shininess);
+        // Calculate the cosine of the angle between the reflection vector
+        // and the vector going to the camera.
+        reflection = normalize( reflection );
+        to_camera = normalize( to_camera );
+        cos_angle = dot(reflection, to_camera);
+        cos_angle = clamp(cos_angle, 0.0, 1.0);
+        cos_angle = pow(cos_angle, u_Shininess);
 
-    // The specular color is from the light source, not the object
-    if (cos_angle > 0.0 && specular) {
-        specular_color = u_light_intensity * cos_angle;
-        diffuse_color = diffuse_color * (1.0 - cos_angle);
-    } else {
-        specular_color = vec3(0.0, 0.0, 0.0);
+        // The specular color is from the light source, not the object
+        if (cos_angle > 0.0) {
+            specular_color = u_light_intensity * cos_angle;
+            diffuse_color = diffuse_color * (1.0 - cos_angle);
+        }
     }
 
     // don't really know on which part of the light sources should the attenuation play
     // Maybe not on the ambient_color?
-    color = ambient_color + attenuation * (diffuse_color + specular_color);
+    color = ambient_color + attenuationFactor * (diffuse_color + specular_color);
 
     gl_FragColor = vec4(color, v_color.a);
 }
 """
 
 # This vertex shader is somehow the same as the render_3D_vertex
+# except it outputs also the gl_position as w_position to the fragment
 shadow_vertex = """
 // Scene transformations
 uniform mat4 u_model;
@@ -744,12 +742,12 @@ void main()
 {
     // We render a shadowmap, so we only need to compute depth.
     // Currently this is a workaround to bypass my incapacity to have
-    // a Frambuffer(depth=...) accepting to draw in
+    // a Frambuffer(depth=...) accepting to be drawn in
     float depth = w_position.z / w_position.w;
     depth = depth * 0.5 + 0.5;
     gl_FragColor = vec4(depth, depth, depth, 1.0);
 
-    // just output of grayscale to have something to look at from cam
+    // DEBUG just output of grayscale to have something to look at from cam
     //float u;
     //if(pingpong == 0) {
     //    if(reagent == 1){
@@ -767,6 +765,9 @@ void main()
     //gl_FragColor = vec4(u, u, u, 1);
 }
 """
+
+################################################################################
+# 2D line plot shaders (used in gs.py)
 
 lines_vertex = """
 attribute vec2 position;
