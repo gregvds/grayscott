@@ -534,7 +534,6 @@ uniform bool diffuse;
 uniform bool specular;
 uniform int shadow;
 
-
 // Data coming from the vertex shader
 varying vec3 v_position;
 varying vec3 v_normal;
@@ -628,7 +627,7 @@ float shadow_ratio(int shadowType) {
    vec2( 0.19984126, 0.78641367 ),
    vec2( 0.14383161, -0.14100790 )
   );
-  float spreading = 2000.0;
+  float spreading = 2500.0;
   float visibility = 1.0;
 
   // The vertex location rendered from the light source is almost in Normalized

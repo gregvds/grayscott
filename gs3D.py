@@ -63,15 +63,17 @@
     Several colormaps are available via keys 1 - 0, shifted for reversed version.
     Mouse left click in the grid refills reagent v at 0.5.
     Mouse right click in the grid put reagent v at 0.
+    shift + Mouse click and drag rotate the plane.
     key / switch presentation between u and v.
     Spacebar reseeds the grid.
-    key Up/Down and Left/right rotates the camera around the plane
+    key Up/Down and Left/right move the light in X and Y
     mouse scroll dolly in/out
     Shift key + mouse scroll dolly in/out the light source
     +/- keys to increase/decrease computation cycles per frame
 """
 
-from math import tan, atan, pi, pow
+################################################################################
+from math import tan, atan, pi, sqrt, asin
 
 import argparse
 import textwrap
@@ -83,9 +85,7 @@ from vispy.gloo import gl, Program, VertexBuffer, IndexBuffer, FrameBuffer
 from vispy.util.transforms import perspective, translate, rotate
 from vispy.geometry import create_plane
 
-from gs_lib import (get_colormap, invertCmapName, createAndRegisterCmap,
-                    createAndRegisterLinearSegmentedCmap, createColormaps,
-                    plot_color_gradients, import_pearsons_types, setup_grid)
+from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid)
 
 from shaders import compute_vertex
 from shaders import compute_fragment_2 as compute_fragment
@@ -210,7 +210,6 @@ class Canvas(app.Canvas):
         # --------------------------------------
         self.shadowViewCoordinates = self.lightCoordinates
         self.shadowView = translate((self.shadowViewCoordinates[0], self.shadowViewCoordinates[1], self.shadowViewCoordinates[2]))
-
         self.shadowCamFoV = 24
         self.shadowCamNear = .3
         self.shadowCamFar = 8.
@@ -232,11 +231,11 @@ class Canvas(app.Canvas):
 
         # DEBUG, toggles to switch on and off different parts of lighting
         # --------------------------------------
-        self.ambient = True
+        self.ambient     = True
         self.attenuation = True
-        self.diffuse = True
-        self.specular = True
-        self.shadow = 2
+        self.diffuse     = True
+        self.specular    = True
+        self.shadow      = 2
 
         # Colormaps related variables
         # --------------------------------------
@@ -495,26 +494,19 @@ class Canvas(app.Canvas):
         action = self.keyactionDictionnary.get(key)
         if action is not None:
             action(event)
+
         # treats other key events
         else:
             if len(event.modifiers) == 0:
                 # here the orientation of the model
                 if event.key.name == "Up":
-                    self.lightCoordinates[1] += .05
-                    self.lightCoordinates[1] = np.clip(self.lightCoordinates[1], -1, 1)
-                    self.updateLight()
+                    self.updateLight((0, 0.05, 0))
                 elif event.key.name == "Down":
-                    self.lightCoordinates[1] -= .05
-                    self.lightCoordinates[1] = np.clip(self.lightCoordinates[1], -1, 1)
-                    self.updateLight()
+                    self.updateLight((0, -0.05, 0))
                 elif event.key.name == "Left":
-                    self.lightCoordinates[0] -= .05
-                    self.lightCoordinates[0] = np.clip(self.lightCoordinates[0], -1, 1)
-                    self.updateLight()
+                    self.updateLight((-0.05, 0, 0))
                 elif event.key.name == "Right":
-                    self.lightCoordinates[0] += .05
-                    self.lightCoordinates[0] = np.clip(self.lightCoordinates[0], -1, 1)
-                    self.updateLight()
+                    self.updateLight((0.05, 0, 0))
             elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
                 if event.key.name == "#":
                     self.showLightCameraPOV = not self.showLightCameraPOV
@@ -676,7 +668,12 @@ class Canvas(app.Canvas):
         # print('diRotationMatrix:\n %s' % diRotationMatrix)
         return np.matmul(np.matmul(self.model, diRotationMatrix), azRotationMatrix)
 
-    def updateLight(self):
+    def updateLight(self, coordinatesDelta=(0,0,0)):
+        self.lightCoordinates[0] += coordinatesDelta[0]
+        self.lightCoordinates[1] += coordinatesDelta[1]
+        self.lightCoordinates[2] += coordinatesDelta[2]
+        self.lightCoordinates[0] = np.clip(self.lightCoordinates[0], -1, 1)
+        self.lightCoordinates[1] = np.clip(self.lightCoordinates[1], -1, 1)
         # light is able to move along x,y,z axis
         # currently only along z axis (in/out)
         if hasattr(self, 'renderProgram'):
@@ -695,7 +692,8 @@ class Canvas(app.Canvas):
         self.shadowView = translate((-self.shadowViewCoordinates[0],
                                      -self.shadowViewCoordinates[1],
                                      self.shadowViewCoordinates[2]))
-        self.shadowView, self.shadowCamFoV = self.rotateShadowView(self.shadowView, self.shadowViewCoordinates, self.shadowCamAt)
+        # point camera at center of the model, and compute projection parameters
+        self.shadowView, (self.shadowCamFoV, self.shadowCamNear, self.shadowCamFar) = self.rotateShadowView(self.shadowView, self.shadowViewCoordinates, self.shadowCamAt)
         self.shadowProjection = perspective(self.shadowCamFoV, self.size[0] / float(self.size[1]),
                                             self.shadowCamNear, self.shadowCamFar)
         if hasattr(self, 'shadowProgram'):
@@ -710,10 +708,16 @@ class Canvas(app.Canvas):
         declination = -180. / pi * atan((eye[1]-at[1])/(eye[2]-at[2]))
         azRotationMatrix = rotate(azimuth, (0, 1, 0))
         deRotationMatrix = rotate(declination, (1, 0, 0))
-        # Attempt at computing a fov adequate to encompass the model, not perfect...
+        # Attempt at computing a fov adequate to encompass the model
+        # The object being a simple square plane of 1 x 1, but this one being
+        # orientable, let's just consider a sphere with radius = half of the diagonal
+        # of the square, with 2% more
         length = np.linalg.norm(np.subtract(at, eye))
-        fov = (2 * atan(1.761 / length * tan(28 * pi / 180.)) * 180. / pi)
-        return np.matmul(np.matmul(shadowView, deRotationMatrix), azRotationMatrix), fov
+        radius = (1.0 / sqrt(2)) * 1.02
+        fov = 2 * asin(radius / length) * 180. / pi
+        near = length - radius
+        far = length + radius
+        return np.matmul(np.matmul(shadowView, deRotationMatrix), azRotationMatrix), (fov, near, far)
 
     ############################################################################
     # Output functions
