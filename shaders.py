@@ -253,11 +253,19 @@ void main()
 
 # This one is identical to the 2D vertex_shader
 compute_vertex = """
+precision highp float;
+precision highp vec2;
+precision highp vec3;
+precision highp vec4;
+precision highp mat4;
+precision highp sampler2D;
+
+
 // model data
 attribute vec2 position;
 attribute vec2 texcoord;
 // Data (to be interpolated) that is passed on to the fragment shader
-varying highp vec2 v_texcoord;
+varying vec2 v_texcoord;
 
 void main()
 {
@@ -268,16 +276,24 @@ void main()
 
 # This one is identical to the 2D compute_fragment
 compute_fragment_2 = """
+precision highp float;
+precision highp vec2;
+precision highp vec3;
+precision highp vec4;
+precision highp mat4;
+precision highp sampler2D;
+
+
 uniform int pingpong;
 uniform float dx;                // horizontal distance between texels
 uniform float dy;                // vertical distance between texels
-uniform highp sampler2D texture; // u:= r or b following pinpong
-uniform highp sampler2D params;  // rU,rV,f,k := r,g,b,a
-uniform highp vec2 brush;        // coordinates of mouse down
+uniform sampler2D texture; // u:= r or b following pinpong
+uniform sampler2D params;  // rU,rV,f,k := r,g,b,a
+uniform vec2 brush;        // coordinates of mouse down
 uniform int brushtype;
 
 // Data coming from the vertex shader
-varying highp vec2 v_texcoord;
+varying vec2 v_texcoord;
 
 void main()
 {
@@ -286,9 +302,9 @@ void main()
     float diag   =  1.0;                                    // weight for diagonals
     float neibor =  1.0 * sqrt(2.0);                        // weight for neighbours
 
-    vec2 highp p = v_texcoord;                              // center coordinates
-    vec2 highp c;
-    vec2 highp l;
+    vec2 p = v_texcoord;                              // center coordinates
+    vec2 c;
+    vec2 l;
 
     if( pingpong == 0 ) {
         c = texture2D(texture, p).rg;                       // central value
@@ -315,13 +331,13 @@ void main()
             + texture2D(texture, p + vec2(0.0, dy)).ba) * neibor
             + c * center;
     }
-    float highp u = c.r;                                    // compute some temporary
-    float highp v = c.g;                                    // values which might save
-    float highp lu = l.r;                                   // a few GPU cycles
-    float highp lv = l.g;
-    float highp uvv = u * v * v;
+    float u = c.r;                                    // compute some temporary
+    float v = c.g;                                    // values which might save
+    float lu = l.r;                                   // a few GPU cycles
+    float lv = l.g;
+    float uvv = u * v * v;
 
-    vec4 highp q = texture2D(params, p).rgba;
+    vec4 q = texture2D(params, p).rgba;
     float ru = q.r;                                         // rate of diffusion of U
     float rv = q.g;                                         // rate of diffusion of V
     float f  = q.b;                                         // feed of U
@@ -332,13 +348,13 @@ void main()
     float weight5 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion V
     // Gray-Scott equation diffusion+-reaction
     // U + 2V -> V + 2V
-    float highp du = ru * lu / weight4 * dd - uvv + f * (1.0 - u);
-    float highp dv = rv * lv / weight5 * dd + uvv - (f + k) * v;
+    float du = ru * lu / weight4 * dd - uvv + f * (1.0 - u);
+    float dv = rv * lv / weight5 * dd + uvv - (f + k) * v;
     u += du * dt;
     v += dv * dt;
 
     // Manual mouse feed or kill
-    vec2 highp diff;
+    vec2 diff;
     float dist;
 
     // allow to force V concentrations locally
@@ -351,7 +367,7 @@ void main()
             v = 0.0;
     }
 
-    vec4 highp color;
+    vec4 color;
     if( pingpong == 1 ) {
         color = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), c);
     } else {
@@ -362,19 +378,26 @@ void main()
 """
 
 render_3D_vertex = """
+precision highp float;
+precision highp vec2;
+precision highp vec3;
+precision highp vec4;
+precision highp mat4;
+precision highp sampler2D;
+
+
 // Scene transformations
 uniform mat4 u_projection;
 uniform mat4 u_view;
 uniform mat4 u_model;
-// Shadowmap transformations
 uniform mat4 u_Shadowmap_projection;
 uniform mat4 u_Shadowmap_view;
 
 // Model parameters
-uniform highp sampler2D texture; // u:= r or b following pinpong
+uniform sampler2D texture; // u:= r or b following pinpong
 uniform int pingpong;
 uniform int reagent;             // toggle render between reagent u and v
-uniform highp float scalingFactor;
+uniform float scalingFactor;
 uniform float dx;                // horizontal distance between texels
 uniform float dy;                // vertical distance between texels
 
@@ -398,15 +421,15 @@ void main()
 {
     // Here position.z is received from texture
     // and adjacent position.z are extracted too from texture
-    highp vec2 p = texcoord;
+    vec2 p = texcoord;
     // read neightbor heights using an arbitrary small offset
     // Offset is the step of the 3D gridplane
-    highp vec3 off = vec3(dx, dy, 0.0);
-    highp float c;
-    highp float hL;
-    highp float hR;
-    highp float hD;
-    highp float hU;
+    vec3 off = vec3(dx, dy, 0.0);
+    float c;
+    float hL;
+    float hR;
+    float hD;
+    float hU;
 
     if( pingpong == 0 ) {
         if(reagent == 1){
@@ -445,7 +468,7 @@ void main()
     // A new position vertex is build from the old vertex xy and the concentrations
     // rendered by the compute_fragment(2), hence the surface of the gridplane is
     // embossed or displaced
-    highp vec3 position2 = vec3(position.x, position.y, c);
+    vec3 position2 = vec3(position.x, position.y, c);
 
     // Perform the model and view transformations on the vertex and pass this
     // location to the fragment shader.
@@ -456,15 +479,15 @@ void main()
     v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * u_model * vec4(position2, 1.0);
 
     // Here since position has been realtime modified, normals have to be computed again
-    highp vec3 N;
-    N.x = (hL - hR)/dx;
-    N.y = (hD - hU)/dy;
-    N.z = 2.0;
-    N = normalize(N);
+    vec3 normal2;
+    normal2.x = (hL - hR)/dx;
+    normal2.y = (hD - hU)/dy;
+    normal2.z = 2.0;
+    normal2 = normalize(normal2);
 
     // Perform the model and view transformations on the vertex's normal vector
     // and pass this normal vector to the fragment shader.
-    v_normal = vec3(u_view * u_model * vec4(N, 0.0));
+    v_normal = vec3(u_view * u_model * vec4(normal2, 0.0));
 
     // Pass the texcoord to the fragment shader.
     v_texcoord = texcoord;
@@ -475,6 +498,14 @@ void main()
 """
 
 render_3D_fragment = """
+precision highp float;
+precision highp vec2;
+precision highp vec3;
+precision highp vec4;
+precision highp mat4;
+precision highp sampler2D;
+
+
 uniform int pingpong;
 uniform int reagent;             // toggle render between reagent u and v
 
@@ -487,26 +518,44 @@ uniform float c1;
 uniform float c2;
 uniform float c3;
 
-uniform highp sampler2D texture; // u:= r or b following pinpong
-uniform highp sampler1D cmap;          // colormap used to render reagent concentration
+uniform sampler2D texture; // u:= r or b following pinpong
+uniform sampler1D cmap;          // colormap used to render reagent concentration
 
-uniform highp sampler2D shadowMap;
-uniform highp float near;
-uniform highp float far;
+// TEST HERE sampler2DShadow Maybe this could accept a renderbuffer of the kind
+// depth?
+uniform sampler2D shadowMap;
+uniform float near;
+uniform float far;
 uniform float u_Tolerance_constant;
 
 uniform bool ambient;
 uniform bool attenuation;
 uniform bool diffuse;
 uniform bool specular;
-uniform bool shadow;
+uniform int shadow;
 
 
 // Data coming from the vertex shader
 varying vec3 v_position;
 varying vec3 v_normal;
-varying highp vec2 v_texcoord;
+varying vec2 v_texcoord;
 varying vec4 v_Vertex_relative_to_light;
+
+
+//-------------------------------------------------------------------------
+// Returns a random number based on a vec3 and an int.
+float random(vec3 seed, int i){
+    vec4 seed4 = vec4(seed, i);
+    float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
+    return fract(sin(dot_product) * 43758.5453);
+}
+//-------------------------------------------------------------------------
+
+// Returns accurate MOD when arguments are approximate integers.
+float modI(float a,float b) {
+    float m=a-floor((a+0.5)/b)*b;
+    return floor(m+0.5);
+}
 
 //-------------------------------------------------------------------------
 // Determine if this fragment is in a shadow. Returns true or false.
@@ -534,7 +583,6 @@ bool in_shadow(void) {
   // gl.DEPTH_COMPONENT texture, the color contains the depth value in
   // each of the color components. If the value was d, then the color returned
   // is (d,d,d,1). This is a "color" (depth) value between [0.0,+1.0].
-  // float shadowmap_distance = near + (far - near) * shadowmap_color.r;
   float shadowmap_distance = shadowmap_color.r;
 
   // Test the distance between this fragment and the light source as
@@ -557,6 +605,75 @@ bool in_shadow(void) {
 
 //-------------------------------------------------------------------------
 
+//-------------------------------------------------------------------------
+// Determine if this fragment is in a shadow. Returns ratio of visibility.
+// Sample the shadowmap N times instead of once and modulate the visibility
+float shadow_ratio(int shadowType) {
+
+  vec2 poissonDisk[16] = vec2[](
+   vec2( -0.94201624, -0.39906216 ),
+   vec2( 0.94558609, -0.76890725 ),
+   vec2( -0.094184101, -0.92938870 ),
+   vec2( 0.34495938, 0.29387760 ),
+   vec2( -0.91588581, 0.45771432 ),
+   vec2( -0.81544232, -0.87912464 ),
+   vec2( -0.38277543, 0.27676845 ),
+   vec2( 0.97484398, 0.75648379 ),
+   vec2( 0.44323325, -0.97511554 ),
+   vec2( 0.53742981, -0.47373420 ),
+   vec2( -0.26496911, -0.41893023 ),
+   vec2( 0.79197514, 0.19090188 ),
+   vec2( -0.24188840, 0.99706507 ),
+   vec2( -0.81409955, 0.91437590 ),
+   vec2( 0.19984126, 0.78641367 ),
+   vec2( 0.14383161, -0.14100790 )
+  );
+  float spreading = 2000.0;
+  float visibility = 1.0;
+
+  // The vertex location rendered from the light source is almost in Normalized
+  // Device Coordinates (NDC), but the perspective division has not been
+  // performed yet. Perform the perspective divide. The (x,y,z) vertex location
+  // components are now each in the range [-1.0,+1.0].
+  vec3 vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
+
+  // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
+  // to the range [0.0,1.0]. This mapping is done by scaling
+  // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
+  // shifting the values by +0.5.
+  vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
+
+  // Get the z value of this fragment in relationship to the light source.
+  // This value was stored in the shadow map (depth buffer of the frame buffer)
+  // which was passed to the shader as a texture map.
+  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
+
+  int index;
+  for (int i=0; i<4; i++) {
+    // use either :
+    if (shadowType == 2) {
+        //  - Always the same samples.
+        //    Gives a fixed pattern in the shadow, but no noise
+        index = i;
+    } else if (shadowType == 3) {
+        //  - A random sample, based on the pixel's screen location.
+        //    No banding, but the shadow moves with the camera, which looks weird.
+        // int index = int(16.0*random(gl_FragCoord.xyy, i))%16;
+        //  - A random sample, based on the pixel's position in world space.
+        //    The position is rounded to the millimeter to avoid too much aliasing
+        index = int(modI(16.0*random(floor(v_position.xyz * 1000.0), i), 16.0));
+    }
+
+    if ( texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[index] / spreading ).r
+         < vertex_relative_to_light.z - u_Tolerance_constant ) {
+      visibility -= 0.2;
+    }
+  }
+  return visibility;
+}
+
+//-------------------------------------------------------------------------
+
 void main()
 {
     vec3 to_light;
@@ -570,6 +687,7 @@ void main()
     vec3 color;
     float light_distance;
     float attenuationFactor = 1.0;
+    float visibility = 1.0;
 
     float u;
     // pingpong between layers and choice of reagent
@@ -593,10 +711,16 @@ void main()
         ambient_color = u_Ambient_color * vec3(v_color);
     }
 
-    if (shadow && in_shadow()) {
+    // Harsh shadow limits
+    if (shadow == 1 && in_shadow()) {
         // This fragment only receives ambient light because it is in a shadow.
         gl_FragColor = vec4(ambient_color, v_color.a);
         return;
+    }
+
+    // Smoother shadow
+    if (shadow > 1) {
+        visibility = shadow_ratio(shadow);
     }
 
     // Calculate a vector from the fragment location to the light source
@@ -650,8 +774,12 @@ void main()
 
     // don't really know on which part of the light sources should the attenuation play
     // Maybe not on the ambient_color?
-    color = ambient_color + attenuationFactor * (diffuse_color + specular_color);
-
+    color = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
+    //if (shadow) {
+    //    color = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
+    //} else {
+    //    color = ambient_color + attenuationFactor * (diffuse_color + specular_color);
+    //}
     gl_FragColor = vec4(color, v_color.a);
 }
 """
@@ -659,16 +787,24 @@ void main()
 # This vertex shader is somehow the same as the render_3D_vertex
 # except it outputs also the gl_position as w_position to the fragment
 shadow_vertex = """
+precision highp float;
+precision highp vec2;
+precision highp vec3;
+precision highp vec4;
+precision highp mat4;
+precision highp sampler2D;
+
+
 // Scene transformations
 uniform mat4 u_model;
 uniform mat4 u_view;
 uniform mat4 u_projection;
 
 // Model parameters
-uniform highp sampler2D texture; // u:= r or b following pinpong
+uniform sampler2D texture; // u:= r or b following pinpong
 uniform int pingpong;
 uniform int reagent;             // toggle render between reagent u and v
-uniform highp float scalingFactor;
+uniform float scalingFactor;
 uniform float dx;                // horizontal distance between texels
 uniform float dy;                // vertical distance between texels
 
@@ -689,8 +825,8 @@ varying vec2 v_texcoord;
 void main()
 {
     // Here position.z is received from texture
-    highp vec2 p = texcoord;
-    highp float c;
+    vec2 p = texcoord;
+    float c;
 
     if( pingpong == 0 ) {
         if(reagent == 1){
@@ -706,7 +842,7 @@ void main()
         }
     }
     c = (1.0 - c)/scalingFactor;
-    highp vec3 position2 = vec3(position.x, position.y, c);
+    vec3 position2 = vec3(position.x, position.y, c);
 
     // Perform the model and view transformations on the vertex and pass this
     // location to the fragment shader.
@@ -726,17 +862,23 @@ void main()
 # but could be simplified as the render color do not interest us, only the
 # depth render buffer is important
 shadow_fragment = """
+precision highp float;
+precision highp vec2;
+precision highp vec3;
+precision highp vec4;
+precision highp sampler2D;
+
 uniform int pingpong;
 uniform int reagent;             // toggle render between reagent u and v
 
-uniform highp sampler2D texture; // u:= r or b following pinpong
-uniform highp float near;
-uniform highp float far;
+uniform sampler2D texture; // u:= r or b following pinpong
+uniform float near;
+uniform float far;
 
 // Data coming from the vertex shader
 varying vec3 v_position;
 varying vec4 w_position;
-varying highp vec2 v_texcoord;
+varying vec2 v_texcoord;
 
 void main()
 {

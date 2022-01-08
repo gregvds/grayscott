@@ -201,9 +201,9 @@ class Canvas(app.Canvas):
         # --------------------------------------
         self.lightCoordinates = np.array([-.4, .4, -2.1])
         self.shininess = 91.0
-        self.c1 = 1.0
-        self.c2 = 1.0
-        self.c3 = 0.13
+        self.c1 = .8
+        self.c2 = .8
+        self.c3 = 0.02
         self.ambientLight = 0.5
 
         # Build view, projection for shadowCam
@@ -227,7 +227,7 @@ class Canvas(app.Canvas):
         self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
         self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
 
-        # To debug, show shadowmap view
+        # To debug, show shadowmap instead of view from normal camera
         self.showLightCameraPOV = False
 
         # DEBUG, toggles to switch on and off different parts of lighting
@@ -236,7 +236,7 @@ class Canvas(app.Canvas):
         self.attenuation = True
         self.diffuse = True
         self.specular = True
-        self.shadow = True
+        self.shadow = 2
 
         # Colormaps related variables
         # --------------------------------------
@@ -311,7 +311,7 @@ class Canvas(app.Canvas):
         self.renderProgram["far"] = self.shadowCamFar
         self.renderProgram["u_Shadowmap_projection"] = self.shadowProjection
         self.renderProgram["u_Shadowmap_view"] = self.shadowView
-        self.renderProgram["u_Tolerance_constant"] = 0.0001
+        self.renderProgram["u_Tolerance_constant"] = 0.005
         self.renderProgram["scalingFactor"] = 30. * (self.w/512)
         self.renderProgram["u_view"] = self.view
         self.renderProgram["u_model"] = self.model
@@ -532,7 +532,7 @@ class Canvas(app.Canvas):
                     self.renderProgram["specular"] = self.specular
                     print('Specular light: %s' % self.specular)
                 elif event.key.name == ")":
-                    self.shadow = not self.shadow
+                    self.shadow = (self.shadow + 1) % 4
                     self.renderProgram["shadow"] = self.shadow
                     print('Shadows: %s' % self.shadow)
                 elif event.key.name == "@":
