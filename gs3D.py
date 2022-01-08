@@ -223,7 +223,7 @@ class Canvas(app.Canvas):
 
         # Currently, the shadowmap is a simple image for I cannot set properly
         # the FrameBuffer depth part (RenderBuffer)...
-        self.shadowMapSize = 1024
+        self.shadowMapSize = 2048
         self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
         self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
 

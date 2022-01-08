@@ -3,6 +3,10 @@
 #
 # -----------------------------------------------------------------------------
 
+################################################################################
+# 3D shaders
+
+
 vertex_shader = """
 // model data
 attribute vec2 position;
@@ -14,6 +18,111 @@ void main()
 {
     gl_Position = vec4(position, 0.0, 1.0);
     v_texcoord = texcoord;
+}
+"""
+
+compute_fragment = """
+uniform int pingpong;
+uniform highp sampler2D texture;                           // U,V:= r,g or b,a following pingpong
+uniform highp sampler2D params;                            // rU,rV,f,k := r,g,b,a
+uniform highp sampler2D params2;                           // dX,dY,dD,dT = r,g,b,a
+uniform float ddmin;                                       // scaling of dd
+uniform float ddmax;                                       // scaling of dd
+uniform highp vec2 brush;                                  // coordinates of mouse down
+uniform int brushtype;
+varying highp vec2 v_texcoord;
+
+void main(void)
+{
+    // Original way of computing the diffusion Laplacian
+    float center = -1.0 * (sqrt(2.0) * 4.0 + 4.0);          // -1 * other weights
+    float diag   =  1.0;                                    // weight for diagonals
+    float neibor =  1.0 * sqrt(2.0);                        // weight for neighbours
+
+    vec2 highp p = v_texcoord;                              // center coordinates
+    vec2 highp c;
+    vec2 highp l;
+
+    vec4 parameters2 = texture2D(params2, p).rgba;
+    float dx = parameters2.r;                               // usually constant
+    float dy = parameters2.g;                               // usually constant
+    float dd = parameters2.b*(ddmax-ddmin)+ddmin;           // Can be varrying accross the grid
+    float dt = parameters2.a;                               // usually constant.
+    // Shows some interaction with dD value, as if dD * dT should not go above a limit
+
+    if( pingpong == 0 ) {
+        c = texture2D(texture, p).rg;                       // central value
+                                                            // Compute Laplacian
+        l = ( texture2D(texture, p + vec2(-dx,-dy)).rg
+            + texture2D(texture, p + vec2( dx,-dy)).rg
+            + texture2D(texture, p + vec2(-dx, dy)).rg
+            + texture2D(texture, p + vec2( dx, dy)).rg) * diag
+            + ( texture2D(texture, p + vec2(-dx, 0.0)).rg
+            + texture2D(texture, p + vec2( dx, 0.0)).rg
+            + texture2D(texture, p + vec2(0.0,-dy)).rg
+            + texture2D(texture, p + vec2(0.0, dy)).rg) * neibor
+            + c * center;
+    } else {
+        c = texture2D(texture, p).ba;                       // central value
+                                                            // Compute Laplacian
+        l = ( texture2D(texture, p + vec2(-dx,-dy)).ba
+            + texture2D(texture, p + vec2( dx,-dy)).ba
+            + texture2D(texture, p + vec2(-dx, dy)).ba
+            + texture2D(texture, p + vec2( dx, dy)).ba) * diag
+            + ( texture2D(texture, p + vec2(-dx, 0.0)).ba
+            + texture2D(texture, p + vec2( dx, 0.0)).ba
+            + texture2D(texture, p + vec2(0.0,-dy)).ba
+            + texture2D(texture, p + vec2(0.0, dy)).ba) * neibor
+            + c * center;
+    }
+
+    float highp u = c.r;                                    // compute some temporary
+    float highp v = c.g;                                    // values which might save
+    float highp lu = l.r;                                   // a few GPU cycles
+    float highp lv = l.g;
+    float highp uvv = u * v * v;
+
+    vec4 highp q = texture2D(params, p).rgba;
+    float ru = q.r;                                         // rate of diffusion of U
+    float rv = q.g;                                         // rate of diffusion of V
+    float f  = q.b;                                         // feed of U
+    float k  = q.a;                                         // kill of V
+
+    // float weight1 = 1.0;     // Reaction part weight
+    // float weight2 = 1.0;     // Feed Kill part weight
+    // float weight3 = 1.0 ;    // Diffusion part weight
+    float weight4 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion U
+    float weight5 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion V
+
+    // float highp du = weight3 * (ru * lu / weight4 * dd) - (weight1 * uvv) + weight2 * (f * (1.0 - u));   // Gray-Scott equation
+    // float highp dv = weight3 * (rv * lv / weight5 * dd) + (weight1 * uvv) - weight2 * ((f + k) * v);   // diffusion+-reaction
+    float highp du = ru * lu / weight4 * dd - uvv + f * (1.0 - u);   // Gray-Scott equation
+    float highp dv = rv * lv / weight5 * dd + uvv - (f + k) * v;     // diffusion+-reaction
+
+    u += du * dt;
+    v += dv * dt;
+
+    // Manual mouse feed or kill
+    vec2 highp diff;
+    float dist;
+
+    // allow to force V concentrations locally
+    if (brush.x > 0.0) {
+        diff = (p - brush)/dx;
+        dist = dot(diff, diff);
+        if((brushtype == 1) && (dist < 3.0))
+            v = 0.5;
+        if((brushtype == 2) && (dist < 9.0))
+            v = 0.0;
+    }
+
+    vec4 highp color;
+    if( pingpong == 1 ) {
+        color = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), c);
+    } else {
+        color = vec4(c, clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0));
+    }
+    gl_FragColor = color;
 }
 """
 
@@ -137,110 +246,10 @@ void main()
 }
 """
 
-compute_fragment = """
-uniform int pingpong;
-uniform highp sampler2D texture;                           // U,V:= r,g or b,a following pingpong
-uniform highp sampler2D params;                            // rU,rV,f,k := r,g,b,a
-uniform highp sampler2D params2;                           // dX,dY,dD,dT = r,g,b,a
-uniform float ddmin;                                       // scaling of dd
-uniform float ddmax;                                       // scaling of dd
-uniform highp vec2 brush;                                  // coordinates of mouse down
-uniform int brushtype;
-varying highp vec2 v_texcoord;
 
-void main(void)
-{
-    // Original way of computing the diffusion Laplacian
-    float center = -1.0 * (sqrt(2.0) * 4.0 + 4.0);          // -1 * other weights
-    float diag   =  1.0;                                    // weight for diagonals
-    float neibor =  1.0 * sqrt(2.0);                        // weight for neighbours
+################################################################################
+# 3D shaders
 
-    vec2 highp p = v_texcoord;                              // center coordinates
-    vec2 highp c;
-    vec2 highp l;
-
-    vec4 parameters2 = texture2D(params2, p).rgba;
-    float dx = parameters2.r;                               // usually constant
-    float dy = parameters2.g;                               // usually constant
-    float dd = parameters2.b*(ddmax-ddmin)+ddmin;           // Can be varrying accross the grid
-    float dt = parameters2.a;                               // usually constant.
-    // Shows some interaction with dD value, as if dD * dT should not go above a limit
-
-    if( pingpong == 0 ) {
-        c = texture2D(texture, p).rg;                       // central value
-                                                            // Compute Laplacian
-        l = ( texture2D(texture, p + vec2(-dx,-dy)).rg
-            + texture2D(texture, p + vec2( dx,-dy)).rg
-            + texture2D(texture, p + vec2(-dx, dy)).rg
-            + texture2D(texture, p + vec2( dx, dy)).rg) * diag
-            + ( texture2D(texture, p + vec2(-dx, 0.0)).rg
-            + texture2D(texture, p + vec2( dx, 0.0)).rg
-            + texture2D(texture, p + vec2(0.0,-dy)).rg
-            + texture2D(texture, p + vec2(0.0, dy)).rg) * neibor
-            + c * center;
-    } else {
-        c = texture2D(texture, p).ba;                       // central value
-                                                            // Compute Laplacian
-        l = ( texture2D(texture, p + vec2(-dx,-dy)).ba
-            + texture2D(texture, p + vec2( dx,-dy)).ba
-            + texture2D(texture, p + vec2(-dx, dy)).ba
-            + texture2D(texture, p + vec2( dx, dy)).ba) * diag
-            + ( texture2D(texture, p + vec2(-dx, 0.0)).ba
-            + texture2D(texture, p + vec2( dx, 0.0)).ba
-            + texture2D(texture, p + vec2(0.0,-dy)).ba
-            + texture2D(texture, p + vec2(0.0, dy)).ba) * neibor
-            + c * center;
-    }
-
-    float highp u = c.r;                                    // compute some temporary
-    float highp v = c.g;                                    // values which might save
-    float highp lu = l.r;                                   // a few GPU cycles
-    float highp lv = l.g;
-    float highp uvv = u * v * v;
-
-    vec4 highp q = texture2D(params, p).rgba;
-    float ru = q.r;                                         // rate of diffusion of U
-    float rv = q.g;                                         // rate of diffusion of V
-    float f  = q.b;                                         // feed of U
-    float k  = q.a;                                         // kill of V
-
-    // float weight1 = 1.0;     // Reaction part weight
-    // float weight2 = 1.0;     // Feed Kill part weight
-    // float weight3 = 1.0 ;    // Diffusion part weight
-    float weight4 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion U
-    float weight5 = sqrt(2.0) * 4.0 + 4.0;                  // Ratio of Diffusion V
-
-    // float highp du = weight3 * (ru * lu / weight4 * dd) - (weight1 * uvv) + weight2 * (f * (1.0 - u));   // Gray-Scott equation
-    // float highp dv = weight3 * (rv * lv / weight5 * dd) + (weight1 * uvv) - weight2 * ((f + k) * v);   // diffusion+-reaction
-    float highp du = ru * lu / weight4 * dd - uvv + f * (1.0 - u);   // Gray-Scott equation
-    float highp dv = rv * lv / weight5 * dd + uvv - (f + k) * v;     // diffusion+-reaction
-
-    u += du * dt;
-    v += dv * dt;
-
-    // Manual mouse feed or kill
-    vec2 highp diff;
-    float dist;
-
-    // allow to force V concentrations locally
-    if (brush.x > 0.0) {
-        diff = (p - brush)/dx;
-        dist = dot(diff, diff);
-        if((brushtype == 1) && (dist < 3.0))
-            v = 0.5;
-        if((brushtype == 2) && (dist < 9.0))
-            v = 0.0;
-    }
-
-    vec4 highp color;
-    if( pingpong == 1 ) {
-        color = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), c);
-    } else {
-        color = vec4(c, clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0));
-    }
-    gl_FragColor = color;
-}
-"""
 
 # This one is identical to the vertex_shader
 compute_vertex = """
@@ -357,6 +366,7 @@ render_3D_vertex = """
 uniform mat4 u_projection;
 uniform mat4 u_view;
 uniform mat4 u_model;
+// Shadowmap transformations
 uniform mat4 u_Shadowmap_projection;
 uniform mat4 u_Shadowmap_view;
 
@@ -390,7 +400,7 @@ void main()
     // and adjacent position.z are extracted too from texture
     highp vec2 p = texcoord;
     // read neightbor heights using an arbitrary small offset
-    // Offset should be 1 / width height
+    // Offset is the step of the 3D gridplane
     highp vec3 off = vec3(dx, dy, 0.0);
     highp float c;
     highp float hL;
@@ -432,6 +442,9 @@ void main()
     hR = (1.0 - hR)/scalingFactor;
     hD = (1.0 - hD)/scalingFactor;
     hU = (1.0 - hU)/scalingFactor;
+    // A new position vertex is build from the old vertex xy and the concentrations
+    // rendered by the compute_fragment(2), hence the surface of the gridplane is
+    // embossed or displaced
     highp vec3 position2 = vec3(position.x, position.y, c);
 
     // Perform the model and view transformations on the vertex and pass this
@@ -440,8 +453,8 @@ void main()
 
     // Calculate this vertex's location from the light source. This is
     // used in the fragment shader to determine if fragments receive direct light.
-    // v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * u_model * vec4(position2, 1.0);
-    v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * vec4(position2, 1.0);
+    v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * u_model * vec4(position2, 1.0);
+    // v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * vec4(position2, 1.0);
 
     // Here since position has been realtime modified, normals have to be computed again
     highp vec3 N;
