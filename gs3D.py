@@ -93,59 +93,69 @@ from shaders import render_3D_vertex
 from shaders import render_3D_fragment
 from shaders import shadow_vertex
 from shaders import shadow_fragment
+"""
+from shaders import coord_vertex
+from shaders import coord_fragment
+"""
 ################################################################################
 
 
 class Canvas(app.Canvas):
 
     colormapDictionnary = {
-        '1': 'Boston_r',
         '&': 'Boston',
-        '2': 'malmo',
         'é': 'malmo_r',
-        '3': 'uppsala',
         '"': 'uppsala_r',
-        '4': 'oslo_r',
         '\'': 'oslo',
-        '5': 'Lochinver',
         '(': 'Lochinver_r',
-        '6': 'Rejkjavik',
         '§': 'Rejkjavik_r',
-        '7': 'detroit',
         'è': 'antidetroit',
-        '8': 'tromso',
         '!': 'osmort',
-        '9': 'irkoutsk',
         'ç': 'irkoutsk_r',
-        '0': 'krasnoiarsk',
         'à': 'krasnoiarsk_r'
+    }
+
+    colormapDictionnaryShifted = {
+        '1': 'Boston_r',
+        '2': 'malmo',
+        '3': 'uppsala',
+        '4': 'oslo_r',
+        '5': 'Lochinver',
+        '6': 'Rejkjavik',
+        '7': 'detroit',
+        '8': 'tromso',
+        '9': 'irkoutsk',
+        '0': 'krasnoiarsk'
     }
 
     speciesDictionnary = {
         'a': 'alpha_left',
-        'A': 'alpha_right',
         'b': 'beta_left',
-        'B': 'beta_right',
         'd': 'delta_left',
-        'D': 'delta_right',
         'e': 'epsilon_left',
-        'E': 'epsilon_right',
         'g': 'gamma_left',
-        'G': 'gamma_right',
         'h': 'eta',
         'i': 'iota',
         'k': 'kappa_left',
-        'K': 'kappa_right',
         'l': 'lambda_left',
-        'L': 'lambda_right',
         'm': 'mu_left',
-        'M': 'mu_right',
         'n': 'nu_left',
         'p': 'pi_left',
         't': 'theta_left',
-        'T': 'theta_right',
         'x': 'xi_left',
-        'z': 'zeta_left',
+        'z': 'zeta_left'
+    }
+
+    speciesDictionnaryShifted = {
+        'A': 'alpha_right',
+        'B': 'beta_right',
+        'D': 'delta_right',
+        'E': 'epsilon_right',
+        'G': 'gamma_right',
+        'K': 'kappa_right',
+        'L': 'lambda_right',
+        'M': 'mu_right',
+        'T': 'theta_right',
         'Z': 'zeta_right'
     }
 
@@ -226,8 +236,8 @@ class Canvas(app.Canvas):
         self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
         self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
 
-        # To debug, show shadowmap instead of view from normal camera
-        self.showLightCameraPOV = False
+        # To debug, show shadowmap or coordinates map instead of view from normal camera
+        self.displaySwitch = 0
 
         # DEBUG, toggles to switch on and off different parts of lighting
         # --------------------------------------
@@ -262,16 +272,32 @@ class Canvas(app.Canvas):
         # All these functions will receive the calling event even if not used.
         # --------------------------------------
         self.keyactionDictionnary = {
-            ' ': self.initializeGrid,
-            '/': self.switchReagent,
-            '+': self.increaseCycle,
-            '-': self.decreaseCycle,
-            '=': self.resetModel
+            (' ', ()): (self.initializeGrid, ()),
+            ('/', ('Shift',)): (self.switchReagent, ()),
+            ('+', ('Shift',)): (self.increaseCycle, ()),
+            ('-', ()): (self.decreaseCycle, ()),
+            ('=', ()): (self.resetModel, ()),
+            ('Up', ()): (self.updateLight, ((0, 0.05, 0),)),
+            ('Down', ()): (self.updateLight, ((0, -0.05, 0),)),
+            ('Left', ()): (self.updateLight, ((-0.05, 0, 0),)),
+            ('Right', ()): (self.updateLight, ((0.05, 0, 0),)),
+            (',', ('Control',)): (self.toggleLightType, ('ambient',)),
+            (';', ('Control',)): (self.toggleLightType, ('diffuse',)),
+            (':', ('Control',)): (self.toggleLightType, ('specular',)),
+            (')', ('Control',)): (self.toggleLightType, ('shadow',)),
+            ('@', ('Control',)): (self.toggleLightType, ('attenuation',)),
+            ('A', ('Control',)): (self.toggleLightType, ('shininess', '-')),
+            ('Z', ('Control',)): (self.toggleLightType, ('shininess', '+')),
+            ('#', ('Shift',)): (self.switchDisplay, ())
         }
         for key in Canvas.colormapDictionnary.keys():
-            self.keyactionDictionnary[key] = self.pickColorMap
+            self.keyactionDictionnary[(key,())] = (self.pickColorMap, ())
+        for key in Canvas.colormapDictionnaryShifted.keys():
+            self.keyactionDictionnary[(key,('Shift',))] = (self.pickColorMap, ())
         for key in Canvas.speciesDictionnary.keys():
-            self.keyactionDictionnary[key] = self.pickSpecie
+            self.keyactionDictionnary[(key,())] = (self.pickSpecie, ())
+        for key in Canvas.speciesDictionnaryShifted.keys():
+            self.keyactionDictionnary[(key,('Shift',))] = (self.pickSpecie, ())
 
         # ? better computation for diffusion and concentration ?
         # --------------------------------------
@@ -346,16 +372,30 @@ class Canvas(app.Canvas):
         self.shadowProgram["near"] = self.shadowCamNear
         self.shadowProgram["far"] = self.shadowCamFar
 
+        """
+        # Build coordinates render program
+        # --------------------------------------
+        self.coordinatesProgram = Program(coord_vertex, coord_fragment)
+        self.coordinatesProgram.bind(vertices)
+        self.coordinatesProgram["u_view"] = self.view
+        self.coordinatesProgram["u_model"] = self.model
+        """
         # Define a FrameBuffer to update model state in texture
         # --------------------------------------
-        self.framebuffer = FrameBuffer(color=self.computeProgram["texture"],
+        self.modelbuffer = FrameBuffer(color=self.computeProgram["texture"],
                                        depth=gloo.RenderBuffer((self.h, self.w), format='depth'))
 
-        # Define a DepthBuffer to render the shadowmap from the light
+        # Define a 'DepthBuffer' to render the shadowmap from the light
         # --------------------------------------
         self.shadowBuffer = FrameBuffer(color=self.renderProgram["shadowMap"],
                                        depth=gloo.RenderBuffer((self.shadowMapSize, self.shadowMapSize), format='depth'))
 
+        """
+        # Define a FrameBuffer to render the coordinates
+        # --------------------------------------
+        self.coordinatesBuffer = FrameBuffer(color=gloo.RenderBuffer((self.h, self.w), format='color'),
+                                             depth=gloo.RenderBuffer((self.h, self.w), format='depth'))
+        """
         # cycle of computation per frame
         self.cycle = 0
 
@@ -373,10 +413,11 @@ class Canvas(app.Canvas):
 
     def on_draw(self, event):
         # Render next model state into buffer
-        with self.framebuffer:
+        with self.modelbuffer:
             gloo.set_viewport(0, 0, self.h, self.w)
-            gloo.set_state(depth_test=False, clear_color='black', polygon_offset=(0, 0))
-            # gloo.set_viewport(0, 0, self.h, self.w)
+            gloo.set_state(depth_test=False,
+                           clear_color='black',
+                           polygon_offset=(0, 0))
             self.computeProgram.draw('triangle_strip')
             # repeat model state computation several time to speed up slow patterns
             for cycle in range(self.cycle):
@@ -387,26 +428,48 @@ class Canvas(app.Canvas):
                 self.computeProgram["pingpong"] = self.pingpong
                 self.computeProgram.draw('triangle_strip')
 
+        """
+        # render coordinates map into Buffer
+        if self.mouseDown is True:
+            with self.coordinatesBuffer:
+                gloo.set_viewport(0, 0, self.h, self.w)
+                gloo.set_state(blend=False, depth_test=True,
+                               clear_color=(0, 0, 0, 1.00),
+                               polygon_offset=(1, 1),
+                               polygon_offset_fill=True)
+                gloo.clear(color=True, depth=True)
+                self.coordinatesProgram.draw('triangles', self.faces)
+        """
         # Render the shadowmap into buffer
-        if self.shadow:
+        if self.shadow > 0:
             with self.shadowBuffer:
                 gloo.set_viewport(0, 0, self.shadowMapSize, self.shadowMapSize)
-                # gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
                 gloo.set_state(depth_test=True,
                                polygon_offset=(1, 1),
                                polygon_offset_fill=True)
                 gloo.clear(color=True, depth=True)
                 self.shadowProgram.draw('triangles', self.faces)
+
         # DEBUG show shadowmap view in normal viewport
-        if self.showLightCameraPOV:
+        if self.displaySwitch == 1:
             gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
             gloo.set_state(depth_test=True,
                            polygon_offset=(1, 1),
                            polygon_offset_fill=True)
             gloo.clear(color=True, depth=True)
             self.shadowProgram.draw('triangles', self.faces)
+            """
+        # DEBUG show shadowmap view in normal viewport
+        elif self.displaySwitch == 2:
+            gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+            gloo.set_state(depth_test=True,
+                           polygon_offset=(1, 1),
+                           polygon_offset_fill=True)
+            gloo.clear(color=True, depth=True)
+            self.coordinatesProgram.draw('triangles', self.faces)
+            """
+        # Here is the true colored render of the state of the model
         else:
-            # Here is the true colored render of the state of the model
             gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
             gloo.set_state(blend=False, depth_test=True,
                            clear_color=(0.30, 0.30, 0.35, 1.00),
@@ -415,6 +478,7 @@ class Canvas(app.Canvas):
                            polygon_offset_fill=True)
             gloo.clear(color=True, depth=True)
             self.renderProgram.draw('triangles', self.faces)
+
         # exchange between rg and ba sets in texture
         self.pingpong = 1 - self.pingpong
         self.computeProgram["pingpong"] = self.pingpong
@@ -429,7 +493,10 @@ class Canvas(app.Canvas):
         gloo.set_viewport(0, 0, *self.physical_size)
         projection = perspective(24, self.size[0] / float(self.size[1]),
                                  0.1, 20.0)
-        self.renderProgram['u_projection'] = projection
+        if hasattr(self, 'renderProgram'):
+            self.renderProgram['u_projection'] = projection
+        if hasattr(self, 'coordinatesProgram'):
+            self.coordinatesProgram['u_projection'] = projection
 
     ############################################################################
     # Mouse and keys interactions
@@ -447,8 +514,6 @@ class Canvas(app.Canvas):
         self.lightCoordinates[2] += event.delta[0]/2
         self.lightCoordinates[2] = np.clip(self.lightCoordinates[2], self.viewCoordinates[2]+.1, -0.9)
         self.updateLight()
-        # print('view coordinates: %2.1f, %2.1f, %2.1f' % (self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
-        # print('light coordinates: %2.1f, %2.1f, %2.1f' % (self.lightCoordinates[0], self.lightCoordinates[1], self.lightCoordinates[2]))
 
     def on_mouse_press(self, event):
         self.mouseDown = True
@@ -469,6 +534,14 @@ class Canvas(app.Canvas):
             xpos = x/sx
             ypos = 1 - y/sy
             if len(event.modifiers) == 0:
+                """
+                print("x, y: %s, %s" % (x, y))
+                print("sx, sy: %s, %s" % (sx, sy))
+                print("texCoordx, texcoordy: %s, %s" % (int(x/sx*self.w), int(y/sy*self.h)))
+                print('CoordinatesBuffer: %s' % self.coordinatesBuffer.read())
+                texCoords = self.coordinatesBuffer.read()[int(x/sx*self.w), int(y/sy*self.h)]
+                print("texCoords: %s" % texCoords)
+                """
                 # update brush coords here
                 self.computeProgram['brush'] = [xpos, ypos]
                 self.computeProgram['brushtype'] = event.button
@@ -485,52 +558,22 @@ class Canvas(app.Canvas):
         self.computeProgram['brush'] = [0, 0]
         self.computeProgram['brushtype'] = 0
 
+    NO_ACTION = (None,None)
+
     def on_key_press(self, event):
         # treats all key event that are defined in keyactionDictionnary
         if len(event.text) > 0:
-            key = event.text
+            eventKey = event.text
         else:
-            key = event.key.name
-        action = self.keyactionDictionnary.get(key)
-        if action is not None:
-            action(event)
-
-        # treats other key events
+            eventKey = event.key.name
+        if len(event.modifiers) > 0:
+            eventModifiers = (event.modifiers[0],)
         else:
-            if len(event.modifiers) == 0:
-                # here the orientation of the model
-                if event.key.name == "Up":
-                    self.updateLight((0, 0.05, 0))
-                elif event.key.name == "Down":
-                    self.updateLight((0, -0.05, 0))
-                elif event.key.name == "Left":
-                    self.updateLight((-0.05, 0, 0))
-                elif event.key.name == "Right":
-                    self.updateLight((0.05, 0, 0))
-            elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
-                if event.key.name == "#":
-                    self.showLightCameraPOV = not self.showLightCameraPOV
-            elif len(event.modifiers) == 1 and event.modifiers[0] == 'Control':
-                if event.key.name == ",":
-                    self.ambient = not self.ambient
-                    self.renderProgram["ambient"] = self.ambient
-                    print('Ambient light: %s' % self.ambient)
-                elif event.key.name == ";":
-                    self.diffuse = not self.diffuse
-                    self.renderProgram["diffuse"] = self.diffuse
-                    print('Diffuse light: %s' % self.diffuse)
-                elif event.key.name == ":":
-                    self.specular = not self.specular
-                    self.renderProgram["specular"] = self.specular
-                    print('Specular light: %s' % self.specular)
-                elif event.key.name == ")":
-                    self.shadow = (self.shadow + 1) % 4
-                    self.renderProgram["shadow"] = self.shadow
-                    print('Shadows: %s' % self.shadow)
-                elif event.key.name == "@":
-                    self.attenuation = not self.attenuation
-                    self.renderProgram["attenuation"] = self.attenuation
-                    print('Attenuation: %s' % self.attenuation)
+            eventModifiers = ()
+        # print("key, modifiers: %s, %s" % (eventKey, eventModifiers))
+        (func, args) = self.keyactionDictionnary.get((eventKey, eventModifiers),self.NO_ACTION)
+        if func is not None:
+            func(event, *args)
 
         # DEBUG to adjust lighting parameters
         # elif event.text == "z":
@@ -586,7 +629,7 @@ class Canvas(app.Canvas):
         self.updateComputeParams()
 
     def pickSpecie(self, event):
-        specieName = Canvas.speciesDictionnary.get(event.text)
+        specieName = Canvas.speciesDictionnary.get(event.text) or Canvas.speciesDictionnaryShifted.get(event.text)
         if specieName is not None:
             self.setSpecie(specieName)
 
@@ -630,6 +673,7 @@ class Canvas(app.Canvas):
 
     def switchReagent(self, event=None):
         self.renderProgram["reagent"] = 1 - self.renderProgram["reagent"]
+        self.shadowProgram["reagent"] = 1 - self.shadowProgram["reagent"]
         reagents = ('U', 'V')
         print('Displaying %s reagent concentration.' % reagents[int(self.renderProgram["reagent"])])
 
@@ -639,9 +683,43 @@ class Canvas(app.Canvas):
         self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
 
     def pickColorMap(self, event):
-        colorMapName = Canvas.colormapDictionnary.get(event.text)
+        colorMapName = Canvas.colormapDictionnary.get(event.text) or Canvas.colormapDictionnaryShifted.get(event.text)
         if colorMapName is not None:
             self.setColormap(colorMapName)
+
+    SHADOW_TYPE = ("None","Simple","4 Poisson Sampled","4 Random Poisson Sampled")
+
+    def toggleLightType(self, event, lightType=None, modification=None):
+        if lightType == 'ambient':
+            self.ambient = not self.ambient
+            self.renderProgram[lightType] = self.ambient
+            print('Ambient light: %s' % self.ambient)
+        elif lightType == 'diffuse':
+            self.diffuse = not self.diffuse
+            self.renderProgram[lightType] = self.diffuse
+            print('Diffuse light: %s' % self.diffuse)
+        elif lightType == 'specular':
+            self.specular = not self.specular
+            self.renderProgram[lightType] = self.specular
+            print('Specular light: %s' % self.specular)
+        elif lightType == 'shadow':
+            self.shadow = (self.shadow + 1) % 4
+            self.renderProgram[lightType] = self.shadow
+            print('Shadows: %s' % self.SHADOW_TYPE[self.shadow])
+        elif lightType == 'attenuation':
+            self.attenuation = not self.attenuation
+            self.renderProgram[lightType] = self.attenuation
+            print('Attenuation: %s' % self.attenuation)
+        elif lightType == 'shininess' and modification == '-':
+            self.shininess *= sqrt(2)
+            self.shininess = np.clip(self.shininess, 0.1, 8192)
+            self.renderProgram['u_Shininess'] = self.shininess
+            print('Shininess exponant: %s' % self.shininess)
+        elif lightType == 'shininess' and modification == '+':
+            self.shininess /= sqrt(2)
+            self.shininess = np.clip(self.shininess, 0.1, 8192)
+            self.renderProgram['u_Shininess'] = self.shininess
+            print('Shininess exponant: %s' % self.shininess)
 
     ############################################################################
     # functions to manipulate orientations and positions of model, view, light
@@ -657,6 +735,8 @@ class Canvas(app.Canvas):
             self.renderProgram["u_model"] = model
         if hasattr(self, 'shadowProgram'):
             self.shadowProgram["u_model"] = model
+        if hasattr(self, 'coordinatesProgram'):
+            self.coordinatesProgram["u_model"] = model
 
     def rotateModel(self):
         # model is able to rotate but does not move
@@ -668,7 +748,7 @@ class Canvas(app.Canvas):
         # print('diRotationMatrix:\n %s' % diRotationMatrix)
         return np.matmul(np.matmul(self.model, diRotationMatrix), azRotationMatrix)
 
-    def updateLight(self, coordinatesDelta=(0,0,0)):
+    def updateLight(self, event=None, coordinatesDelta=(0,0,0)):
         self.lightCoordinates[0] += coordinatesDelta[0]
         self.lightCoordinates[1] += coordinatesDelta[1]
         self.lightCoordinates[2] += coordinatesDelta[2]
@@ -685,6 +765,8 @@ class Canvas(app.Canvas):
         self.view = translate((self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
         if hasattr(self, 'renderProgram'):
             self.renderProgram["u_view"] = self.view
+        if hasattr(self, 'coordinatesProgram'):
+            self.coordinatesProgram["u_view"] = self.view
 
     def updateLightCam(self):
         # lightcam is placed at the light coordinates
@@ -730,6 +812,12 @@ class Canvas(app.Canvas):
                                                                  self.species[self.specie][1],
                                                                  self.species[self.specie][2],
                                                                  self.species[self.specie][3]))
+
+    ############################################################################
+    # Debug functions
+
+    def switchDisplay(self, event=None):
+        self.displaySwitch = (self.displaySwitch + 1) % 3
 
 
 ################################################################################

@@ -505,7 +505,6 @@ precision highp vec4;
 precision highp mat4;
 precision highp sampler2D;
 
-
 uniform int pingpong;
 uniform int reagent;             // toggle render between reagent u and v
 
@@ -904,6 +903,62 @@ void main()
     //    }
     //}
     //gl_FragColor = vec4(u, u, u, 1);
+}
+"""
+
+################################################################################
+# 3D shaders and fragment to render offsets coordinates to be picked by mouse click and drag
+
+coord_vertex = """
+precision highp float;
+precision highp vec2;
+precision highp vec3;
+precision highp vec4;
+precision highp mat4;
+
+
+// Scene transformations
+uniform mat4 u_projection;
+uniform mat4 u_view;
+uniform mat4 u_model;
+
+// Original model data
+attribute vec3 position;
+attribute vec2 texcoord;
+attribute vec3 normal;
+attribute vec4 color;
+
+// Data (to be interpolated) that is passed on to the fragment shader
+varying vec3 v_position;
+varying vec2 v_texcoord;
+
+void main()
+{
+    // Perform the model and view transformations on the vertex and pass this
+    // location to the fragment shader.
+    v_position = vec3(u_view * u_model * vec4(position, 1.0));
+
+    // Pass the texcoord to the fragment shader.
+    v_texcoord = texcoord;
+
+    // Transform the location of the vertex for the rest of the graphics pipeline
+    gl_Position = u_projection * u_view * u_model * vec4(position, 1.0);
+}
+"""
+
+coord_fragment = """
+precision highp float;
+precision highp vec2;
+precision highp vec3;
+precision highp vec4;
+precision highp mat4;
+
+// Data coming from the vertex shader
+varying vec3 v_position;
+varying vec2 v_texcoord;
+void main()
+{
+    gl_FragColor = vec4(v_texcoord.x, v_texcoord.y, 0, 0);
 }
 """
 
