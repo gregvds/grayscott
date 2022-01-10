@@ -511,8 +511,12 @@ uniform int reagent;             // toggle render between reagent u and v
 // Light model
 uniform vec3 u_light_position;
 uniform vec3 u_light_intensity;
+uniform vec4 u_Ambient_color;
+uniform float u_ambient_intensity;
+uniform vec4 u_diffuse_color;
+uniform vec4 u_specular_color;
 uniform float u_Shininess;
-uniform vec3 u_Ambient_color;
+uniform bool use_material;
 uniform float c1;
 uniform float c2;
 uniform float c3;
@@ -528,8 +532,8 @@ uniform float far;
 uniform float u_Tolerance_constant;
 
 uniform bool ambient;
-uniform bool attenuation;
 uniform bool diffuse;
+uniform bool attenuation;
 uniform bool specular;
 uniform int shadow;
 
@@ -626,8 +630,14 @@ float shadow_ratio(int shadowType) {
    vec2( 0.19984126, 0.78641367 ),
    vec2( 0.14383161, -0.14100790 )
   );
-  float spreading = 2500.0;
   float visibility = 1.0;
+  float spreading = 2500.0;
+  int samples = 4;
+
+  if (shadowType == 3) {
+    spreading = 2000;
+    samples = 16;
+  }
 
   // The vertex location rendered from the light source is almost in Normalized
   // Device Coordinates (NDC), but the perspective division has not been
@@ -644,19 +654,13 @@ float shadow_ratio(int shadowType) {
   // Get the z value of this fragment in relationship to the light source.
   // This value was stored in the shadow map (depth buffer of the frame buffer)
   // which was passed to the shader as a texture map.
-  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
+  //vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
 
   int index;
-  for (int i=0; i<4; i++) {
+  for (int i=0; i<samples; i++) {
     // use either :
-    if (shadowType == 2) {
-        //  - Always the same samples.
-        //    Gives a fixed pattern in the shadow, but no noise
-        index = i;
-    } else if (shadowType == 3) {
-        //  - A random sample, based on the pixel's screen location.
-        //    No banding, but the shadow moves with the camera, which looks weird.
-        // int index = int(16.0*random(gl_FragCoord.xyy, i))%16;
+    index = i;
+    if (shadowType == 3) {
         //  - A random sample, based on the pixel's position in world space.
         //    The position is rounded to the millimeter to avoid too much aliasing
         index = int(modI(16.0*random(floor(v_position.xyz * 1000.0), i), 16.0));
@@ -664,7 +668,7 @@ float shadow_ratio(int shadowType) {
 
     if ( texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[index] / spreading ).r
          < vertex_relative_to_light.z - u_Tolerance_constant ) {
-      visibility -= 0.2;
+      visibility -= 1./float(samples);
     }
   }
   return visibility;
@@ -679,10 +683,9 @@ void main()
     vec3 reflection;
     vec3 to_camera;
     float cos_angle = 0.0;
-    vec3 ambient_color = vec3(0, 0, 0);
-    vec3 diffuse_color = vec3(0, 0, 0);
-    vec3 specular_color = vec3(0, 0, 0);
-    vec3 color;
+    vec4 ambient_color = vec4(0, 0, 0, 1);
+    vec4 diffuse_color = vec4(0, 0, 0, 1);
+    vec4 specular_color = vec4(0, 0, 0, 1);
     float light_distance;
     float attenuationFactor = 1.0;
     float visibility = 1.0;
@@ -706,13 +709,13 @@ void main()
 
     // Calculate the ambient color as a percentage of the surface color
     if (ambient) {
-        ambient_color = u_Ambient_color * vec3(v_color);
+        ambient_color = vec4(u_ambient_intensity * vec3(v_color), v_color.a);
     }
 
     // Harsh shadow limits
     if (shadow == 1 && in_shadow()) {
         // This fragment only receives ambient light because it is in a shadow.
-        gl_FragColor = vec4(ambient_color, v_color.a);
+        gl_FragColor = ambient_color;
         return;
     }
 
@@ -726,9 +729,9 @@ void main()
 
     // while computing this vector, let's compute its length and the attenuation
     // due to it before normalizing it
-    light_distance = length(to_light);
     if (attenuation)
     {
+        light_distance = length(to_light);
         attenuationFactor = 1.0/(c1 + c2 * light_distance + c3 * light_distance * light_distance);
     }
     to_light = normalize( to_light );
@@ -744,41 +747,35 @@ void main()
         cos_angle = clamp(cos_angle, 0.0, 1.0);
 
         // Scale the color of this fragment based on its angle to the light.
-        diffuse_color = vec3(v_color) * cos_angle;
+        diffuse_color = v_color * cos_angle;
     }
 
     if (specular) {
         // Calculate the reflection vector
         reflection = 2.0 * dot(vertex_normal,to_light) * vertex_normal - to_light;
+        reflection = normalize( reflection );
 
         // Calculate a vector from the fragment location to the camera.
         // The camera is at the origin, so negating the vertex location gives the vector
         to_camera = -1.0 * v_position;
+        to_camera = normalize( to_camera );
 
         // Calculate the cosine of the angle between the reflection vector
         // and the vector going to the camera.
-        reflection = normalize( reflection );
-        to_camera = normalize( to_camera );
         cos_angle = dot(reflection, to_camera);
         cos_angle = clamp(cos_angle, 0.0, 1.0);
         cos_angle = pow(cos_angle, u_Shininess);
 
         // The specular color is from the light source, not the object
         if (cos_angle > 0.0) {
-            specular_color = u_light_intensity * cos_angle;
+            specular_color = vec4(u_light_intensity, 1) * cos_angle;
             diffuse_color = diffuse_color * (1.0 - cos_angle);
         }
     }
 
     // don't really know on which part of the light sources should the attenuation play
     // Maybe not on the ambient_color?
-    color = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
-    //if (shadow) {
-    //    color = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
-    //} else {
-    //    color = ambient_color + attenuationFactor * (diffuse_color + specular_color);
-    //}
-    gl_FragColor = vec4(color, v_color.a);
+    gl_FragColor = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
 }
 """
 
@@ -886,23 +883,6 @@ void main()
     float depth = w_position.z / w_position.w;
     depth = depth * 0.5 + 0.5;
     gl_FragColor = vec4(depth, depth, depth, 1.0);
-
-    // DEBUG just output of grayscale to have something to look at from cam
-    //float u;
-    //if(pingpong == 0) {
-    //    if(reagent == 1){
-    //        u = texture2D(texture, v_texcoord).r;
-    //    } else {
-    //        u = texture2D(texture, v_texcoord).g;
-    //    }
-    //} else {
-    //    if(reagent == 1){
-    //        u = texture2D(texture, v_texcoord).b;
-    //    } else {
-    //        u = texture2D(texture, v_texcoord).a;
-    //    }
-    //}
-    //gl_FragColor = vec4(u, u, u, 1);
 }
 """
 
@@ -915,7 +895,6 @@ precision highp vec2;
 precision highp vec3;
 precision highp vec4;
 precision highp mat4;
-
 
 // Scene transformations
 uniform mat4 u_projection;

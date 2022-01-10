@@ -61,14 +61,14 @@
             'z': 'zeta_left',
             'Z': 'zeta_right'
     Several colormaps are available via keys 1 - 0, shifted for reversed version.
-    Mouse left click in the grid refills reagent v at 0.5.
-    Mouse right click in the grid put reagent v at 0.
-    shift + Mouse click and drag rotate the plane.
+    shift + Mouse left click in the grid refills reagent v at 0.5.
+    shift + Mouse right click in the grid put reagent v at 0.
+    Mouse click and drag rotate the plane.
     key / switch presentation between u and v.
     Spacebar reseeds the grid.
     key Up/Down and Left/right move the light in X and Y
     mouse scroll dolly in/out
-    Shift key + mouse scroll dolly in/out the light source
+    Shift + mouse scroll dolly in/out the light source
     +/- keys to increase/decrease computation cycles per frame
 """
 
@@ -85,7 +85,7 @@ from vispy.gloo import gl, Program, VertexBuffer, IndexBuffer, FrameBuffer
 from vispy.util.transforms import perspective, translate, rotate
 from vispy.geometry import create_plane
 
-from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid)
+from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid, materials)
 
 from shaders import compute_vertex
 from shaders import compute_fragment_2 as compute_fragment
@@ -210,11 +210,16 @@ class Canvas(app.Canvas):
         # light Parameters: direction, shininess exponant, attenuation parameters, ambientLight intensity
         # --------------------------------------
         self.lightCoordinates = np.array([-.4, .4, -2.1])
-        self.shininess = 91.0
+        self.lightIntensity = (1., 1., 1.)
         self.c1 = .8
         self.c2 = .8
         self.c3 = 0.02
-        self.ambientLight = 0.5
+        self.ambientIntensity = 0.5
+        self.ambientColor = np.array((0.5, 0.5, 0.5, 1))
+        self.diffuseColor = (1., 1., 1., 1.)
+        self.specularColor = (1., 1., 1., 1.)
+        self.shininess = 91.0
+        self.useMaterial = False
 
         # Build view, projection for shadowCam
         # --------------------------------------
@@ -281,13 +286,13 @@ class Canvas(app.Canvas):
             ('Down', ()): (self.updateLight, ((0, -0.05, 0),)),
             ('Left', ()): (self.updateLight, ((-0.05, 0, 0),)),
             ('Right', ()): (self.updateLight, ((0.05, 0, 0),)),
-            (',', ('Control',)): (self.toggleLightType, ('ambient',)),
-            (';', ('Control',)): (self.toggleLightType, ('diffuse',)),
-            (':', ('Control',)): (self.toggleLightType, ('specular',)),
-            (')', ('Control',)): (self.toggleLightType, ('shadow',)),
-            ('@', ('Control',)): (self.toggleLightType, ('attenuation',)),
-            ('A', ('Control',)): (self.toggleLightType, ('shininess', '-')),
-            ('Z', ('Control',)): (self.toggleLightType, ('shininess', '+')),
+            (',', ('Control',)): (self.modifyLightCharacteristic, ('ambient',)),
+            (';', ('Control',)): (self.modifyLightCharacteristic, ('diffuse',)),
+            (':', ('Control',)): (self.modifyLightCharacteristic, ('specular',)),
+            (')', ('Control',)): (self.modifyLightCharacteristic, ('shadow',)),
+            ('@', ('Control',)): (self.modifyLightCharacteristic, ('attenuation',)),
+            ('A', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '-')),
+            ('Z', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+')),
             ('#', ('Shift',)): (self.switchDisplay, ())
         }
         for key in Canvas.colormapDictionnary.keys():
@@ -346,8 +351,12 @@ class Canvas(app.Canvas):
         self.renderProgram["specular"] = self.specular
         self.renderProgram["shadow"] = self.shadow
         self.renderProgram["u_light_position"] = self.lightCoordinates
-        self.renderProgram["u_light_intensity"] = 1, 1, 1
-        self.renderProgram["u_Ambient_color"] = self.ambientLight, self.ambientLight, self.ambientLight
+        self.renderProgram["u_light_intensity"] = self.lightIntensity
+        self.renderProgram["use_material"] = self.useMaterial
+        self.renderProgram["u_Ambient_color"] = self.ambientColor
+        self.renderProgram["u_ambient_intensity"] = self.ambientIntensity
+        self.renderProgram["u_diffuse_color"] = self.diffuseColor
+        self.renderProgram["u_specular_color"] = self.specularColor
         self.renderProgram['u_Shininess'] = self.shininess
         self.renderProgram['c1'] = self.c1
         self.renderProgram['c2'] = self.c2
@@ -505,14 +514,14 @@ class Canvas(app.Canvas):
         # no shift modifier key
         # Move the plane AND light in z
         self.viewCoordinates[2] += event.delta[1]/2
-        self.viewCoordinates[2] = np.clip(self.viewCoordinates[2], -5.0, -0.8)
+        self.viewCoordinates[2] = np.clip(self.viewCoordinates[2], -5.0, -0.7)
         self.updateView()
         self.lightCoordinates[2] += event.delta[1]/2
-        self.lightCoordinates[2] = np.clip(self.lightCoordinates[2], self.viewCoordinates[2]+.1, -0.9)
+        self.lightCoordinates[2] = np.clip(self.lightCoordinates[2], self.viewCoordinates[2]+.1, -0.8)
         # shift modifier key
         # Move only the light in z
         self.lightCoordinates[2] += event.delta[0]/2
-        self.lightCoordinates[2] = np.clip(self.lightCoordinates[2], self.viewCoordinates[2]+.1, -0.9)
+        self.lightCoordinates[2] = np.clip(self.lightCoordinates[2], self.viewCoordinates[2]+.1, -0.8)
         self.updateLight()
 
     def on_mouse_press(self, event):
@@ -522,10 +531,10 @@ class Canvas(app.Canvas):
         xpos = x/sx
         ypos = 1 - y/sy
         if len(event.modifiers) == 0:
+            self.mousePressShiftPos = [xpos, ypos]
+        elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
             self.computeProgram['brush'] = [xpos, ypos]
             self.computeProgram['brushtype'] = event.button
-        elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
-            self.mousePressShiftPos = [xpos, ypos]
 
     def on_mouse_move(self, event):
         if(self.mouseDown):
@@ -534,6 +543,13 @@ class Canvas(app.Canvas):
             xpos = x/sx
             ypos = 1 - y/sy
             if len(event.modifiers) == 0:
+                self.modelAzimuth += 40. * (self.mousePressShiftPos[1] - ypos)
+                self.modelDirection -= 40. * (self.mousePressShiftPos[0] - xpos)
+                self.modelAzimuth = np.clip(self.modelAzimuth, -90, 0)
+                self.modelDirection = np.clip(self.modelDirection, -90, 90)
+                self.mousePressShiftPos = [xpos, ypos]
+                self.updateModel()
+            elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
                 """
                 print("x, y: %s, %s" % (x, y))
                 print("sx, sy: %s, %s" % (sx, sy))
@@ -545,20 +561,13 @@ class Canvas(app.Canvas):
                 # update brush coords here
                 self.computeProgram['brush'] = [xpos, ypos]
                 self.computeProgram['brushtype'] = event.button
-            elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
-                self.modelAzimuth += 40. * (self.mousePressShiftPos[1] - ypos)
-                self.modelDirection -= 40. * (self.mousePressShiftPos[0] - xpos)
-                self.modelAzimuth = np.clip(self.modelAzimuth, -90, 0)
-                self.modelDirection = np.clip(self.modelDirection, -90, 90)
-                self.mousePressShiftPos = [xpos, ypos]
-                self.updateModel()
 
     def on_mouse_release(self, event):
         self.mouseDown = False
         self.computeProgram['brush'] = [0, 0]
         self.computeProgram['brushtype'] = 0
 
-    NO_ACTION = (None,None)
+    NO_ACTION = (None, None)
 
     def on_key_press(self, event):
         # treats all key event that are defined in keyactionDictionnary
@@ -570,20 +579,11 @@ class Canvas(app.Canvas):
             eventModifiers = (event.modifiers[0],)
         else:
             eventModifiers = ()
-        # print("key, modifiers: %s, %s" % (eventKey, eventModifiers))
-        (func, args) = self.keyactionDictionnary.get((eventKey, eventModifiers),self.NO_ACTION)
+        (func, args) = self.keyactionDictionnary.get((eventKey, eventModifiers), self.NO_ACTION)
         if func is not None:
             func(event, *args)
 
         # DEBUG to adjust lighting parameters
-        # elif event.text == "z":
-        #     self.shininess *= sqrt(2)
-        #     self.shininess = np.clip(self.shininess, 0.1, 8192)
-        #     self.renderProgram['u_Shininess'] = self.shininess
-        # elif event.text == "a":
-        #     self.shininess /= sqrt(2)
-        #     self.shininess = np.clip(self.shininess, 0.1, 8192)
-        #     self.renderProgram['u_Shininess'] = self.shininess
         # elif event.text == "e":
         #     self.c1 -= .1
         # elif event.text == "r":
@@ -601,7 +601,7 @@ class Canvas(app.Canvas):
     # functions related to the Gray-Scott model parameters
 
     def initializeGrid(self, event=None):
-        print('Initialization of the grid.')
+        print('Initialization of the grid.', end="\r")
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
         self.UV += np.random.uniform(-0.02, 0.1, (self.h, self.w, 4))
@@ -660,13 +660,13 @@ class Canvas(app.Canvas):
             self.cycle *= 2
         if self.cycle > 64:
             self.cycle = 64
-        print('Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
+        print(' Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
 
     def decreaseCycle(self, event=None):
         self.cycle = int(self.cycle/2)
         if self.cycle < 1:
             self.cycle = 0
-        print('Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
+        print(' Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
 
     ############################################################################
     # functions related to the Gray-Scott model appearances/representation
@@ -675,51 +675,66 @@ class Canvas(app.Canvas):
         self.renderProgram["reagent"] = 1 - self.renderProgram["reagent"]
         self.shadowProgram["reagent"] = 1 - self.shadowProgram["reagent"]
         reagents = ('U', 'V')
-        print('Displaying %s reagent concentration.' % reagents[int(self.renderProgram["reagent"])])
-
-    def setColormap(self, name):
-        print('Using colormap %s.' % name)
-        self.cmapName = name
-        self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
+        print(' Displaying %s reagent concentration.' % reagents[int(self.renderProgram["reagent"])], end="\r")
 
     def pickColorMap(self, event):
         colorMapName = Canvas.colormapDictionnary.get(event.text) or Canvas.colormapDictionnaryShifted.get(event.text)
         if colorMapName is not None:
             self.setColormap(colorMapName)
 
-    SHADOW_TYPE = ("None","Simple","4 Poisson Sampled","4 Random Poisson Sampled")
+    def setColormap(self, name):
+        self.useMaterial = False
+        self.renderProgram["use_material"] = self.useMaterial
+        self.renderProgram["u_Ambient_color"] = self.ambientColor
+        self.renderProgram["u_diffuse_color"] = self.diffuseColor
+        self.renderProgram["u_specular_color"] = self.specularColor
+        self.renderProgram['u_Shininess'] = self.shininess
+        self.cmapName = name
+        self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
+        print(' Using colormap %s.' % name, end="\r")
 
-    def toggleLightType(self, event, lightType=None, modification=None):
+    def setMaterial(self, event, materialName=None):
+        material = materials.get(materialName)
+        # TODO replace all the u_***_color and u_shininess by the dic values
+        if material is not None:
+            print(' Using material %s.' % materialName, end="\r")
+
+    SHADOW_TYPE = ("None                     ",
+                   "Simple                   ",
+                   "4 Poisson Sampled        ",
+                   "16 Random Poisson Sampled")
+
+    def modifyLightCharacteristic(self, event, lightType=None, modification=None):
         if lightType == 'ambient':
             self.ambient = not self.ambient
             self.renderProgram[lightType] = self.ambient
-            print('Ambient light: %s' % self.ambient)
+            print(' Ambient light: %s' % self.ambient, end="\r")
         elif lightType == 'diffuse':
             self.diffuse = not self.diffuse
             self.renderProgram[lightType] = self.diffuse
-            print('Diffuse light: %s' % self.diffuse)
+            print(' Diffuse light: %s' % self.diffuse, end="\r")
         elif lightType == 'specular':
             self.specular = not self.specular
             self.renderProgram[lightType] = self.specular
-            print('Specular light: %s' % self.specular)
+            print(' Specular light: %s' % self.specular, end="\r")
         elif lightType == 'shadow':
             self.shadow = (self.shadow + 1) % 4
             self.renderProgram[lightType] = self.shadow
-            print('Shadows: %s' % self.SHADOW_TYPE[self.shadow])
+            print(' Shadows: %s' % self.SHADOW_TYPE[self.shadow], end="\r")
         elif lightType == 'attenuation':
             self.attenuation = not self.attenuation
             self.renderProgram[lightType] = self.attenuation
-            print('Attenuation: %s' % self.attenuation)
+            print(' Attenuation: %s' % self.attenuation, end="\r")
         elif lightType == 'shininess' and modification == '-':
             self.shininess *= sqrt(2)
             self.shininess = np.clip(self.shininess, 0.1, 8192)
             self.renderProgram['u_Shininess'] = self.shininess
-            print('Shininess exponant: %s' % self.shininess)
+            print(' Shininess exponant: %3.0f' % self.shininess, end="\r")
         elif lightType == 'shininess' and modification == '+':
             self.shininess /= sqrt(2)
             self.shininess = np.clip(self.shininess, 0.1, 8192)
             self.renderProgram['u_Shininess'] = self.shininess
-            print('Shininess exponant: %s' % self.shininess)
+            print(' Shininess exponant: %3.0f' % self.shininess, end="\r")
 
     ############################################################################
     # functions to manipulate orientations and positions of model, view, light
@@ -749,20 +764,21 @@ class Canvas(app.Canvas):
         return np.matmul(np.matmul(self.model, diRotationMatrix), azRotationMatrix)
 
     def updateLight(self, event=None, coordinatesDelta=(0,0,0)):
+        # light is able to move along x,y,z axis
         self.lightCoordinates[0] += coordinatesDelta[0]
         self.lightCoordinates[1] += coordinatesDelta[1]
         self.lightCoordinates[2] += coordinatesDelta[2]
         self.lightCoordinates[0] = np.clip(self.lightCoordinates[0], -1, 1)
         self.lightCoordinates[1] = np.clip(self.lightCoordinates[1], -1, 1)
-        # light is able to move along x,y,z axis
-        # currently only along z axis (in/out)
         if hasattr(self, 'renderProgram'):
             self.renderProgram["u_light_position"] = self.lightCoordinates
         self.updateLightCam()
 
     def updateView(self):
         # view is able to move along z axis only (in/out)
-        self.view = translate((self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
+        self.view = translate((self.viewCoordinates[0],
+                               self.viewCoordinates[1],
+                               self.viewCoordinates[2]))
         if hasattr(self, 'renderProgram'):
             self.renderProgram["u_view"] = self.view
         if hasattr(self, 'coordinatesProgram'):
@@ -775,9 +791,13 @@ class Canvas(app.Canvas):
                                      -self.shadowViewCoordinates[1],
                                      self.shadowViewCoordinates[2]))
         # point camera at center of the model, and compute projection parameters
-        self.shadowView, (self.shadowCamFoV, self.shadowCamNear, self.shadowCamFar) = self.rotateShadowView(self.shadowView, self.shadowViewCoordinates, self.shadowCamAt)
-        self.shadowProjection = perspective(self.shadowCamFoV, self.size[0] / float(self.size[1]),
-                                            self.shadowCamNear, self.shadowCamFar)
+        self.shadowView, (self.shadowCamFoV, self.shadowCamNear, self.shadowCamFar) = self.rotateShadowView(self.shadowView,
+                                                    self.shadowViewCoordinates,
+                                                    self.shadowCamAt)
+        self.shadowProjection = perspective(self.shadowCamFoV,
+                                            self.size[0] / float(self.size[1]),
+                                            self.shadowCamNear,
+                                            self.shadowCamFar)
         if hasattr(self, 'shadowProgram'):
             self.shadowProgram["u_view"] = self.shadowView
             self.shadowProgram["u_projection"] = self.shadowProjection
@@ -790,6 +810,7 @@ class Canvas(app.Canvas):
         declination = -180. / pi * atan((eye[1]-at[1])/(eye[2]-at[2]))
         azRotationMatrix = rotate(azimuth, (0, 1, 0))
         deRotationMatrix = rotate(declination, (1, 0, 0))
+        rotatedView = np.matmul(np.matmul(shadowView, deRotationMatrix), azRotationMatrix)
         # Attempt at computing a fov adequate to encompass the model
         # The object being a simple square plane of 1 x 1, but this one being
         # orientable, let's just consider a sphere with radius = half of the diagonal
@@ -799,7 +820,7 @@ class Canvas(app.Canvas):
         fov = 2 * asin(radius / length) * 180. / pi
         near = length - radius
         far = length + radius
-        return np.matmul(np.matmul(shadowView, deRotationMatrix), azRotationMatrix), (fov, near, far)
+        return rotatedView, (fov, near, far)
 
     ############################################################################
     # Output functions
