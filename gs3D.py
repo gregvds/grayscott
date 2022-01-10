@@ -91,12 +91,9 @@ from shaders import compute_vertex
 from shaders import compute_fragment_2 as compute_fragment
 from shaders import render_3D_vertex
 from shaders import render_3D_fragment
+from shaders import render_3D_fragment_no_choices_no_material
 from shaders import shadow_vertex
 from shaders import shadow_fragment
-"""
-from shaders import coord_vertex
-from shaders import coord_fragment
-"""
 ################################################################################
 
 
@@ -163,7 +160,8 @@ class Canvas(app.Canvas):
                  size=(1024, 1024),
                  modelSize=(512,512),
                  specie='alpha_left',
-                 cmap='irkoutsk'):
+                 cmap='irkoutsk',
+                 options=False):
         app.Canvas.__init__(self,
                             size=size,
                             title='3D Gray-Scott Reaction-Diffusion: - GregVDS',
@@ -237,7 +235,7 @@ class Canvas(app.Canvas):
 
         # Currently, the shadowmap is a simple image for I cannot set properly
         # the FrameBuffer depth part (RenderBuffer)...
-        self.shadowMapSize = 2048
+        self.shadowMapSize = 1024
         self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
         self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
 
@@ -335,7 +333,12 @@ class Canvas(app.Canvas):
 
         # Build render program
         # --------------------------------------
-        self.renderProgram = Program(render_3D_vertex, render_3D_fragment)
+        if options:
+            print('Rendering with fully interactive fragment shader')
+            self.renderProgram = Program(render_3D_vertex, render_3D_fragment)
+        else:
+            print('Rendering with simplified fragment shader')
+            self.renderProgram = Program(render_3D_vertex, render_3D_fragment_no_choices_no_material)
         self.renderProgram.bind(vertices)
         self.renderProgram["texture"] = self.computeProgram["texture"]
         self.renderProgram["texture"].interpolation = gl.GL_LINEAR
@@ -391,14 +394,6 @@ class Canvas(app.Canvas):
         self.shadowProgram["near"] = self.shadowCamNear
         self.shadowProgram["far"] = self.shadowCamFar
 
-        """
-        # Build coordinates render program
-        # --------------------------------------
-        self.coordinatesProgram = Program(coord_vertex, coord_fragment)
-        self.coordinatesProgram.bind(vertices)
-        self.coordinatesProgram["u_view"] = self.view
-        self.coordinatesProgram["u_model"] = self.model
-        """
         # Define a FrameBuffer to update model state in texture
         # --------------------------------------
         self.modelbuffer = FrameBuffer(color=self.computeProgram["texture"],
@@ -409,12 +404,6 @@ class Canvas(app.Canvas):
         self.shadowBuffer = FrameBuffer(color=self.renderProgram["shadowMap"],
                                        depth=gloo.RenderBuffer((self.shadowMapSize, self.shadowMapSize), format='depth'))
 
-        """
-        # Define a FrameBuffer to render the coordinates
-        # --------------------------------------
-        self.coordinatesBuffer = FrameBuffer(color=gloo.RenderBuffer((self.h, self.w), format='color'),
-                                             depth=gloo.RenderBuffer((self.h, self.w), format='depth'))
-        """
         # cycle of computation per frame
         self.cycle = 0
 
@@ -447,18 +436,6 @@ class Canvas(app.Canvas):
                 self.computeProgram["pingpong"] = self.pingpong
                 self.computeProgram.draw('triangle_strip')
 
-        """
-        # render coordinates map into Buffer
-        if self.mouseDown is True:
-            with self.coordinatesBuffer:
-                gloo.set_viewport(0, 0, self.h, self.w)
-                gloo.set_state(blend=False, depth_test=True,
-                               clear_color=(0, 0, 0, 1.00),
-                               polygon_offset=(1, 1),
-                               polygon_offset_fill=True)
-                gloo.clear(color=True, depth=True)
-                self.coordinatesProgram.draw('triangles', self.faces)
-        """
         """
         # Render the shadowmap into buffer
         if self.shadow > 0:
@@ -611,27 +588,9 @@ class Canvas(app.Canvas):
         for each in event.modifiers:
             eventModifiers.append(each)
         eventModifiers = tuple(eventModifiers)
-        # if len(event.modifiers) > 0:
-        #     eventModifiers = (event.modifiers[0],)
-        # else:
-        #     eventModifiers = ()
         (func, args) = self.keyactionDictionnary.get((eventKey, eventModifiers), self.NO_ACTION)
         if func is not None:
             func(event, *args)
-
-        # DEBUG to adjust lighting parameters
-        # elif event.text == "e":
-        #     self.c1 -= .1
-        # elif event.text == "r":
-        #     self.c1 += .1
-        # elif event.text == "d":
-        #     self.c2 -= .01
-        # elif event.text == "f":
-        #     self.c2 += .01
-        # elif event.text == "c":
-        #     self.c3 -= .01
-        # elif event.text == "v":
-        #     self.c3 += .01
 
     ############################################################################
     # functions related to the Gray-Scott model parameters
@@ -672,7 +631,7 @@ class Canvas(app.Canvas):
     def modulateFK(self, pos=None):
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
-        if pos:
+        if pos is not None:
             self.fModAmount += 0.002 * (pos[1] - self.mousePressAltPos[1])
             self.kModAmount += 0.001 * (pos[0] - self.mousePressAltPos[0])
         rows, cols = self.h, self.w
@@ -690,7 +649,7 @@ class Canvas(app.Canvas):
             self.computeProgram["params"] = self.params
 
     def increaseCycle(self, event=None):
-        if not self.cycle:
+        if self.cycle == 0:
             self.cycle = 1
         else:
             self.cycle *= 2
@@ -884,6 +843,37 @@ class Canvas(app.Canvas):
     def switchDisplay(self, event=None):
         self.displaySwitch = (self.displaySwitch + 1) % 3
 
+    def measure_fps2(self, window=1, callback=' %1.1f FPS                   '):
+        """Measure the current FPS
+
+        Sets the update window, connects the draw event to update_fps
+        and sets the callback function.
+
+        Parameters
+        ----------
+        window : float
+            The time-window (in seconds) to calculate FPS. Default 1.0.
+        callback : function | str
+            The function to call with the float FPS value, or the string
+            to be formatted with the fps value and then printed. The
+            default is ``'%1.1f FPS'``. If callback evaluates to False, the
+            FPS measurement is stopped.
+        """
+        # Connect update_fps function to draw
+        self.events.draw.disconnect(self._update_fps)
+        if callback:
+            if isinstance(callback, str):
+                callback_str = callback  # because callback gets overwritten
+
+                def callback(x):
+                    print(callback_str % x, end="\r")
+
+            self._fps_window = window
+            self.events.draw.connect(self._update_fps)
+            self._fps_callback = callback
+        else:
+            self._fps_callback = None
+
 
 ################################################################################
 
@@ -916,11 +906,17 @@ if __name__ == '__main__':
                         choices=Canvas.colormapDictionnary.values(),
                         default="irkoutsk",
                         help="Colormap used")
+    parser.add_argument("-o",
+                        "--Options_on",
+                        action='store_true',
+                        help="charges a fully fleshed render fragment")
     args = parser.parse_args()
 
 
     c = Canvas(modelSize=(args.Size, args.Size),
                size=(args.Window, args.Window),
                specie=args.Pattern,
-               cmap=args.Colormap)
+               cmap=args.Colormap,
+               options = args.Options_on)
+    c.measure_fps2(window=2)
     app.run()
