@@ -293,7 +293,17 @@ class Canvas(app.Canvas):
             ('@', ('Control',)): (self.modifyLightCharacteristic, ('attenuation',)),
             ('A', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '-')),
             ('Z', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+')),
-            ('#', ('Shift',)): (self.switchDisplay, ())
+            ('#', ('Shift',)): (self.switchDisplay, ()),
+            ('1', ('Shift', 'Control')): (self.setMaterial, ('Gold',)),
+            ('2', ('Shift', 'Control')): (self.setMaterial, ('Brass',)),
+            ('3', ('Shift', 'Control')): (self.setMaterial, ('Bronze',)),
+            ('4', ('Shift', 'Control')): (self.setMaterial, ('Copper',)),
+            ('5', ('Shift', 'Control')): (self.setMaterial, ('Emerald',)),
+            ('6', ('Shift', 'Control')): (self.setMaterial, ('Jade',)),
+            ('7', ('Shift', 'Control')): (self.setMaterial, ('Obsidian',)),
+            ('8', ('Shift', 'Control')): (self.setMaterial, ('Pearl',)),
+            ('9', ('Shift', 'Control')): (self.setMaterial, ('Ruby',)),
+            ('0', ('Shift', 'Control')): (self.setMaterial, ('Turquoise',))
         }
         for key in Canvas.colormapDictionnary.keys():
             self.keyactionDictionnary[(key,())] = (self.pickColorMap, ())
@@ -449,6 +459,7 @@ class Canvas(app.Canvas):
                 gloo.clear(color=True, depth=True)
                 self.coordinatesProgram.draw('triangles', self.faces)
         """
+        """
         # Render the shadowmap into buffer
         if self.shadow > 0:
             with self.shadowBuffer:
@@ -458,40 +469,60 @@ class Canvas(app.Canvas):
                                polygon_offset_fill=True)
                 gloo.clear(color=True, depth=True)
                 self.shadowProgram.draw('triangles', self.faces)
-
-        # DEBUG show shadowmap view in normal viewport
-        if self.displaySwitch == 1:
-            gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+        """
+        # always is maybe less costly than swithing with if?
+        with self.shadowBuffer:
+            gloo.set_viewport(0, 0, self.shadowMapSize, self.shadowMapSize)
             gloo.set_state(depth_test=True,
                            polygon_offset=(1, 1),
                            polygon_offset_fill=True)
             gloo.clear(color=True, depth=True)
             self.shadowProgram.draw('triangles', self.faces)
-            """
+
         # DEBUG show shadowmap view in normal viewport
-        elif self.displaySwitch == 2:
-            gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
-            gloo.set_state(depth_test=True,
-                           polygon_offset=(1, 1),
-                           polygon_offset_fill=True)
-            gloo.clear(color=True, depth=True)
-            self.coordinatesProgram.draw('triangles', self.faces)
-            """
-        # Here is the true colored render of the state of the model
-        else:
-            gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
-            gloo.set_state(blend=False, depth_test=True,
-                           clear_color=(0.30, 0.30, 0.35, 1.00),
-                           blend_func=('src_alpha', 'one_minus_src_alpha'),
-                           polygon_offset=(1, 1),
-                           polygon_offset_fill=True)
-            gloo.clear(color=True, depth=True)
-            self.renderProgram.draw('triangles', self.faces)
+        # if self.displaySwitch == 1:
+        #     gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+        #     gloo.set_state(depth_test=True,
+        #                    polygon_offset=(1, 1),
+        #                    polygon_offset_fill=True)
+        #     gloo.clear(color=True, depth=True)
+        #     self.shadowProgram.draw('triangles', self.faces)
+        #     """
+        # # DEBUG show shadowmap view in normal viewport
+        # elif self.displaySwitch == 2:
+        #     gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+        #     gloo.set_state(depth_test=True,
+        #                    polygon_offset=(1, 1),
+        #                    polygon_offset_fill=True)
+        #     gloo.clear(color=True, depth=True)
+        #     self.coordinatesProgram.draw('triangles', self.faces)
+        #     """
+        # # Here is the true colored render of the state of the model
+        # else:
+        #     gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+        #     gloo.set_state(blend=False, depth_test=True,
+        #                    clear_color=(0.30, 0.30, 0.35, 1.00),
+        #                    blend_func=('src_alpha', 'one_minus_src_alpha'),
+        #                    polygon_offset=(1, 1),
+        #                    polygon_offset_fill=True)
+        #     gloo.clear(color=True, depth=True)
+        #     self.renderProgram.draw('triangles', self.faces)
+
+        # always is maybe less costly than swithing with if?
+        gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+        gloo.set_state(blend=False, depth_test=True,
+                       clear_color=(0.30, 0.30, 0.35, 1.00),
+                       blend_func=('src_alpha', 'one_minus_src_alpha'),
+                       polygon_offset=(1, 1),
+                       polygon_offset_fill=True)
+        gloo.clear(color=True, depth=True)
+        self.renderProgram.draw('triangles', self.faces)
 
         # exchange between rg and ba sets in texture
         self.pingpong = 1 - self.pingpong
         self.computeProgram["pingpong"] = self.pingpong
         self.renderProgram["pingpong"] = self.pingpong
+
         # and loop
         self.update()
 
@@ -571,14 +602,19 @@ class Canvas(app.Canvas):
 
     def on_key_press(self, event):
         # treats all key event that are defined in keyactionDictionnary
+        eventKey = ''
+        eventModifiers = []
         if len(event.text) > 0:
             eventKey = event.text
         else:
             eventKey = event.key.name
-        if len(event.modifiers) > 0:
-            eventModifiers = (event.modifiers[0],)
-        else:
-            eventModifiers = ()
+        for each in event.modifiers:
+            eventModifiers.append(each)
+        eventModifiers = tuple(eventModifiers)
+        # if len(event.modifiers) > 0:
+        #     eventModifiers = (event.modifiers[0],)
+        # else:
+        #     eventModifiers = ()
         (func, args) = self.keyactionDictionnary.get((eventKey, eventModifiers), self.NO_ACTION)
         if func is not None:
             func(event, *args)
@@ -689,6 +725,7 @@ class Canvas(app.Canvas):
         self.renderProgram["u_diffuse_color"] = self.diffuseColor
         self.renderProgram["u_specular_color"] = self.specularColor
         self.renderProgram['u_Shininess'] = self.shininess
+        self.renderProgram["u_ambient_intensity"] = self.ambientIntensity
         self.cmapName = name
         self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
         print(' Using colormap %s.' % name, end="\r")
@@ -697,6 +734,13 @@ class Canvas(app.Canvas):
         material = materials.get(materialName)
         # TODO replace all the u_***_color and u_shininess by the dic values
         if material is not None:
+            self.useMaterial = True
+            self.renderProgram["use_material"] = self.useMaterial
+            self.renderProgram["u_Ambient_color"] = material['ambient']
+            self.renderProgram["u_diffuse_color"] = material['diffuse']
+            self.renderProgram["u_specular_color"] = material['specular']
+            self.renderProgram['u_Shininess'] = material['shininess']
+            self.renderProgram["u_ambient_intensity"] = 1.0
             print(' Using material %s.' % materialName, end="\r")
 
     SHADOW_TYPE = ("None                     ",
@@ -708,23 +752,23 @@ class Canvas(app.Canvas):
         if lightType == 'ambient':
             self.ambient = not self.ambient
             self.renderProgram[lightType] = self.ambient
-            print(' Ambient light: %s' % self.ambient, end="\r")
+            print(' Ambient light: %s        ' % self.ambient, end="\r")
         elif lightType == 'diffuse':
             self.diffuse = not self.diffuse
             self.renderProgram[lightType] = self.diffuse
-            print(' Diffuse light: %s' % self.diffuse, end="\r")
+            print(' Diffuse light: %s        ' % self.diffuse, end="\r")
         elif lightType == 'specular':
             self.specular = not self.specular
             self.renderProgram[lightType] = self.specular
-            print(' Specular light: %s' % self.specular, end="\r")
+            print(' Specular light: %s       ' % self.specular, end="\r")
         elif lightType == 'shadow':
             self.shadow = (self.shadow + 1) % 4
             self.renderProgram[lightType] = self.shadow
-            print(' Shadows: %s' % self.SHADOW_TYPE[self.shadow], end="\r")
+            print(' Shadows: %s              ' % self.SHADOW_TYPE[self.shadow], end="\r")
         elif lightType == 'attenuation':
             self.attenuation = not self.attenuation
             self.renderProgram[lightType] = self.attenuation
-            print(' Attenuation: %s' % self.attenuation, end="\r")
+            print(' Attenuation: %s          ' % self.attenuation, end="\r")
         elif lightType == 'shininess' and modification == '-':
             self.shininess *= sqrt(2)
             self.shininess = np.clip(self.shininess, 0.1, 8192)

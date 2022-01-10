@@ -665,7 +665,6 @@ float shadow_ratio(int shadowType) {
         //    The position is rounded to the millimeter to avoid too much aliasing
         index = int(modI(16.0*random(floor(v_position.xyz * 1000.0), i), 16.0));
     }
-
     if ( texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[index] / spreading ).r
          < vertex_relative_to_light.z - u_Tolerance_constant ) {
       visibility -= 1./float(samples);
@@ -686,30 +685,50 @@ void main()
     vec4 ambient_color = vec4(0, 0, 0, 1);
     vec4 diffuse_color = vec4(0, 0, 0, 1);
     vec4 specular_color = vec4(0, 0, 0, 1);
+    vec4 potential_specular_light = vec4(0, 0, 0, 1);
     float light_distance;
     float attenuationFactor = 1.0;
     float visibility = 1.0;
 
     float u;
+    vec4 v_color;
+    if (!use_material) {
     // pingpong between layers and choice of reagent
-    if(pingpong == 0) {
-        if(reagent == 1){
-            u = texture2D(texture, v_texcoord).r;
+        if(pingpong == 0) {
+            if(reagent == 1){
+                u = texture2D(texture, v_texcoord).r;
+            } else {
+                u = texture2D(texture, v_texcoord).g;
+            }
         } else {
-            u = texture2D(texture, v_texcoord).g;
+            if(reagent == 1){
+                u = texture2D(texture, v_texcoord).b;
+            } else {
+                u = texture2D(texture, v_texcoord).a;
+            }
+        }
+        vec4 v_color = texture1D(cmap, u);
+
+        // Calculate the ambient color as a percentage of the surface color
+        if (ambient) {
+            ambient_color = vec4(u_ambient_intensity * vec3(v_color), v_color.a);
+        }
+        if (diffuse) {
+            diffuse_color = v_color;
+        }
+        if (specular) {
+            potential_specular_light = vec4(u_light_intensity, 1);
         }
     } else {
-        if(reagent == 1){
-            u = texture2D(texture, v_texcoord).b;
-        } else {
-            u = texture2D(texture, v_texcoord).a;
+        if (ambient) {
+            ambient_color = u_ambient_intensity * u_Ambient_color;
         }
-    }
-    vec4 v_color = texture1D(cmap, u);
-
-    // Calculate the ambient color as a percentage of the surface color
-    if (ambient) {
-        ambient_color = vec4(u_ambient_intensity * vec3(v_color), v_color.a);
+        if (diffuse) {
+            diffuse_color = u_diffuse_color;
+        }
+        if (specular) {
+            potential_specular_light = u_specular_color;
+        }
     }
 
     // Harsh shadow limits
@@ -747,7 +766,7 @@ void main()
         cos_angle = clamp(cos_angle, 0.0, 1.0);
 
         // Scale the color of this fragment based on its angle to the light.
-        diffuse_color = v_color * cos_angle;
+        diffuse_color = diffuse_color * cos_angle;
     }
 
     if (specular) {
@@ -768,7 +787,7 @@ void main()
 
         // The specular color is from the light source, not the object
         if (cos_angle > 0.0) {
-            specular_color = vec4(u_light_intensity, 1) * cos_angle;
+            specular_color = potential_specular_light * cos_angle;
             diffuse_color = diffuse_color * (1.0 - cos_angle);
         }
     }
