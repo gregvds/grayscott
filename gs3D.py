@@ -85,15 +85,19 @@ from vispy.gloo import gl, Program, VertexBuffer, IndexBuffer, FrameBuffer
 from vispy.util.transforms import perspective, translate, rotate
 from vispy.geometry import create_plane
 
-from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid, materials)
+from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid)
 
 from shaders import compute_vertex
 from shaders import compute_fragment_2 as compute_fragment
 from shaders import render_3D_vertex
 from shaders import render_3D_fragment
-from shaders import render_3D_fragment_no_choices_no_material
 from shaders import shadow_vertex
 from shaders import shadow_fragment
+
+
+# ? Use of this ?
+# gl.use_gl('gl+')
+
 ################################################################################
 
 
@@ -227,8 +231,8 @@ class Canvas(app.Canvas):
         # Currently, the shadowmap is a simple image for I cannot set properly
         # the FrameBuffer depth part (RenderBuffer)...
         self.shadowMapSize = 1024
-        self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
-        self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize), dtype=np.float32) * .1
+        self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_LUMINANCE, internalformat='r32f')
 
         # To debug, show shadowmap or coordinates map instead of view from normal camera
         self.displaySwitch = 0
@@ -239,7 +243,7 @@ class Canvas(app.Canvas):
         self.attenuation = True
         self.diffuse     = True
         self.specular    = True
-        self.shadow      = 2
+        self.shadow      = 1
 
         # Colormaps related variables
         # --------------------------------------
@@ -282,17 +286,7 @@ class Canvas(app.Canvas):
             ('@', ('Control',)): (self.modifyLightCharacteristic, ('attenuation',)),
             ('A', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '-')),
             ('Z', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+')),
-            ('#', ('Shift',)): (self.switchDisplay, ()),
-            ('1', ('Shift', 'Control')): (self.setMaterial, ('Gold',)),
-            ('2', ('Shift', 'Control')): (self.setMaterial, ('Brass',)),
-            ('3', ('Shift', 'Control')): (self.setMaterial, ('Bronze',)),
-            ('4', ('Shift', 'Control')): (self.setMaterial, ('Copper',)),
-            ('5', ('Shift', 'Control')): (self.setMaterial, ('Emerald',)),
-            ('6', ('Shift', 'Control')): (self.setMaterial, ('Jade',)),
-            ('7', ('Shift', 'Control')): (self.setMaterial, ('Obsidian',)),
-            ('8', ('Shift', 'Control')): (self.setMaterial, ('Pearl',)),
-            ('9', ('Shift', 'Control')): (self.setMaterial, ('Ruby',)),
-            ('0', ('Shift', 'Control')): (self.setMaterial, ('Turquoise',))
+            ('#', ('Shift',)): (self.switchDisplay, ())
         }
         for key in Canvas.colormapDictionnary.keys():
             self.keyactionDictionnary[(key,())] = (self.pickColorMap, ())
@@ -309,7 +303,7 @@ class Canvas(app.Canvas):
 
         # Build compute program
         # --------------------------------------
-        self.computeProgram = Program(compute_vertex, compute_fragment)
+        self.computeProgram = Program(compute_vertex, compute_fragment, count=4)
         self.computeProgram["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
         self.computeProgram["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
         self.computeProgram["texture"] = self.texture
@@ -324,12 +318,7 @@ class Canvas(app.Canvas):
 
         # Build render program
         # --------------------------------------
-        if options:
-            print('Rendering with fully interactive fragment shader')
-            self.renderProgram = Program(render_3D_vertex, render_3D_fragment)
-        else:
-            print('Rendering with simplified fragment shader')
-            self.renderProgram = Program(render_3D_vertex, render_3D_fragment_no_choices_no_material)
+        self.renderProgram = Program(render_3D_vertex, render_3D_fragment)
         self.renderProgram.bind(vertices)
         self.renderProgram["texture"] = self.computeProgram["texture"]
         self.renderProgram["texture"].interpolation = gl.GL_LINEAR
@@ -354,7 +343,6 @@ class Canvas(app.Canvas):
         self.renderProgram["shadow"] = self.shadow
         self.renderProgram["u_light_position"] = self.lightCoordinates
         self.renderProgram["u_light_intensity"] = self.lightIntensity
-        self.renderProgram["use_material"] = self.useMaterial
         self.renderProgram["u_Ambient_color"] = self.ambientColor
         self.renderProgram["u_ambient_intensity"] = self.ambientIntensity
         self.renderProgram["u_diffuse_color"] = self.diffuseColor
@@ -367,7 +355,7 @@ class Canvas(app.Canvas):
 
         # Build shadowmap render program
         # --------------------------------------
-        self.shadowProgram = Program(shadow_vertex, shadow_fragment)
+        self.shadowProgram = Program(shadow_vertex, shadow_fragment, count=self.w*self.h)
         self.shadowProgram.bind(vertices)
         self.shadowProgram["texture"] = self.computeProgram["texture"]
         self.shadowProgram["texture"].interpolation = gl.GL_LINEAR
@@ -622,29 +610,14 @@ class Canvas(app.Canvas):
             self.setColormap(colorMapName)
 
     def setColormap(self, name):
-        self.useMaterial = False
-        self.renderProgram["use_material"] = self.useMaterial
-        self.renderProgram["u_Ambient_color"] = self.ambientColor
-        self.renderProgram["u_diffuse_color"] = self.diffuseColor
-        self.renderProgram["u_specular_color"] = self.specularColor
-        self.renderProgram['u_Shininess'] = self.shininess
-        self.renderProgram["u_ambient_intensity"] = self.ambientIntensity
+        # self.renderProgram["u_Ambient_color"] = self.ambientColor
+        # self.renderProgram["u_diffuse_color"] = self.diffuseColor
+        # self.renderProgram["u_specular_color"] = self.specularColor
+        # self.renderProgram['u_Shininess'] = self.shininess
+        # self.renderProgram["u_ambient_intensity"] = self.ambientIntensity
         self.cmapName = name
         self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
         print(' Using colormap %s.' % name, end="\r")
-
-    def setMaterial(self, event, materialName=None):
-        material = materials.get(materialName)
-        # TODO replace all the u_***_color and u_shininess by the dic values
-        if material is not None:
-            self.useMaterial = True
-            self.renderProgram["use_material"] = self.useMaterial
-            self.renderProgram["u_Ambient_color"] = material['ambient']
-            self.renderProgram["u_diffuse_color"] = material['diffuse']
-            self.renderProgram["u_specular_color"] = material['specular']
-            self.renderProgram['u_Shininess'] = material['shininess']
-            self.renderProgram["u_ambient_intensity"] = 1.0
-            print(' Using material %s.' % materialName, end="\r")
 
     SHADOW_TYPE = ("None                     ",
                    "Simple                   ",
@@ -854,17 +827,13 @@ if __name__ == '__main__':
                         choices=Canvas.colormapDictionnary.values(),
                         default="irkoutsk",
                         help="Colormap used")
-    parser.add_argument("-o",
-                        "--Options_on",
-                        action='store_true',
-                        help="charges a fully fleshed render fragment")
+
     args = parser.parse_args()
 
 
     c = Canvas(modelSize=(args.Size, args.Size),
                size=(args.Window, args.Window),
                specie=args.Pattern,
-               cmap=args.Colormap,
-               options = args.Options_on)
+               cmap=args.Colormap)
     c.measure_fps2(window=2)
     app.run()

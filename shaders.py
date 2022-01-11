@@ -549,7 +549,6 @@ uniform lowp float u_ambient_intensity;
 uniform lowp vec4 u_diffuse_color;
 uniform lowp vec4 u_specular_color;
 uniform lowp float u_Shininess;
-uniform bool use_material;
 uniform lowp float c1;
 uniform lowp float c2;
 uniform lowp float c3;
@@ -744,35 +743,22 @@ void main()
     float lowp visibility = 1.0;
 
     float u;
-    vec4 lowp v_color;
-    if (!use_material) {
-        vec4 texValue = texture2D(texture, v_texcoord);
-        u = texValue.r * when_eq_int(reagent, 1) * when_eq_int(pingpong, 0) +
-            texValue.g * when_eq_int(reagent, 0) * when_eq_int(pingpong, 0) +
-            texValue.b * when_eq_int(reagent, 1) * when_eq_int(pingpong, 1) +
-            texValue.a * when_eq_int(reagent, 0) * when_eq_int(pingpong, 1);
-        v_color = texture1D(cmap, u);
+    vec4 texValue = texture2D(texture, v_texcoord);
+    u = texValue.r * when_eq_int(reagent, 1) * when_eq_int(pingpong, 0) +
+        texValue.g * when_eq_int(reagent, 0) * when_eq_int(pingpong, 0) +
+        texValue.b * when_eq_int(reagent, 1) * when_eq_int(pingpong, 1) +
+        texValue.a * when_eq_int(reagent, 0) * when_eq_int(pingpong, 1);
+    vec4 lowp v_color = texture1D(cmap, u);
 
-        // Calculate the ambient color as a percentage of the surface color
-        if (ambient) {
-            ambient_color = vec4(u_ambient_intensity * vec3(v_color), v_color.a);
-        }
-        if (diffuse) {
-            diffuse_color = v_color;
-        }
-        if (specular) {
-            potential_specular_light = vec4(u_light_intensity, 1);
-        }
-    } else {
-        if (ambient) {
-            ambient_color = u_ambient_intensity * u_Ambient_color;
-        }
-        if (diffuse) {
-            diffuse_color = u_diffuse_color;
-        }
-        if (specular) {
-            potential_specular_light = u_specular_color;
-        }
+    // Calculate the ambient color as a percentage of the surface color
+    if (ambient) {
+        ambient_color = vec4(u_ambient_intensity * vec3(v_color), v_color.a);
+    }
+    if (diffuse) {
+        diffuse_color = v_color;
+    }
+    if (specular) {
+        potential_specular_light = vec4(u_light_intensity, 1);
     }
 
     // Harsh shadow limits
@@ -842,196 +828,6 @@ void main()
 }
 """
 
-# This alternate simplified version has the same signature (inputs) as the one
-#  above, but does not use all the switches, to attempt at optimize it
-render_3D_fragment_no_choices_no_material = """
-precision highp float;
-precision highp vec2;
-precision highp vec3;
-precision highp vec4;
-precision highp mat4;
-precision highp sampler2D;
-
-uniform int pingpong;
-uniform int reagent;             // toggle render between reagent u and v
-
-// Light model
-uniform vec3 u_light_position;
-uniform vec3 u_light_intensity;
-uniform vec4 u_Ambient_color;
-uniform float u_ambient_intensity;
-uniform vec4 u_diffuse_color;
-uniform vec4 u_specular_color;
-uniform float u_Shininess;
-uniform bool use_material;
-uniform float c1;
-uniform float c2;
-uniform float c3;
-
-uniform sampler2D texture; // u:= r or b following pinpong
-uniform sampler1D cmap;          // colormap used to render reagent concentration
-
-uniform sampler2D shadowMap;
-uniform float u_Tolerance_constant;
-
-uniform bool ambient;
-uniform bool diffuse;
-uniform bool attenuation;
-uniform bool specular;
-uniform int shadow;
-
-// Data coming from the vertex shader
-varying vec3 v_position;
-varying vec3 v_normal;
-varying vec2 v_texcoord;
-varying vec4 v_Vertex_relative_to_light;
-
-
-//-------------------------------------------------------------------------
-// Determine if this fragment is in a shadow. Returns ratio of visibility.
-// Sample the shadowmap N times instead of once and modulate the visibility
-float shadow_ratio(int shadowType) {
-
-  vec2 poissonDisk[16] = vec2[](
-   vec2( -0.94201624, -0.39906216 ),
-   vec2( 0.94558609, -0.76890725 ),
-   vec2( -0.094184101, -0.92938870 ),
-   vec2( 0.34495938, 0.29387760 ),
-   vec2( -0.91588581, 0.45771432 ),
-   vec2( -0.81544232, -0.87912464 ),
-   vec2( -0.38277543, 0.27676845 ),
-   vec2( 0.97484398, 0.75648379 ),
-   vec2( 0.44323325, -0.97511554 ),
-   vec2( 0.53742981, -0.47373420 ),
-   vec2( -0.26496911, -0.41893023 ),
-   vec2( 0.79197514, 0.19090188 ),
-   vec2( -0.24188840, 0.99706507 ),
-   vec2( -0.81409955, 0.91437590 ),
-   vec2( 0.19984126, 0.78641367 ),
-   vec2( 0.14383161, -0.14100790 )
-  );
-  float visibility = 1.0;
-  float spreading = 2500.0;
-  int samples = 4;
-
-  // The vertex location rendered from the light source is almost in Normalized
-  // Device Coordinates (NDC), but the perspective division has not been
-  // performed yet. Perform the perspective divide. The (x,y,z) vertex location
-  // components are now each in the range [-1.0,+1.0].
-  vec3 vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
-
-  // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
-  // to the range [0.0,1.0]. This mapping is done by scaling
-  // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
-  // shifting the values by +0.5.
-  vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
-
-  // Get the z value of this fragment in relationship to the light source.
-  // This value was stored in the shadow map (depth buffer of the frame buffer)
-  // which was passed to the shader as a texture map.
-  //vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
-
-  int index;
-  for (int i=0; i<samples; i++) {
-    // use either :
-    index = i;
-    if ( texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[index] / spreading ).r
-         < vertex_relative_to_light.z - u_Tolerance_constant ) {
-      visibility -= 1./float(samples);
-    }
-  }
-  return visibility;
-}
-
-//-------------------------------------------------------------------------
-
-void main()
-{
-    vec3 to_light;
-    vec3 vertex_normal;
-    vec3 reflection;
-    vec3 to_camera;
-    float cos_angle = 0.0;
-    vec4 ambient_color = vec4(0, 0, 0, 1);
-    vec4 diffuse_color = vec4(0, 0, 0, 1);
-    vec4 specular_color = vec4(0, 0, 0, 1);
-    vec4 potential_specular_light = vec4(0, 0, 0, 1);
-    float light_distance;
-    float attenuationFactor = 1.0;
-    float visibility = 1.0;
-
-    float u;
-    // pingpong between layers and choice of reagent
-    if(pingpong == 0) {
-        if(reagent == 1){
-            u = texture2D(texture, v_texcoord).r;
-        } else {
-            u = texture2D(texture, v_texcoord).g;
-        }
-    } else {
-        if(reagent == 1){
-            u = texture2D(texture, v_texcoord).b;
-        } else {
-            u = texture2D(texture, v_texcoord).a;
-        }
-    }
-    vec4 v_color = texture1D(cmap, u);
-
-    // Calculate the ambient color as a percentage of the surface color
-    ambient_color = vec4(u_ambient_intensity * vec3(v_color), v_color.a);
-    diffuse_color = v_color;
-    potential_specular_light = vec4(u_light_intensity, 1);
-
-    // Smoother shadow
-    visibility = shadow_ratio(shadow);
-
-    // Calculate a vector from the fragment location to the light source
-    to_light = u_light_position - v_position;
-
-    // while computing this vector, let's compute its length and the attenuation
-    // due to it before normalizing it
-    light_distance = length(to_light);
-    attenuationFactor = 1.0/(c1 + c2 * light_distance + c3 * light_distance * light_distance);
-    to_light = normalize( to_light );
-
-    // The vertex's normal vector is being interpolated across the primitive
-    // which can make it un-normalized. So normalize the vertex's normal vector.
-    vertex_normal = normalize( v_normal );
-
-    // Calculate the cosine of the angle between the vertex's normal vector
-    // and the vector going to the light.
-    cos_angle = dot(vertex_normal, to_light);
-    //cos_angle = clamp(cos_angle, 0.0, 1.0);
-
-    // Scale the color of this fragment based on its angle to the light.
-    diffuse_color = diffuse_color * clamp(cos_angle, 0.0, 1.0);
-    // Calculate the reflection vector
-    reflection = 2.0 * cos_angle * vertex_normal - to_light;
-    reflection = normalize( reflection );
-
-    // Calculate a vector from the fragment location to the camera.
-    // The camera is at the origin, so negating the vertex location gives the vector
-    to_camera = -1.0 * v_position;
-    to_camera = normalize( to_camera );
-
-    // Calculate the cosine of the angle between the reflection vector
-    // and the vector going to the camera.
-    cos_angle = dot(reflection, to_camera);
-    cos_angle = clamp(cos_angle, 0.0, 1.0);
-    cos_angle = pow(cos_angle, u_Shininess);
-
-    // The specular color is from the light source, not the object
-    if (cos_angle > 0.0) {
-        specular_color = potential_specular_light * cos_angle;
-        diffuse_color = diffuse_color * (1.0 - cos_angle);
-    }
-
-    // don't really know on which part of the light sources should the attenuation play
-    // Maybe not on the ambient_color?
-    gl_FragColor = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
-}
-"""
-
 # This vertex shader is somehow the same as the render_3D_vertex
 # except it outputs also the gl_position as w_position to the fragment
 shadow_vertex = """
@@ -1064,6 +860,7 @@ attribute vec4 color;
 varying vec4 w_position;
 
 //-------------------------------------------------------------------------
+// A way to avoid ifs...
 
 int when_eq_int(int x, int y) {
   return 1 - int(abs(sign(x - y)));
@@ -1073,15 +870,12 @@ int when_eq_int(int x, int y) {
 
 void main()
 {
-    // Here position.z is received from texture
-    vec2 p = texcoord;
-    float c;
-
-    vec4 textureValues = texture2DLod(texture, p, 0);
-    c = when_eq_int(pingpong, 0) * when_eq_int(reagent, 1) * textureValues.r +
-        when_eq_int(pingpong, 0) * when_eq_int(reagent, 0) * textureValues.g +
-        when_eq_int(pingpong, 1) * when_eq_int(reagent, 1) * textureValues.b +
-        when_eq_int(pingpong, 1) * when_eq_int(reagent, 0) * textureValues.a;
+    // Here position.z is read from texture
+    vec4 textureValues = texture2DLod(texture, texcoord, 0);
+    float c = when_eq_int(pingpong, 0) * when_eq_int(reagent, 1) * textureValues.r +
+              when_eq_int(pingpong, 0) * when_eq_int(reagent, 0) * textureValues.g +
+              when_eq_int(pingpong, 1) * when_eq_int(reagent, 1) * textureValues.b +
+              when_eq_int(pingpong, 1) * when_eq_int(reagent, 0) * textureValues.a;
 
     c = (1.0 - c)/scalingFactor;
     vec3 position2 = vec3(position.x, position.y, c);
@@ -1113,12 +907,15 @@ void main()
     // a Frambuffer(depth=...) accepting to be drawn in
     float depth = w_position.z / w_position.w;
     depth = depth * 0.5 + 0.5;
-    gl_FragColor = vec4(depth, depth, depth, 1.0);
+    gl_FragColor.r = depth;
 }
 """
 
 ################################################################################
+# WIP
 # 3D shaders and fragment to render offsets coordinates to be picked by mouse click and drag
+# Currently not in use. Intent was to be able to pick up on the object texcoords
+# to pass to model to activate brush at is proper location...
 
 coord_vertex = """
 precision highp float;
