@@ -113,6 +113,156 @@ materials = {
         'shininess': 10}
     }
 
+linearSegmentedColormaps = {
+    'detroit': {
+        'colorList': [
+            'white',
+            'lightblue',
+            'cadetblue',
+            'black',
+            'cadetblue',
+            'lightblue',
+            'white'
+        ],
+        'nodes' : [0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0]
+    },
+    'antidetroit': {
+        'colorList': [
+            'black',
+            'cadetblue',
+            'lightblue',
+            'white',
+            'lightblue',
+            'cadetblue',
+            'black'
+        ],
+        'nodes': [0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0]
+    },
+    'uppsala': {
+        'colorList': [
+            'slategrey',
+            'goldenrod',
+            'antiquewhite',
+            'olivedrab',
+            'lawngreen',
+            'lightseagreen',
+            'paleturquoise'
+        ],
+        'nodes': [0.0, 0.4, 0.46, 0.5, 0.58, 0.75, 1.0]
+    },
+    'oslo': {
+        'colorList': [
+            'black',
+            'saddlebrown',
+            'sienna',
+            'white',
+            'aliceblue',
+            'skyblue'
+        ],
+        'nodes': [0.0, 0.48, 0.5, 0.51, 0.57, 1.0]
+    },
+    'Lochinver': {
+        'colorList': [
+            'floralwhite',
+            'antiquewhite',
+            'wheat',
+            'cornflowerblue',
+            'dodgerblue',
+            'powderblue'
+        ],
+        'nodes': [0.0, 0.4, 0.45, 0.5, 0.65, 1.0]
+    },
+    'tromso': {
+        'colorList': [
+            'black',
+            'black',
+            'chocolate',
+            'ivory',
+            'sandybrown',
+            'black',
+            'black'
+        ],
+        'nodes': [0.0, 0.3, 0.47, 0.5, 0.53, 0.7, 1.0]
+    },
+    'osmort': {
+        'colorList': [
+            'linen',
+            'linen',
+            'chocolate',
+            'black',
+            'sandybrown',
+            'linen',
+            'linen'
+        ],
+        'nodes': [0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0]
+    },
+    'irkoutsk': {
+        'colorList': [
+            'darkkhaki',
+            'olive',
+            'dimgray',
+            'seashell',
+            'yellowgreen',
+            'darkolivegreen',
+            'olivedrab'
+        ],
+        'nodes': [0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0]
+    },
+    'krasnoiarsk': {
+        'colorList': [
+            'darkgoldenrod',
+            'goldenrod',
+            'dimgray',
+            'cornsilk',
+            'gold',
+            'tan',
+            'burlywood'
+        ],
+        'nodes': [0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0]
+    },
+    'Rejkjavik': {
+        'colorList': [
+            'rebeccapurple',
+            'indigo',
+            'darkorchid',
+            'gold',
+            'darkorange',
+            'orange',
+            'gold'
+        ],
+        'nodes': [0.0, 0.3, 0.47, 0.5, 0.53, 0.7, 1.0]
+    },
+    'hs': {
+        'colorList': [
+            'black',
+            '#100926',
+            'grey',
+            'gold',
+            'lemonchiffon',
+            'azure'
+        ],
+        'nodes': [0.0, 0.2, 0.5, 0.6, 0.7, 1.0]
+    }
+}
+
+stackedColormaps = {
+    'Boston': {
+        'colorMapList': [
+            'bone_r',
+            'gray',
+            'pink_r',
+            'YlOrBr_r'],
+        'proportions': [960, 160, 160, 960]
+    },
+    'malmo': {
+        'colorMapList': [
+            'bone_r',
+            'Blues_r',
+            'GnBu_r',
+            'Greens'],
+        'proportions': [512, 128, 512, 128]
+    }
+}
 
 def get_colormap(name, size=256):
     vispy_cmaps = color.get_colormaps()
@@ -185,143 +335,15 @@ def createAndRegisterLinearSegmentedCmap(name, colors, nodes=None):
 
 def createColormaps():
     # definition of some custom colormaps
-    createAndRegisterCmap(
-        'malmo', [
-            'bone_r',
-            'Blues_r',
-            'GnBu_r',
-            'Greens'],
-        proportions=[512, 128, 512, 128])
-    createAndRegisterCmap(
-        'Boston', [
-            'bone_r',
-            'gray',
-            'pink_r',
-            'YlOrBr_r'],
-        proportions=[960, 160, 160, 960])
-    createAndRegisterLinearSegmentedCmap(
-        'detroit', [
-            'white',
-            'lightblue',
-            'cadetblue',
-            'black',
-            'cadetblue',
-            'lightblue',
-            'white'
-        ],
-        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'antidetroit', [
-            'black',
-            'cadetblue',
-            'lightblue',
-            'white',
-            'lightblue',
-            'cadetblue',
-            'black'
-        ],
-        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'uppsala', [
-            'slategrey',
-            'goldenrod',
-            'antiquewhite',
-            'olivedrab',
-            'lawngreen',
-            'lightseagreen',
-            'paleturquoise'
-        ],
-        nodes=[0.0, 0.4, 0.46, 0.5, 0.58, 0.75, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'oslo', [
-            'black',
-            'saddlebrown',
-            'sienna',
-            'white',
-            'aliceblue',
-            'skyblue'
-        ],
-        nodes=[0.0, 0.48, 0.5, 0.51, 0.57, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'Lochinver', [
-            'floralwhite',
-            'antiquewhite',
-            'wheat',
-            'cornflowerblue',
-            'dodgerblue',
-            'powderblue'
-        ],
-        nodes=[0.0, 0.4, 0.45, 0.5, 0.65, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'tromso', [
-            'black',
-            'black',
-            'chocolate',
-            'ivory',
-            'sandybrown',
-            'black',
-            'black'
-        ],
-        nodes=[0.0, 0.3, 0.47, 0.5, 0.53, 0.7, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'osmort', [
-            'linen',
-            'linen',
-            'chocolate',
-            'black',
-            'sandybrown',
-            'linen',
-            'linen'
-        ],
-        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'irkoutsk', [
-            'darkkhaki',
-            'olive',
-            'dimgray',
-            'seashell',
-            'yellowgreen',
-            'darkolivegreen',
-            'olivedrab'
-        ],
-        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'krasnoiarsk', [
-            'darkgoldenrod',
-            'goldenrod',
-            'dimgray',
-            'cornsilk',
-            'gold',
-            'tan',
-            'burlywood'
-        ],
-        nodes=[0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'Rejkjavik', [
-            'rebeccapurple',
-            'indigo',
-            'darkorchid',
-            'gold',
-            'darkorange',
-            'orange',
-            'gold'
-        ],
-        nodes=[0.0, 0.3, 0.47, 0.5, 0.53, 0.7, 1.0])
-    createAndRegisterLinearSegmentedCmap(
-        'hs', [
-            'black',
-            '#100926',
-            'grey',
-            'gold',
-            'lemonchiffon',
-            'azure'
-        ],
-        nodes=[0.0, 0.2, 0.5, 0.6, 0.7, 1.0])
-    """
-    for materialName in materials.keys():
-        materialColor = materials[materialName]['ambient']
-        createAndRegisterLinearSegmentedCmap(materialName, [materialColor, materialColor])
-    """
+    for colorMapName in stackedColormaps.keys():
+        colormaps = stackedColormaps[colorMapName]['colorMapList']
+        proportions = stackedColormaps[colorMapName]['proportions']
+        createAndRegisterCmap(colorMapName, colormaps, proportions)
+
+    for colormapName in linearSegmentedColormaps.keys():
+        colors = linearSegmentedColormaps[colormapName]['colorList']
+        nodes = linearSegmentedColormaps[colormapName]['nodes']
+        createAndRegisterLinearSegmentedCmap(colormapName, colors, nodes)
 
 
 def plot_color_gradients(cmap_category, cmap_list):
