@@ -200,12 +200,12 @@ class Canvas(app.Canvas):
         # --------------------------------------
         self.viewCoordinates = [0, 0, -2.5]
         self.view = translate((self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
-        print(self.view)
         self.model = np.eye(4, dtype=np.float32)
         self.modelAzimuth = 0
         self.modelDirection = 0
 
-        # light Parameters: direction, shininess exponant, attenuation parameters, ambientLight intensity
+        # light Parameters: direction, shininess exponant, attenuation parameters,
+        # ambientLight intensity, ambientColor, diffuseColor and specularColor
         # --------------------------------------
         self.lightCoordinates = np.array([-.4, .4, -2.1])
         self.lightIntensity = (1., 1., 1.)
@@ -221,16 +221,7 @@ class Canvas(app.Canvas):
 
         # Build view, projection for shadowCam
         # --------------------------------------
-        self.shadowViewCoordinates = self.lightCoordinates
-        self.shadowView = translate((self.shadowViewCoordinates[0], self.shadowViewCoordinates[1], self.shadowViewCoordinates[2]))
-        self.shadowCamFoV = 24
-        self.shadowCamNear = .3
-        self.shadowCamFar = 8.
         self.shadowCamAt = [0, 0, 0]
-        self.shadowProjection = perspective(self.shadowCamFoV,
-                                            self.size[0] / float(self.size[1]),
-                                            self.shadowCamNear,
-                                            self.shadowCamFar)
         self.updateLightCam()
 
         # Currently, the shadowmap is a simple image for I cannot set properly
@@ -312,7 +303,7 @@ class Canvas(app.Canvas):
         for key in Canvas.speciesDictionnaryShifted.keys():
             self.keyactionDictionnary[(key,('Shift',))] = (self.pickSpecie, ())
 
-        # ? better computation for diffusion and concentration ?
+        # ? better computation ?
         # --------------------------------------
         gl.GL_FRAGMENT_PRECISION_HIGH = 1
 
@@ -350,8 +341,6 @@ class Canvas(app.Canvas):
         self.renderProgram["shadowMap"] = self.shadowTexture
         self.renderProgram["shadowMap"].interpolation = gl.GL_LINEAR
         self.renderProgram["shadowMap"].wrapping = gl.GL_CLAMP_TO_EDGE
-        self.renderProgram["near"] = self.shadowCamNear
-        self.renderProgram["far"] = self.shadowCamFar
         self.renderProgram["u_Shadowmap_projection"] = self.shadowProjection
         self.renderProgram["u_Shadowmap_view"] = self.shadowView
         self.renderProgram["u_Tolerance_constant"] = 0.005
@@ -386,13 +375,9 @@ class Canvas(app.Canvas):
         self.shadowProgram['pingpong'] = self.pingpong
         self.shadowProgram["reagent"] = 1
         self.shadowProgram["scalingFactor"] = 30. * (self.w/512)
-        self.shadowProgram["dx"] = 1./self.w
-        self.shadowProgram["dy"] = 1./self.h
-        self.shadowProgram['u_projection'] = self.shadowProjection
-        self.shadowProgram["u_view"] = self.shadowView
         self.shadowProgram["u_model"] = self.model
-        self.shadowProgram["near"] = self.shadowCamNear
-        self.shadowProgram["far"] = self.shadowCamFar
+        self.shadowProgram["u_view"] = self.shadowView
+        self.shadowProgram['u_projection'] = self.shadowProjection
 
         # Define a FrameBuffer to update model state in texture
         # --------------------------------------
@@ -436,7 +421,6 @@ class Canvas(app.Canvas):
                 self.computeProgram["pingpong"] = self.pingpong
                 self.computeProgram.draw('triangle_strip')
 
-        """
         # Render the shadowmap into buffer
         if self.shadow > 0:
             with self.shadowBuffer:
@@ -446,46 +430,6 @@ class Canvas(app.Canvas):
                                polygon_offset_fill=True)
                 gloo.clear(color=True, depth=True)
                 self.shadowProgram.draw('triangles', self.faces)
-        """
-        # always is maybe less costly than swithing with if?
-        with self.shadowBuffer:
-            gloo.set_viewport(0, 0, self.shadowMapSize, self.shadowMapSize)
-            gloo.set_state(depth_test=True,
-                           polygon_offset=(1, 1),
-                           polygon_offset_fill=True)
-            gloo.clear(color=True, depth=True)
-            self.shadowProgram.draw('triangles', self.faces)
-
-        # DEBUG show shadowmap view in normal viewport
-        # if self.displaySwitch == 1:
-        #     gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
-        #     gloo.set_state(depth_test=True,
-        #                    polygon_offset=(1, 1),
-        #                    polygon_offset_fill=True)
-        #     gloo.clear(color=True, depth=True)
-        #     self.shadowProgram.draw('triangles', self.faces)
-        #     """
-        # # DEBUG show shadowmap view in normal viewport
-        # elif self.displaySwitch == 2:
-        #     gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
-        #     gloo.set_state(depth_test=True,
-        #                    polygon_offset=(1, 1),
-        #                    polygon_offset_fill=True)
-        #     gloo.clear(color=True, depth=True)
-        #     self.coordinatesProgram.draw('triangles', self.faces)
-        #     """
-        # # Here is the true colored render of the state of the model
-        # else:
-        #     gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
-        #     gloo.set_state(blend=False, depth_test=True,
-        #                    clear_color=(0.30, 0.30, 0.35, 1.00),
-        #                    blend_func=('src_alpha', 'one_minus_src_alpha'),
-        #                    polygon_offset=(1, 1),
-        #                    polygon_offset_fill=True)
-        #     gloo.clear(color=True, depth=True)
-        #     self.renderProgram.draw('triangles', self.faces)
-
-        # always is maybe less costly than swithing with if?
         gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
         gloo.set_state(blend=False, depth_test=True,
                        clear_color=(0.30, 0.30, 0.35, 1.00),
@@ -786,6 +730,7 @@ class Canvas(app.Canvas):
             self.renderProgram["u_view"] = self.view
         if hasattr(self, 'coordinatesProgram'):
             self.coordinatesProgram["u_view"] = self.view
+        self.updateLightCam()
 
     def updateLightCam(self):
         # lightcam is placed at the light coordinates
@@ -796,7 +741,8 @@ class Canvas(app.Canvas):
         # point camera at center of the model, and compute projection parameters
         self.shadowView, (self.shadowCamFoV, self.shadowCamNear, self.shadowCamFar) = self.rotateShadowView(self.shadowView,
                                                     self.shadowViewCoordinates,
-                                                    self.shadowCamAt)
+                                                    self.shadowCamAt,
+                                                    self.viewCoordinates)
         self.shadowProjection = perspective(self.shadowCamFoV,
                                             self.size[0] / float(self.size[1]),
                                             self.shadowCamNear,
@@ -808,7 +754,7 @@ class Canvas(app.Canvas):
             self.renderProgram["u_Shadowmap_view"] = self.shadowView
             self.renderProgram["u_Shadowmap_projection"] = self.shadowProjection
 
-    def rotateShadowView(self, shadowView, eye, at):
+    def rotateShadowView(self, shadowView, eye, at, cam):
         azimuth = 180. / pi * atan((eye[0]-at[0])/(eye[2]-at[2]))
         declination = -180. / pi * atan((eye[1]-at[1])/(eye[2]-at[2]))
         azRotationMatrix = rotate(azimuth, (0, 1, 0))
@@ -818,11 +764,13 @@ class Canvas(app.Canvas):
         # The object being a simple square plane of 1 x 1, but this one being
         # orientable, let's just consider a sphere with radius = half of the diagonal
         # of the square, with 2% more
+        # one could also modulate the radius following the closeness of the main camera?
         length = np.linalg.norm(np.subtract(at, eye))
-        radius = (1.0 / sqrt(2)) * 1.02
-        fov = 2 * asin(radius / length) * 180. / pi
-        near = length - radius
-        far = length + radius
+        radiusForFOV = (1.0 / sqrt(2)) * np.clip((cam[2] / -1.25), 0.0, 1.0)
+        radiusForNearFar = (1.0 / sqrt(2)) * np.clip((cam[2] / -0.9), 0.0, 1.0)
+        fov = 2 * asin(radiusForFOV / length) * 180. / pi
+        near = length - radiusForNearFar
+        far = length + radiusForNearFar
         return rotatedView, (fov, near, far)
 
     ############################################################################

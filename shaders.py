@@ -264,13 +264,32 @@ precision highp sampler2D;
 // model data
 attribute vec2 position;
 attribute vec2 texcoord;
+uniform float dx;                // horizontal distance between texels
+uniform float dy;                // vertical distance between texels
+
 // Data (to be interpolated) that is passed on to the fragment shader
 varying vec2 v_texcoord;
+varying vec2 v_texcoord_diag1;
+varying vec2 v_texcoord_diag2;
+varying vec2 v_texcoord_diag3;
+varying vec2 v_texcoord_diag4;
+varying vec2 v_texcoord_neibor1;
+varying vec2 v_texcoord_neibor2;
+varying vec2 v_texcoord_neibor3;
+varying vec2 v_texcoord_neibor4;
 
 void main()
 {
-    gl_Position = vec4(position, 0.0, 1.0);
     v_texcoord = texcoord;
+    v_texcoord_diag1 = texcoord + vec2(-dx,-dy);
+    v_texcoord_diag2 = texcoord + vec2( dx,-dy);
+    v_texcoord_diag3 = texcoord + vec2(-dx, dy);
+    v_texcoord_diag4 = texcoord + vec2( dx, dy);
+    v_texcoord_neibor1 = texcoord + vec2(-dx, 0.0);
+    v_texcoord_neibor2 = texcoord + vec2( dx, 0.0);
+    v_texcoord_neibor3 = texcoord + vec2(0.0,-dy);
+    v_texcoord_neibor4 = texcoord + vec2(0.0, dy);
+    gl_Position = vec4(position, 0.0, 1.0);
 }
 """
 
@@ -294,6 +313,14 @@ uniform int brushtype;
 
 // Data coming from the vertex shader
 varying vec2 v_texcoord;
+varying vec2 v_texcoord_diag1;
+varying vec2 v_texcoord_diag2;
+varying vec2 v_texcoord_diag3;
+varying vec2 v_texcoord_diag4;
+varying vec2 v_texcoord_neibor1;
+varying vec2 v_texcoord_neibor2;
+varying vec2 v_texcoord_neibor3;
+varying vec2 v_texcoord_neibor4;
 
 //-------------------------------------------------------------------------
 
@@ -311,26 +338,26 @@ void main()
     if( pingpong == 0 ) {
         c = texture2D(texture, p).rg;                       // central value
                                                             // Compute Laplacian
-        l = ( texture2D(texture, p + vec2(-dx,-dy)).rg
-            + texture2D(texture, p + vec2( dx,-dy)).rg
-            + texture2D(texture, p + vec2(-dx, dy)).rg
-            + texture2D(texture, p + vec2( dx, dy)).rg) * diag
-            + ( texture2D(texture, p + vec2(-dx, 0.0)).rg
-            + texture2D(texture, p + vec2( dx, 0.0)).rg
-            + texture2D(texture, p + vec2(0.0,-dy)).rg
-            + texture2D(texture, p + vec2(0.0, dy)).rg) * neibor
+        l = ( texture2D(texture, v_texcoord_diag1).rg
+            + texture2D(texture, v_texcoord_diag2).rg
+            + texture2D(texture, v_texcoord_diag3).rg
+            + texture2D(texture, v_texcoord_diag4).rg) * diag
+            + (texture2D(texture, v_texcoord_neibor1).rg
+            + texture2D(texture, v_texcoord_neibor2).rg
+            + texture2D(texture, v_texcoord_neibor3).rg
+            + texture2D(texture, v_texcoord_neibor4).rg) * neibor
             + c * center;
     } else {
         c = texture2D(texture, p).ba;                       // central value
                                                             // Compute Laplacian
-        l = ( texture2D(texture, p + vec2(-dx,-dy)).ba
-            + texture2D(texture, p + vec2( dx,-dy)).ba
-            + texture2D(texture, p + vec2(-dx, dy)).ba
-            + texture2D(texture, p + vec2( dx, dy)).ba) * diag
-            + ( texture2D(texture, p + vec2(-dx, 0.0)).ba
-            + texture2D(texture, p + vec2( dx, 0.0)).ba
-            + texture2D(texture, p + vec2(0.0,-dy)).ba
-            + texture2D(texture, p + vec2(0.0, dy)).ba) * neibor
+        l = ( texture2D(texture, v_texcoord_diag1).ba
+            + texture2D(texture, v_texcoord_diag2).ba
+            + texture2D(texture, v_texcoord_diag3).ba
+            + texture2D(texture, v_texcoord_diag4).ba) * diag
+            + (texture2D(texture, v_texcoord_neibor1).ba
+            + texture2D(texture, v_texcoord_neibor2).ba
+            + texture2D(texture, v_texcoord_neibor3).ba
+            + texture2D(texture, v_texcoord_neibor4).ba) * neibor
             + c * center;
     }
     float u = c.r;                                    // compute some temporary
@@ -340,19 +367,22 @@ void main()
     float uvv = u * v * v;
 
     vec4 q = texture2D(params, p).rgba;
-    float ru = q.r;                                         // rate of diffusion of U
-    float rv = q.g;                                         // rate of diffusion of V
-    float f  = q.b;                                         // feed of U
-    float k  = q.a;                                         // kill of V
-    float dd = 1.0;
-    float dt = 1.0;
+    float ru = q.r;                                   // rate of diffusion of U
+    float rv = q.g;                                   // rate of diffusion of V
+    float f  = q.b;                                   // feed of U
+    float k  = q.a;                                   // kill of V
     // Gray-Scott equation diffusion+-reaction
     // U + 2V -> V + 2V
-    float du = ru * lu * dd - uvv + f * (1.0 - u);
-    float dv = rv * lv * dd + uvv - (f + k) * v;
-
-    u += du * dt;
-    v += dv * dt;
+//    float dd = 1.0;
+//    float dt = 1.0;
+//    float du = ru * lu * dd - uvv + f * (1.0 - u);
+//    float dv = rv * lv * dd + uvv - (f + k) * v;
+//    u += du * dt;
+//    v += dv * dt;
+    float du = ru * lu - uvv + f * (1.0 - u);
+    float dv = rv * lv + uvv - (f + k) * v;
+    u += du;
+    v += dv;
 
     // Manual mouse feed or kill
     vec2 diff;
@@ -396,27 +426,27 @@ uniform mat4 u_Shadowmap_view;
 
 // Model parameters
 uniform sampler2D texture; // u:= r or b following pinpong
-uniform int pingpong;
-uniform int reagent;             // toggle render between reagent u and v
-uniform float scalingFactor;
-uniform float dx;                // horizontal distance between texels
-uniform float dy;                // vertical distance between texels
+uniform lowp int pingpong;
+uniform lowp int reagent;             // toggle render between reagent u and v
+uniform lowp float scalingFactor;
+uniform lowp float dx;                // horizontal distance between texels
+uniform lowp float dy;                // vertical distance between texels
 
 // Light model
-uniform vec4 u_color;
+uniform lowp vec4 u_color;
 
 // Original model data
 attribute vec3 position;
 attribute vec2 texcoord;
-attribute vec3 normal;
-attribute vec4 color;
+attribute mediump vec3 normal;
+attribute lowp vec4 color;
 
 // Data (to be interpolated) that is passed on to the fragment shader
 varying vec3 v_position;
-varying vec3 v_normal;
-varying vec4 v_color;
+varying mediump vec3 v_normal;
+varying lowp vec4 v_color;
 varying vec2 v_texcoord;
-varying vec4 v_Vertex_relative_to_light;
+varying mediump vec4 v_Vertex_relative_to_light;
 
 void main()
 {
@@ -470,14 +500,16 @@ void main()
     // rendered by the compute_fragment(2), hence the surface of the gridplane is
     // embossed or displaced
     vec3 position2 = vec3(position.x, position.y, c);
+    vec4 modelPosition2 = u_model * vec4(position2, 1.0);
+    vec4 viewModelPosition2 = u_view * modelPosition2;
 
     // Perform the model and view transformations on the vertex and pass this
     // location to the fragment shader.
-    v_position = vec3(u_view * u_model * vec4(position2, 1.0));
+    v_position = vec3(viewModelPosition2);
 
     // Calculate this vertex's location from the light source. This is
     // used in the fragment shader to determine if fragments receive direct light.
-    v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * u_model * vec4(position2, 1.0);
+    v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * modelPosition2;
 
     // Here since position has been realtime modified, normals have to be computed again
     vec3 normal2;
@@ -494,7 +526,7 @@ void main()
     v_texcoord = texcoord;
 
     // Transform the location of the vertex for the rest of the graphics pipeline
-    gl_Position = u_projection * u_view * u_model * vec4(position2, 1.0);
+    gl_Position = u_projection * viewModelPosition2;
 }
 """
 
@@ -506,61 +538,88 @@ precision highp vec4;
 precision highp mat4;
 precision highp sampler2D;
 
-uniform int pingpong;
-uniform int reagent;             // toggle render between reagent u and v
+uniform lowp int pingpong;
+uniform lowp int reagent;             // toggle render between reagent u and v
 
 // Light model
-uniform vec3 u_light_position;
-uniform vec3 u_light_intensity;
-uniform vec4 u_Ambient_color;
-uniform float u_ambient_intensity;
-uniform vec4 u_diffuse_color;
-uniform vec4 u_specular_color;
-uniform float u_Shininess;
+uniform lowp vec3 u_light_position;
+uniform lowp vec3 u_light_intensity;
+uniform lowp vec4 u_Ambient_color;
+uniform lowp float u_ambient_intensity;
+uniform lowp vec4 u_diffuse_color;
+uniform lowp vec4 u_specular_color;
+uniform lowp float u_Shininess;
 uniform bool use_material;
-uniform float c1;
-uniform float c2;
-uniform float c3;
+uniform lowp float c1;
+uniform lowp float c2;
+uniform lowp float c3;
 
 uniform sampler2D texture; // u:= r or b following pinpong
-uniform sampler1D cmap;          // colormap used to render reagent concentration
-
-// TEST HERE sampler2DShadow Maybe this could accept a renderbuffer of the kind
-// depth?
+uniform lowp sampler1D cmap;          // colormap used to render reagent concentration
 uniform sampler2D shadowMap;
-uniform float near;
-uniform float far;
-uniform float u_Tolerance_constant;
+uniform lowp float u_Tolerance_constant;
 
 uniform bool ambient;
 uniform bool diffuse;
 uniform bool attenuation;
 uniform bool specular;
-uniform int shadow;
+uniform lowp int shadow;
 
 // Data coming from the vertex shader
 varying vec3 v_position;
-varying vec3 v_normal;
+varying mediump vec3 v_normal;
 varying vec2 v_texcoord;
-varying vec4 v_Vertex_relative_to_light;
+varying mediump vec4 v_Vertex_relative_to_light;
 
 
 //-------------------------------------------------------------------------
 // Returns a random number based on a vec3 and an int.
 float random(vec3 seed, int i){
     vec4 seed4 = vec4(seed, i);
-    float dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
+    float lowp dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
     return fract(sin(dot_product) * 43758.5453);
 }
 //-------------------------------------------------------------------------
 
 // Returns accurate MOD when arguments are approximate integers.
 float modI(float a,float b) {
-    float m=a-floor((a+0.5)/b)*b;
+    float lowp m = a-floor((a+0.5)/b)*b;
     return floor(m+0.5);
 }
 
 //-------------------------------------------------------------------------
+// attempt at optimizing simple comparisons (ifs) by replacing them with math
+
+float when_eq_float(float x, float y) {
+  return 1.0 - abs(sign(x - y));
+}
+
+int when_eq_int(int x, int y) {
+  return 1 - int(abs(sign(x - y)));
+}
+
+float when_neq(float x, float y) {
+  return abs(sign(x - y));
+}
+
+float when_gt(float x, float y) {
+  return max(sign(x - y), 0.0);
+}
+
+float when_lt(float x, float y) {
+  return max(sign(y - x), 0.0);
+}
+
+float when_ge(float x, float y) {
+  return 1.0 - when_lt(x, y);
+}
+
+float when_le(float x, float y) {
+  return 1.0 - when_gt(x, y);
+}
+
+//-------------------------------------------------------------------------
+
 // Determine if this fragment is in a shadow. Returns true or false.
 bool in_shadow(void) {
 
@@ -568,7 +627,7 @@ bool in_shadow(void) {
   // Device Coordinates (NDC), but the perspective division has not been
   // performed yet. Perform the perspective divide. The (x,y,z) vertex location
   // components are now each in the range [-1.0,+1.0].
-  vec3 vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
+  vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
 
   // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
   // to the range [0.0,1.0]. This mapping is done by scaling
@@ -595,15 +654,7 @@ bool in_shadow(void) {
   // distance to the light source was saved in the shadowmap, some
   // precision was lost. Therefore we need a small tolerance factor to
   // compensate for the lost precision.
-  if ( vertex_relative_to_light.z <= shadowmap_distance + u_Tolerance_constant ) {
-    // This surface receives full light because it is the closest surface
-    // to the light.
-    return false;
-  } else {
-    // This surface is in a shadow because there is a closer surface to
-    // the light source.
-    return true;
-  }
+  return bool(when_gt(vertex_relative_to_light.z, shadowmap_distance + u_Tolerance_constant));
 }
 
 //-------------------------------------------------------------------------
@@ -613,7 +664,7 @@ bool in_shadow(void) {
 // Sample the shadowmap N times instead of once and modulate the visibility
 float shadow_ratio(int shadowType) {
 
-  vec2 poissonDisk[16] = vec2[](
+  vec2 lowp poissonDisk[16] = vec2[](
    vec2( -0.94201624, -0.39906216 ),
    vec2( 0.94558609, -0.76890725 ),
    vec2( -0.094184101, -0.92938870 ),
@@ -631,20 +682,15 @@ float shadow_ratio(int shadowType) {
    vec2( 0.19984126, 0.78641367 ),
    vec2( 0.14383161, -0.14100790 )
   );
-  float visibility = 1.0;
-  float spreading = 2500.0;
-  int samples = 4;
-
-  if (shadowType == 3) {
-    spreading = 1000;
-    samples = 16;
-  }
+  float lowp visibility = 1.0;
+  float lowp spreading = 1000.0 - 500.0 * when_eq_int(shadowType, 3);
+  int lowp samples = 4 + 12 * when_eq_int(shadowType, 3);
 
   // The vertex location rendered from the light source is almost in Normalized
   // Device Coordinates (NDC), but the perspective division has not been
   // performed yet. Perform the perspective divide. The (x,y,z) vertex location
   // components are now each in the range [-1.0,+1.0].
-  vec3 vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
+  vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
 
   // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
   // to the range [0.0,1.0]. This mapping is done by scaling
@@ -657,19 +703,25 @@ float shadow_ratio(int shadowType) {
   // which was passed to the shader as a texture map.
   //vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
 
-  int index;
+  int lowp index;
   for (int i=0; i<samples; i++) {
     // use either :
-    index = i;
-    if (shadowType == 3) {
+    //index = i;
+    //if (shadowType == 3) {
         //  - A random sample, based on the pixel's position in world space.
         //    The position is rounded to the millimeter to avoid too much aliasing
-        index = int(modI(16.0*random(floor(v_position.xyz * 1000.0), i), 16.0));
-    }
-    if ( texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[index] / spreading ).r
-         < vertex_relative_to_light.z - u_Tolerance_constant ) {
-      visibility -= 1./float(samples);
-    }
+    //    index = int(modI(16.0*random(floor(v_position.xyz * 1000.0), i), 16.0));
+    //}
+    index = when_eq_int(shadowType, 2) * i +
+            when_eq_int(shadowType, 3) * int(modI(16.0*random(floor(v_position.xyz * 1000.0), i), 16.0));
+
+    // if ( texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[index] / spreading ).r
+    //     < vertex_relative_to_light.z - u_Tolerance_constant ) {
+    //  visibility -= 1./float(samples);
+    //}
+    visibility -= 1./float(samples) *
+        when_lt(texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[index] / spreading ).r,
+                vertex_relative_to_light.z - u_Tolerance_constant );
   }
   return visibility;
 }
@@ -678,36 +730,27 @@ float shadow_ratio(int shadowType) {
 
 void main()
 {
-    vec3 to_light;
-    vec3 vertex_normal;
-    vec3 reflection;
-    vec3 to_camera;
+    vec3 mediump to_light;
+    vec3 mediump vertex_normal;
+    vec3 mediump reflection;
+    vec3 mediump to_camera;
     float cos_angle = 0.0;
-    vec4 ambient_color = vec4(0, 0, 0, 1);
-    vec4 diffuse_color = vec4(0, 0, 0, 1);
-    vec4 specular_color = vec4(0, 0, 0, 1);
-    vec4 potential_specular_light = vec4(0, 0, 0, 1);
+    vec4 lowp ambient_color = vec4(0, 0, 0, 1);
+    vec4 lowp diffuse_color = vec4(0, 0, 0, 1);
+    vec4 lowp specular_color = vec4(0, 0, 0, 1);
+    vec4 lowp potential_specular_light = vec4(0, 0, 0, 1);
     float light_distance;
-    float attenuationFactor = 1.0;
-    float visibility = 1.0;
+    float lowp attenuationFactor = 1.0;
+    float lowp visibility = 1.0;
 
     float u;
-    vec4 v_color;
+    vec4 lowp v_color;
     if (!use_material) {
-    // pingpong between layers and choice of reagent
-        if(pingpong == 0) {
-            if(reagent == 1){
-                u = texture2D(texture, v_texcoord).r;
-            } else {
-                u = texture2D(texture, v_texcoord).g;
-            }
-        } else {
-            if(reagent == 1){
-                u = texture2D(texture, v_texcoord).b;
-            } else {
-                u = texture2D(texture, v_texcoord).a;
-            }
-        }
+        vec4 texValue = texture2D(texture, v_texcoord);
+        u = texValue.r * when_eq_int(reagent, 1) * when_eq_int(pingpong, 0) +
+            texValue.g * when_eq_int(reagent, 0) * when_eq_int(pingpong, 0) +
+            texValue.b * when_eq_int(reagent, 1) * when_eq_int(pingpong, 1) +
+            texValue.a * when_eq_int(reagent, 0) * when_eq_int(pingpong, 1);
         v_color = texture1D(cmap, u);
 
         // Calculate the ambient color as a percentage of the surface color
@@ -764,15 +807,15 @@ void main()
         // Calculate the cosine of the angle between the vertex's normal vector
         // and the vector going to the light.
         cos_angle = dot(vertex_normal, to_light);
-        cos_angle = clamp(cos_angle, 0.0, 1.0);
+        //cos_angle = clamp(cos_angle, 0.0, 1.0);
 
         // Scale the color of this fragment based on its angle to the light.
-        diffuse_color = diffuse_color * cos_angle;
+        diffuse_color = diffuse_color * clamp(cos_angle, 0.0, 1.0);
     }
 
     if (specular) {
         // Calculate the reflection vector
-        reflection = 2.0 * dot(vertex_normal,to_light) * vertex_normal - to_light;
+        reflection = 2.0 * cos_angle * vertex_normal - to_light;
         reflection = normalize( reflection );
 
         // Calculate a vector from the fragment location to the camera.
@@ -828,11 +871,7 @@ uniform float c3;
 uniform sampler2D texture; // u:= r or b following pinpong
 uniform sampler1D cmap;          // colormap used to render reagent concentration
 
-// TEST HERE sampler2DShadow Maybe this could accept a renderbuffer of the kind
-// depth?
 uniform sampler2D shadowMap;
-uniform float near;
-uniform float far;
 uniform float u_Tolerance_constant;
 
 uniform bool ambient;
@@ -962,12 +1001,12 @@ void main()
     // Calculate the cosine of the angle between the vertex's normal vector
     // and the vector going to the light.
     cos_angle = dot(vertex_normal, to_light);
-    cos_angle = clamp(cos_angle, 0.0, 1.0);
+    //cos_angle = clamp(cos_angle, 0.0, 1.0);
 
     // Scale the color of this fragment based on its angle to the light.
-    diffuse_color = diffuse_color * cos_angle;
+    diffuse_color = diffuse_color * clamp(cos_angle, 0.0, 1.0);
     // Calculate the reflection vector
-    reflection = 2.0 * dot(vertex_normal,to_light) * vertex_normal - to_light;
+    reflection = 2.0 * cos_angle * vertex_normal - to_light;
     reflection = normalize( reflection );
 
     // Calculate a vector from the fragment location to the camera.
@@ -1014,11 +1053,6 @@ uniform sampler2D texture; // u:= r or b following pinpong
 uniform int pingpong;
 uniform int reagent;             // toggle render between reagent u and v
 uniform float scalingFactor;
-uniform float dx;                // horizontal distance between texels
-uniform float dy;                // vertical distance between texels
-
-// Light model
-uniform vec4 u_color;
 
 // Original model data
 attribute vec3 position;
@@ -1027,9 +1061,15 @@ attribute vec3 normal;
 attribute vec4 color;
 
 // Data (to be interpolated) that is passed on to the fragment shader
-varying vec3 v_position;
 varying vec4 w_position;
-varying vec2 v_texcoord;
+
+//-------------------------------------------------------------------------
+
+int when_eq_int(int x, int y) {
+  return 1 - int(abs(sign(x - y)));
+}
+
+//-------------------------------------------------------------------------
 
 void main()
 {
@@ -1037,33 +1077,19 @@ void main()
     vec2 p = texcoord;
     float c;
 
-    if( pingpong == 0 ) {
-        if(reagent == 1){
-            c = texture2DLod(texture, p, 0).r;                       // central value
-        } else {
-            c = texture2DLod(texture, p, 0).g;                       // central value
-        }
-    } else {
-        if(reagent == 1){
-            c = texture2DLod(texture, p, 0).b;                       // central value
-        } else {
-            c = texture2DLod(texture, p, 0).a;                       // central value
-        }
-    }
+    vec4 textureValues = texture2DLod(texture, p, 0);
+    c = when_eq_int(pingpong, 0) * when_eq_int(reagent, 1) * textureValues.r +
+        when_eq_int(pingpong, 0) * when_eq_int(reagent, 0) * textureValues.g +
+        when_eq_int(pingpong, 1) * when_eq_int(reagent, 1) * textureValues.b +
+        when_eq_int(pingpong, 1) * when_eq_int(reagent, 0) * textureValues.a;
+
     c = (1.0 - c)/scalingFactor;
     vec3 position2 = vec3(position.x, position.y, c);
-
-    // Perform the model and view transformations on the vertex and pass this
-    // location to the fragment shader.
-    v_position = vec3(u_view * u_model * vec4(position2, 1.0));
-
-    // Pass the texcoord to the fragment shader.
-    v_texcoord = texcoord;
 
     // Export of the gl_position to the fragment to render depth
     w_position = u_projection * u_view * u_model * vec4(position2, 1.0);
     // Transform the location of the vertex for the rest of the graphics pipeline
-    gl_Position = u_projection * u_view * u_model * vec4(position2, 1.0);
+    gl_Position = w_position;
 }
 """
 
@@ -1077,17 +1103,8 @@ precision highp vec3;
 precision highp vec4;
 precision highp sampler2D;
 
-uniform int pingpong;
-uniform int reagent;             // toggle render between reagent u and v
-
-uniform sampler2D texture; // u:= r or b following pinpong
-uniform float near;
-uniform float far;
-
 // Data coming from the vertex shader
-varying vec3 v_position;
 varying vec4 w_position;
-varying vec2 v_texcoord;
 
 void main()
 {
