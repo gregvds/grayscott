@@ -37,9 +37,28 @@ Dependencies are:
 
 vispy requires a backend such as pyside2, pyside6, wx, Pyqt5...
 
-To launch, simply type python3 gs.py
-
+To launch, simply type python3 gs.py for a 2D version.
+This one has more options to play with the model parameters, such as
+spatial variation of feed, kill and dd accross the grid. It displays also
+these variations momentarily when modifiying them, against a Pearson phase diagram.
 Help available with python3 gs.py -h
+
+A second version is currently in development: gs3D.py. It is basically the same
+model, but in 3D. The grid of the model is a plane that can be rotated.
+Pearson's patterns are still switchable with the same keys. colormaps too.
+No local variations of feed, kill or dd implemented yet. This version is more
+a sandbox for me to learn OpenGL, shader techniques, shadowing, but still is the
+proper Reaction-diffusion, only fancied up graphically.
+Help available with python3 gs3D.py -h
+
+Inspirations for the OpenGL shaders techniques and code used:
+1. [Learn WebGL by Dr. Wayne Brown](http://learnwebgl.brown37.net/index.html)
+1. [OpenGL Tutorials](https://www.opengl-tutorial.org)
+1. [Fabien Sanglard's website](https://fabiensanglard.net)
+
+Commands can be passed with key combos, but these were defined on my keyboard.
+Depending on your hardware and os settings, those could not respond as intended.
+Please do clone and check the code, and adjust to your liking.
 
 Pearson's pattern can be switched with keys:
 -       'a': 'alpha_left',
@@ -68,6 +87,8 @@ Pearson's pattern can be switched with keys:
         'z': 'zeta_left',
         'Z': 'zeta_right'
 - Several colormaps are available via 1 - 0, shift for reversed versions.
+
+These are key combos commands for gs.py only:
 - Mouse left click in the grid refills reagent v at 0.5.
 - Mouse right click in the grid put reagent v at 0.
 - Ctrl + Mouse click and drag to modify globaly feed and kill rates.
@@ -87,5 +108,8 @@ Pearson's pattern can be switched with keys:
 - Spacebar reseeds the grid.
 
 keys =, l, spacebar should get you back to something normal ;-).
+
+Keys combo for gs3D.py have still not settled down, but can be easily found and
+remapped one would want it: look for keyactionDictionnary in Canvas class.
 
 Greg
