@@ -373,6 +373,7 @@ void main()
     float k  = q.a;                                   // kill of V
     // Gray-Scott equation diffusion+-reaction
     // U + 2V -> V + 2V
+// For the moment let's put off the dd and dt vars as they are fixed = 1.0
 //    float dd = 1.0;
 //    float dt = 1.0;
 //    float du = ru * lu * dd - uvv + f * (1.0 - u);
@@ -531,6 +532,8 @@ void main()
 """
 
 render_3D_fragment = """
+// this to do partial derivative for normal computation
+// #extension GL_OES_standard_derivatives : enable
 precision highp float;
 precision highp vec2;
 precision highp vec3;
@@ -540,6 +543,9 @@ precision highp sampler2D;
 
 uniform lowp int pingpong;
 uniform lowp int reagent;             // toggle render between reagent u and v
+
+uniform mat4 u_view;
+uniform mat4 u_model;
 
 // Light model
 uniform lowp vec3 u_light_position;
@@ -661,29 +667,16 @@ bool in_shadow(void) {
 //-------------------------------------------------------------------------
 // Determine if this fragment is in a shadow. Returns ratio of visibility.
 // Sample the shadowmap N times instead of once and modulate the visibility
-float shadow_ratio(int shadowType) {
+float pcf(void) {
 
-  vec2 lowp poissonDisk[16] = vec2[](
+  vec2 lowp poissonDisk[4] = vec2[](
    vec2( -0.94201624, -0.39906216 ),
    vec2( 0.94558609, -0.76890725 ),
    vec2( -0.094184101, -0.92938870 ),
-   vec2( 0.34495938, 0.29387760 ),
-   vec2( -0.91588581, 0.45771432 ),
-   vec2( -0.81544232, -0.87912464 ),
-   vec2( -0.38277543, 0.27676845 ),
-   vec2( 0.97484398, 0.75648379 ),
-   vec2( 0.44323325, -0.97511554 ),
-   vec2( 0.53742981, -0.47373420 ),
-   vec2( -0.26496911, -0.41893023 ),
-   vec2( 0.79197514, 0.19090188 ),
-   vec2( -0.24188840, 0.99706507 ),
-   vec2( -0.81409955, 0.91437590 ),
-   vec2( 0.19984126, 0.78641367 ),
-   vec2( 0.14383161, -0.14100790 )
+   vec2( 0.34495938, 0.29387760 )
   );
   float lowp visibility = 1.0;
-  float lowp spreading = 1000.0 - 500.0 * when_eq_int(shadowType, 3);
-  int lowp samples = 4 + 12 * when_eq_int(shadowType, 3);
+  float lowp spreading = 800;
 
   // The vertex location rendered from the light source is almost in Normalized
   // Device Coordinates (NDC), but the perspective division has not been
@@ -700,30 +693,56 @@ float shadow_ratio(int shadowType) {
   // Get the z value of this fragment in relationship to the light source.
   // This value was stored in the shadow map (depth buffer of the frame buffer)
   // which was passed to the shader as a texture map.
-  //vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
+  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
 
   int lowp index;
-  for (int i=0; i<samples; i++) {
-    // use either :
-    //index = i;
-    //if (shadowType == 3) {
-        //  - A random sample, based on the pixel's position in world space.
-        //    The position is rounded to the millimeter to avoid too much aliasing
-    //    index = int(modI(16.0*random(floor(v_position.xyz * 1000.0), i), 16.0));
-    //}
-    index = when_eq_int(shadowType, 2) * i +
-            when_eq_int(shadowType, 3) * int(modI(16.0*random(floor(v_position.xyz * 1000.0), i), 16.0));
-
-    // if ( texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[index] / spreading ).r
-    //     < vertex_relative_to_light.z - u_Tolerance_constant ) {
-    //  visibility -= 1./float(samples);
-    //}
-    visibility -= 1./float(samples) *
-        when_lt(texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[index] / spreading ).r,
+  for (int i=0; i<4; i++) {
+    visibility -= .2 *
+        when_lt(shadowmap_color.r,
                 vertex_relative_to_light.z - u_Tolerance_constant );
   }
   return visibility;
 }
+//-------------------------------------------------------------------------
+
+//-------------------------------------------------------------------------
+
+    float vsf(void)
+    {
+        // The vertex location rendered from the light source is almost in Normalized
+        // Device Coordinates (NDC), but the perspective division has not been
+        // performed yet. Perform the perspective divide. The (x,y,z) vertex location
+        // components are now each in the range [-1.0,+1.0].
+        vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
+
+        // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
+        // to the range [0.0,1.0]. This mapping is done by scaling
+        // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
+        // shifting the values by +0.5.
+        vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
+
+        // We retrieve the two moments previously stored (depth and depth*depth)
+        vec2 moments = texture2D(shadowMap,vertex_relative_to_light.xy).rg;
+
+
+        // Surface is fully lit. as the current fragment is before the light occluder
+        if (vertex_relative_to_light.z <= moments.x)
+        	return 1.0 ;
+
+        if (v_Vertex_relative_to_light.w > 0.0) {
+            // The fragment is either in shadow or penumbra. We now use chebyshev's upperBound to check
+            // How likely this pixel is to be lit (p_max)
+            float variance = moments.y - (moments.x*moments.x);
+            variance = max(variance, 0.00002);
+
+            float d = vertex_relative_to_light.z - moments.x;
+            float p_max = variance / (variance + d*d);
+
+            return p_max;
+        }
+        return 1.0;
+    }
+
 
 //-------------------------------------------------------------------------
 
@@ -761,16 +780,23 @@ void main()
         potential_specular_light = vec4(u_light_intensity, 1);
     }
 
-    // Harsh shadow limits
+    // simple shadow mapping
     if (shadow == 1 && in_shadow()) {
         // This fragment only receives ambient light because it is in a shadow.
         gl_FragColor = ambient_color;
         return;
     }
 
-    // Smoother shadow
-    if (shadow > 1) {
-        visibility = shadow_ratio(shadow);
+    // Percent shadow mapping through multiple sampling
+    if (shadow == 2) {
+        // proportion of full light for this fragment
+        visibility = pcf();
+    }
+
+    // variance shadow mapping with one sampling
+    if (shadow == 3) {
+        // proportion of full light for this fragment
+        visibility = vsf();
     }
 
     // Calculate a vector from the fragment location to the light source
@@ -785,9 +811,16 @@ void main()
     }
     to_light = normalize( to_light );
 
+    // Normal vector computed here, cruder result...
+//    vec3 fdx = vec3(dFdx(v_position.x),dFdx(v_position.y),dFdx(v_position.z));
+//    vec3 fdy = vec3(dFdy(v_position.x),dFdy(v_position.y),dFdy(v_position.z));
+//    vec3 N = normalize(cross(fdx,fdy));
+//    vec3 v_normal2 = vec3(u_view * u_model * vec4(N, 0.0));
+
     // The vertex's normal vector is being interpolated across the primitive
     // which can make it un-normalized. So normalize the vertex's normal vector.
     vertex_normal = normalize( v_normal );
+//    vertex_normal = normalize( v_normal2 );
 
     if (diffuse) {
         // Calculate the cosine of the angle between the vertex's normal vector
@@ -828,8 +861,9 @@ void main()
 }
 """
 
-# This vertex shader is somehow the same as the render_3D_vertex
-# except it outputs also the gl_position as w_position to the fragment
+################################################################################
+# This vertex shader outputs also the gl_position as w_position to the fragment
+
 shadow_vertex = """
 precision highp float;
 precision highp vec2;
@@ -887,10 +921,9 @@ void main()
 }
 """
 
-# this one is currently identical to render_3D_fragment
-# but could be simplified as the render color do not interest us, only the
-# depth render buffer is important
 shadow_fragment = """
+#extension GL_OES_standard_derivatives : enable
+
 precision highp float;
 precision highp vec2;
 precision highp vec3;
@@ -907,7 +940,17 @@ void main()
     // a Frambuffer(depth=...) accepting to be drawn in
     float depth = w_position.z / w_position.w;
     depth = depth * 0.5 + 0.5;
-    gl_FragColor.r = depth;
+
+    float moment1 = depth;
+    float moment2 = depth * depth;
+
+    // Adjusting moments (this is sort of bias per pixel) using partial derivative
+    float dx = dFdx(depth);
+    float dy = dFdy(depth);
+    moment2 += 0.25*(dx*dx+dy*dy) ;
+
+    gl_FragColor = vec4(moment1, moment2, 0.0, 0.0);
+//    gl_FragColor.r = depth;
 }
 """
 

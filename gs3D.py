@@ -81,9 +81,9 @@ import textwrap
 import numpy as np
 
 from vispy import gloo, app
+from vispy.geometry import create_plane
 from vispy.gloo import gl, Program, VertexBuffer, IndexBuffer, FrameBuffer
 from vispy.util.transforms import perspective, translate, rotate
-from vispy.geometry import create_plane
 
 from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid)
 
@@ -189,7 +189,6 @@ class Canvas(app.Canvas):
         V, F, outline = create_plane(width_segments=self.w, height_segments=self.h)
         vertices = VertexBuffer(V)
         self.faces = IndexBuffer(F)
-        self.outline = IndexBuffer(outline)
 
         # Build texture data
         # the texture contains 4 layers r, g, b, a
@@ -230,11 +229,13 @@ class Canvas(app.Canvas):
 
         # Currently, the shadowmap is a simple image for I cannot set properly
         # the FrameBuffer depth part (RenderBuffer)...
-        self.shadowMapSize = 1024
-        self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize), dtype=np.float32) * .1
-        self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_LUMINANCE, internalformat='r32f')
+        # Finally, this is useful to pass moments1 and 2 for VSF mapping :-)
+        self.shadowMapSize = 2048
+        self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
+        self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
+        # self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize), dtype=np.float32) * .1
+        # self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_LUMINANCE, internalformat='r32f')
 
-        # To debug, show shadowmap or coordinates map instead of view from normal camera
         self.displaySwitch = 0
 
         # DEBUG, toggles to switch on and off different parts of lighting
@@ -243,7 +244,7 @@ class Canvas(app.Canvas):
         self.attenuation = True
         self.diffuse     = True
         self.specular    = True
-        self.shadow      = 1
+        self.shadow      = 3
 
         # Colormaps related variables
         # --------------------------------------
@@ -266,6 +267,8 @@ class Canvas(app.Canvas):
         self.brush     = np.zeros((1, 1, 2), dtype=np.float32)
         self.brushType = 0
 
+        self.holdModel = False
+
         # Dictionnary to map key commands to function
         # All these functions will receive the calling event even if not used.
         # --------------------------------------
@@ -282,11 +285,12 @@ class Canvas(app.Canvas):
             (',', ('Control',)): (self.modifyLightCharacteristic, ('ambient',)),
             (';', ('Control',)): (self.modifyLightCharacteristic, ('diffuse',)),
             (':', ('Control',)): (self.modifyLightCharacteristic, ('specular',)),
-            (')', ('Control',)): (self.modifyLightCharacteristic, ('shadow',)),
+            ('=', ('Control',)): (self.modifyLightCharacteristic, ('shadow',)),
             ('@', ('Control',)): (self.modifyLightCharacteristic, ('attenuation',)),
             ('A', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '-')),
             ('Z', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+')),
-            ('#', ('Shift',)): (self.switchDisplay, ())
+            ('#', ('Shift',)): (self.switchDisplay, ()),
+            ('π', ('Alt',)): (self.pause, ())
         }
         for key in Canvas.colormapDictionnary.keys():
             self.keyactionDictionnary[(key,())] = (self.pickColorMap, ())
@@ -394,20 +398,21 @@ class Canvas(app.Canvas):
 
     def on_draw(self, event):
         # Render next model state into buffer
-        with self.modelbuffer:
-            gloo.set_viewport(0, 0, self.h, self.w)
-            gloo.set_state(depth_test=False,
-                           clear_color='black',
-                           polygon_offset=(0, 0))
-            self.computeProgram.draw('triangle_strip')
-            # repeat model state computation several time to speed up slow patterns
-            for cycle in range(self.cycle):
-                self.pingpong = 1 - self.pingpong
-                self.computeProgram["pingpong"] = self.pingpong
+        if self.holdModel is not True:
+            with self.modelbuffer:
+                gloo.set_viewport(0, 0, self.h, self.w)
+                gloo.set_state(depth_test=False,
+                               clear_color='black',
+                               polygon_offset=(0, 0))
                 self.computeProgram.draw('triangle_strip')
-                self.pingpong = 1 - self.pingpong
-                self.computeProgram["pingpong"] = self.pingpong
-                self.computeProgram.draw('triangle_strip')
+                # repeat model state computation several time to speed up slow patterns
+                for cycle in range(self.cycle):
+                    self.pingpong = 1 - self.pingpong
+                    self.computeProgram["pingpong"] = self.pingpong
+                    self.computeProgram.draw('triangle_strip')
+                    self.pingpong = 1 - self.pingpong
+                    self.computeProgram["pingpong"] = self.pingpong
+                    self.computeProgram.draw('triangle_strip')
 
         # Render the shadowmap into buffer
         if self.shadow > 0:
@@ -595,6 +600,9 @@ class Canvas(app.Canvas):
             self.cycle = 0
         print(' Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
 
+    def pause(self, event=None):
+        self.holdModel = not self.holdModel
+
     ############################################################################
     # functions related to the Gray-Scott model appearances/representation
 
@@ -610,19 +618,14 @@ class Canvas(app.Canvas):
             self.setColormap(colorMapName)
 
     def setColormap(self, name):
-        # self.renderProgram["u_Ambient_color"] = self.ambientColor
-        # self.renderProgram["u_diffuse_color"] = self.diffuseColor
-        # self.renderProgram["u_specular_color"] = self.specularColor
-        # self.renderProgram['u_Shininess'] = self.shininess
-        # self.renderProgram["u_ambient_intensity"] = self.ambientIntensity
         self.cmapName = name
         self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
         print(' Using colormap %s.' % name, end="\r")
 
     SHADOW_TYPE = ("None                     ",
                    "Simple                   ",
-                   "4 Poisson Sampled        ",
-                   "16 Random Poisson Sampled")
+                   "Percent 4 samplings      ",
+                   "Variance shadow mapping  ")
 
     def modifyLightCharacteristic(self, event, lightType=None, modification=None):
         if lightType == 'ambient':
@@ -739,18 +742,19 @@ class Canvas(app.Canvas):
         # of the square, with 2% more
         # one could also modulate the radius following the closeness of the main camera?
         length = np.linalg.norm(np.subtract(at, eye))
-        radiusForFOV = (1.0 / sqrt(2)) * np.clip((cam[2] / -1.25), 0.0, 1.0)
-        radiusForNearFar = (1.0 / sqrt(2)) * np.clip((cam[2] / -0.9), 0.0, 1.0)
-        fov = 2 * asin(radiusForFOV / length) * 180. / pi
-        near = length - radiusForNearFar
-        far = length + radiusForNearFar
+        radius = 1.0 / sqrt(2) * 1.02
+        radiusForFOV = radius * np.clip((cam[2] / -1.25), 0.0, 1.0)
+        radiusForNearFar = radius * np.clip((cam[2] / -0.9), 0.0, 1.0)
+        fov = 2 * asin(radius / length) * 180. / pi
+        near = length - radius
+        far = length + radius
         return rotatedView, (fov, near, far)
 
     ############################################################################
     # Output functions
 
     def printPearsonPatternDescription(self):
-        self.title = '3D Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
+        self.title2 = '3D Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
         print('Pearson\'s Pattern %s' % self.specie)
         print(self.species[self.specie][4])
         print('        dU  dV  f     k \n        %s %s %s %s' % (self.species[self.specie][0],
@@ -797,6 +801,8 @@ class Canvas(app.Canvas):
 
 
 ################################################################################
+def fun(x):
+    c.title = c.title2 +' - FPS: %0.1f' % x
 
 
 if __name__ == '__main__':
@@ -835,5 +841,5 @@ if __name__ == '__main__':
                size=(args.Window, args.Window),
                specie=args.Pattern,
                cmap=args.Colormap)
-    c.measure_fps2(window=2)
+    c.measure_fps2(callback=fun)
     app.run()
