@@ -80,7 +80,7 @@ import textwrap
 
 import numpy as np
 
-from vispy import gloo, app
+from vispy import app, gloo
 from vispy.geometry import create_plane
 from vispy.gloo import gl, Program, VertexBuffer, IndexBuffer, FrameBuffer
 from vispy.util.transforms import perspective, translate, rotate
@@ -159,6 +159,8 @@ class Canvas(app.Canvas):
         'T': 'theta_right',
         'Z': 'zeta_right'
     }
+
+    keysDoc = 'TAGADA'
 
     def __init__(self,
                  size=(1024, 1024),
@@ -275,31 +277,31 @@ class Canvas(app.Canvas):
         self.keyactionDictionnary = {
             (' ', ()): (self.initializeGrid, ()),
             ('/', ('Shift',)): (self.switchReagent, ()),
-            ('+', ('Shift',)): (self.increaseCycle, ()),
-            ('-', ()): (self.decreaseCycle, ()),
+            ('P', ('Control',)): (self.increaseCycle, ()),
+            ('O', ('Control',)): (self.decreaseCycle, ()),
             ('=', ()): (self.resetModel, ()),
-            ('Up', ()): (self.updateLight, ((0, 0.05, 0),)),
-            ('Down', ()): (self.updateLight, ((0, -0.05, 0),)),
-            ('Left', ()): (self.updateLight, ((-0.05, 0, 0),)),
-            ('Right', ()): (self.updateLight, ((0.05, 0, 0),)),
+            ('Up', ()): (self.updateLight, ((0, 0.02, 0),)),
+            ('Down', ()): (self.updateLight, ((0, -0.02, 0),)),
+            ('Left', ()): (self.updateLight, ((-0.02, 0, 0),)),
+            ('Right', ()): (self.updateLight, ((0.02, 0, 0),)),
+            ('@', ()): (self.resetView, ()),
             (',', ('Control',)): (self.modifyLightCharacteristic, ('ambient',)),
             (';', ('Control',)): (self.modifyLightCharacteristic, ('diffuse',)),
             (':', ('Control',)): (self.modifyLightCharacteristic, ('specular',)),
             ('=', ('Control',)): (self.modifyLightCharacteristic, ('shadow',)),
-            ('@', ('Control',)): (self.modifyLightCharacteristic, ('attenuation',)),
-            ('A', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '-')),
-            ('Z', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+')),
-            ('#', ('Shift',)): (self.switchDisplay, ()),
-            ('π', ('Alt',)): (self.pause, ())
+            ('K', ('Control',)): (self.modifyLightCharacteristic, ('attenuation',)),
+            ('L', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '-')),
+            ('M', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+'))
         }
         for key in Canvas.colormapDictionnary.keys():
-            self.keyactionDictionnary[(key,())] = (self.pickColorMap, ())
+            self.keyactionDictionnary[(key,())] = (self.setColorMap, (Canvas.colormapDictionnary[key],))
         for key in Canvas.colormapDictionnaryShifted.keys():
-            self.keyactionDictionnary[(key,('Shift',))] = (self.pickColorMap, ())
+            self.keyactionDictionnary[(key,('Shift',))] = (self.setColorMap, (Canvas.colormapDictionnaryShifted[key],))
         for key in Canvas.speciesDictionnary.keys():
-            self.keyactionDictionnary[(key,())] = (self.pickSpecie, ())
+            self.keyactionDictionnary[(key,())] = (self.setSpecie, (Canvas.speciesDictionnary[key],))
         for key in Canvas.speciesDictionnaryShifted.keys():
-            self.keyactionDictionnary[(key,('Shift',))] = (self.pickSpecie, ())
+            self.keyactionDictionnary[(key,('Shift',))] = (self.setSpecie, (Canvas.speciesDictionnaryShifted[key],))
+        Canvas.keysDoc = self.getCommandsDocs()
 
         # ? better computation ?
         # --------------------------------------
@@ -355,7 +357,7 @@ class Canvas(app.Canvas):
         self.renderProgram['c1'] = self.c1
         self.renderProgram['c2'] = self.c2
         self.renderProgram['c3'] = self.c3
-        self.setColormap(self.cmapName)
+        self.setColorMap(self.cmapName)
 
         # Build shadowmap render program
         # --------------------------------------
@@ -398,21 +400,21 @@ class Canvas(app.Canvas):
 
     def on_draw(self, event):
         # Render next model state into buffer
-        if self.holdModel is not True:
-            with self.modelbuffer:
-                gloo.set_viewport(0, 0, self.h, self.w)
-                gloo.set_state(depth_test=False,
-                               clear_color='black',
-                               polygon_offset=(0, 0))
+        # if self.holdModel is not True:
+        with self.modelbuffer:
+            gloo.set_viewport(0, 0, self.h, self.w)
+            gloo.set_state(depth_test=False,
+                           clear_color='black',
+                           polygon_offset=(0, 0))
+            self.computeProgram.draw('triangle_strip')
+            # repeat model state computation several time to speed up slow patterns
+            for cycle in range(self.cycle):
+                self.pingpong = 1 - self.pingpong
+                self.computeProgram["pingpong"] = self.pingpong
                 self.computeProgram.draw('triangle_strip')
-                # repeat model state computation several time to speed up slow patterns
-                for cycle in range(self.cycle):
-                    self.pingpong = 1 - self.pingpong
-                    self.computeProgram["pingpong"] = self.pingpong
-                    self.computeProgram.draw('triangle_strip')
-                    self.pingpong = 1 - self.pingpong
-                    self.computeProgram["pingpong"] = self.pingpong
-                    self.computeProgram.draw('triangle_strip')
+                self.pingpong = 1 - self.pingpong
+                self.computeProgram["pingpong"] = self.pingpong
+                self.computeProgram.draw('triangle_strip')
 
         # Render the shadowmap into buffer
         if self.shadow > 0:
@@ -437,7 +439,6 @@ class Canvas(app.Canvas):
         self.computeProgram["pingpong"] = self.pingpong
         self.renderProgram["pingpong"] = self.pingpong
 
-        # and loop
         self.update()
 
     def on_resize(self, event):
@@ -533,6 +534,10 @@ class Canvas(app.Canvas):
     # functions related to the Gray-Scott model parameters
 
     def initializeGrid(self, event=None):
+        """
+        Initialize the concentrations of U and V of the model accross a grid
+        with a seed patch in its center.
+        """
         print('Initialization of the grid.', end="\r")
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
@@ -553,6 +558,9 @@ class Canvas(app.Canvas):
             self.renderProgram["texture"].wrapping = gl.GL_REPEAT
 
     def setSpecie(self, specie):
+        """
+        Set the feed, kill and diffusion rates for the choosen pattern
+        """
         self.specie = specie
         self.printPearsonPatternDescription()
         self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
@@ -586,6 +594,10 @@ class Canvas(app.Canvas):
             self.computeProgram["params"] = self.params
 
     def increaseCycle(self, event=None):
+        """
+        Increases number of cycles processed per frame shown.
+        Each increase multiplies by two the number of added cycles
+        """
         if self.cycle == 0:
             self.cycle = 1
         else:
@@ -595,6 +607,10 @@ class Canvas(app.Canvas):
         print(' Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
 
     def decreaseCycle(self, event=None):
+        """
+        Decreases number of cycles processed per frame shown.
+        Each decrease divides by two the number of added cycles
+        """
         self.cycle = int(self.cycle/2)
         if self.cycle < 1:
             self.cycle = 0
@@ -607,6 +623,9 @@ class Canvas(app.Canvas):
     # functions related to the Gray-Scott model appearances/representation
 
     def switchReagent(self, event=None):
+        """
+        Toggles between representing U or V concentrations.
+        """
         self.renderProgram["reagent"] = 1 - self.renderProgram["reagent"]
         self.shadowProgram["reagent"] = 1 - self.shadowProgram["reagent"]
         reagents = ('U', 'V')
@@ -615,9 +634,12 @@ class Canvas(app.Canvas):
     def pickColorMap(self, event):
         colorMapName = Canvas.colormapDictionnary.get(event.text) or Canvas.colormapDictionnaryShifted.get(event.text)
         if colorMapName is not None:
-            self.setColormap(colorMapName)
+            self.setColorMap(colorMapName)
 
-    def setColormap(self, name):
+    def setColorMap(self, name):
+        """
+        Set the colormap used to render the concentration
+        """
         self.cmapName = name
         self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
         print(' Using colormap %s.' % name, end="\r")
@@ -628,6 +650,11 @@ class Canvas(app.Canvas):
                    "Variance shadow mapping  ")
 
     def modifyLightCharacteristic(self, event, lightType=None, modification=None):
+        """
+        Modifies one of the light parameters.
+        Some like ambient, diffuse, specular are simply toggles on/off,
+        Others increase/decrease a value, such as the shininess exponant
+        """
         if lightType == 'ambient':
             self.ambient = not self.ambient
             self.renderProgram[lightType] = self.ambient
@@ -662,7 +689,17 @@ class Canvas(app.Canvas):
     ############################################################################
     # functions to manipulate orientations and positions of model, view, light
 
+    def resetView(self, event=None):
+        """
+        Replaces the camera in its original position.
+        """
+        self.viewCoordinates = [0, 0, -2.5]
+        self.updateView()
+
     def resetModel(self, event=None):
+        """
+        Replaces the grid in its original unrotated vertical orientation.
+        """
         self.modelAzimuth = 0
         self.modelDirection = 0
         self.updateModel()
@@ -687,6 +724,9 @@ class Canvas(app.Canvas):
         return np.matmul(np.matmul(self.model, diRotationMatrix), azRotationMatrix)
 
     def updateLight(self, event=None, coordinatesDelta=(0,0,0)):
+        """
+        Moves the light in x and y.
+        """
         # light is able to move along x,y,z axis
         self.lightCoordinates[0] += coordinatesDelta[0]
         self.lightCoordinates[1] += coordinatesDelta[1]
@@ -763,7 +803,7 @@ class Canvas(app.Canvas):
                                                                  self.species[self.specie][3]))
 
     ############################################################################
-    # Debug functions
+    # Debug/utilities functions
 
     def switchDisplay(self, event=None):
         self.displaySwitch = (self.displaySwitch + 1) % 3
@@ -799,6 +839,31 @@ class Canvas(app.Canvas):
         else:
             self._fps_callback = None
 
+    def getCommandsDocs(self):
+        commandDoc = ''
+        command = ''
+        for (key, modifiers) in self.keyactionDictionnary.keys():
+            (function, args) = self.keyactionDictionnary[(key, modifiers)]
+            # command = "keys '%s' + '%s':" % (modifiers, key)
+            command = "Keys "
+            for modifier in modifiers:
+                command += "'%s' + " % modifier
+            command += "'%s':" % key
+            if function.__doc__ is not None:
+                command += textwrap.dedent(function.__doc__)
+            else:
+                command += "\n%s\n" % function.__name__
+            # command += "\n"
+            if len(args) > 0:
+                command += "Arguments passed:"
+                for arg in args:
+                    command += " '%s'" % str(arg)
+                command += "\n"
+            else:
+                command += "No arguments passed.\n"
+            command += "\n"
+            commandDoc += command
+        return commandDoc
 
 ################################################################################
 def fun(x):
@@ -806,7 +871,7 @@ def fun(x):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=textwrap.dedent(__doc__),
+    parser = argparse.ArgumentParser(description='Canvas.keysDoc Here',
                                      epilog= textwrap.dedent("""Examples:
     python3 gs3D.py
     python3 gs3D.py -c osmort
