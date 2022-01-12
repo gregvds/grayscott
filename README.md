@@ -55,6 +55,7 @@ Inspirations for the OpenGL shaders techniques and code used:
 1. [Learn WebGL by Dr. Wayne Brown](http://learnwebgl.brown37.net/index.html)
 1. [OpenGL Tutorials](https://www.opengl-tutorial.org)
 1. [Fabien Sanglard's website](https://fabiensanglard.net)
+1. [Vispy code and examples](https://github.com/vispy/vispy)
 
 Commands can be passed with key combos, but these were defined on my keyboard.
 Depending on your hardware and os settings, those could not respond as intended.
