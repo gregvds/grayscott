@@ -160,8 +160,6 @@ class Canvas(app.Canvas):
         'Z': 'zeta_right'
     }
 
-    keysDoc = 'TAGADA'
-
     def __init__(self,
                  size=(1024, 1024),
                  modelSize=(512,512),
@@ -258,7 +256,7 @@ class Canvas(app.Canvas):
         # --------------------------------------
         self.specie = specie
         self.species = import_pearsons_types()
-        self.setSpecie(self.specie)
+        self.setSpecie(specie=self.specie)
 
         # Mouse interactions parameters
         # --------------------------------------
@@ -289,9 +287,11 @@ class Canvas(app.Canvas):
             (';', ('Control',)): (self.modifyLightCharacteristic, ('diffuse',)),
             (':', ('Control',)): (self.modifyLightCharacteristic, ('specular',)),
             ('=', ('Control',)): (self.modifyLightCharacteristic, ('shadow',)),
-            ('K', ('Control',)): (self.modifyLightCharacteristic, ('attenuation',)),
+            ('N', ('Control',)): (self.modifyLightCharacteristic, ('attenuation',)),
             ('L', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '-')),
-            ('M', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+'))
+            ('M', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+')),
+            ('J', ('Control',)): (self.modifyLightCharacteristic, ('vsf_gate', '-')),
+            ('K', ('Control',)): (self.modifyLightCharacteristic, ('vsf_gate', '+'))
         }
         for key in Canvas.colormapDictionnary.keys():
             self.keyactionDictionnary[(key,())] = (self.setColorMap, (Canvas.colormapDictionnary[key],))
@@ -339,6 +339,7 @@ class Canvas(app.Canvas):
         self.renderProgram["u_Shadowmap_projection"] = self.shadowProjection
         self.renderProgram["u_Shadowmap_view"] = self.shadowView
         self.renderProgram["u_Tolerance_constant"] = 0.005
+        self.renderProgram["vsf_gate"] = 2.5e-08
         self.renderProgram["scalingFactor"] = 30. * (self.w/512)
         self.renderProgram["u_view"] = self.view
         self.renderProgram["u_model"] = self.model
@@ -357,7 +358,7 @@ class Canvas(app.Canvas):
         self.renderProgram['c1'] = self.c1
         self.renderProgram['c2'] = self.c2
         self.renderProgram['c3'] = self.c3
-        self.setColorMap(self.cmapName)
+        self.setColorMap(name=self.cmapName)
 
         # Build shadowmap render program
         # --------------------------------------
@@ -557,21 +558,17 @@ class Canvas(app.Canvas):
             self.renderProgram["texture"].interpolation = gl.GL_LINEAR
             self.renderProgram["texture"].wrapping = gl.GL_REPEAT
 
-    def setSpecie(self, specie):
+    def setSpecie(self, event=None, specie=''):
         """
         Set the feed, kill and diffusion rates for the choosen pattern
         """
-        self.specie = specie
-        self.printPearsonPatternDescription()
-        self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
-        self.P[:, :] = self.species[self.specie][0:4]
-        self.modulateFK()
-        self.updateComputeParams()
-
-    def pickSpecie(self, event):
-        specieName = Canvas.speciesDictionnary.get(event.text) or Canvas.speciesDictionnaryShifted.get(event.text)
-        if specieName is not None:
-            self.setSpecie(specieName)
+        if specie != '':
+            self.specie = specie
+            self.printPearsonPatternDescription()
+            self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
+            self.P[:, :] = self.species[self.specie][0:4]
+            self.modulateFK()
+            self.updateComputeParams()
 
     def modulateFK(self, pos=None):
         f = self.P[0, 0, 2]
@@ -631,18 +628,14 @@ class Canvas(app.Canvas):
         reagents = ('U', 'V')
         print(' Displaying %s reagent concentration.' % reagents[int(self.renderProgram["reagent"])], end="\r")
 
-    def pickColorMap(self, event):
-        colorMapName = Canvas.colormapDictionnary.get(event.text) or Canvas.colormapDictionnaryShifted.get(event.text)
-        if colorMapName is not None:
-            self.setColorMap(colorMapName)
-
-    def setColorMap(self, name):
+    def setColorMap(self, event=None, name=''):
         """
         Set the colormap used to render the concentration
         """
-        self.cmapName = name
-        self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
-        print(' Using colormap %s.' % name, end="\r")
+        if name != '':
+            self.cmapName = name
+            self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
+            print(' Using colormap %s.' % name, end="\r")
 
     SHADOW_TYPE = ("None                     ",
                    "Simple                   ",
@@ -685,6 +678,12 @@ class Canvas(app.Canvas):
             self.shininess = np.clip(self.shininess, 0.1, 8192)
             self.renderProgram['u_Shininess'] = self.shininess
             print(' Shininess exponant: %3.0f' % self.shininess, end="\r")
+        elif lightType == "vsf_gate" and modification == '+':
+            self.renderProgram['vsf_gate'] = self.renderProgram['vsf_gate'] * 2.0
+            print("vsf_gate: %s" % self.renderProgram['vsf_gate'])
+        elif lightType == "vsf_gate" and modification == '-':
+            self.renderProgram['vsf_gate'] = self.renderProgram['vsf_gate'] / 2.0
+            print("vsf_gate: %s" % self.renderProgram['vsf_gate'])
 
     ############################################################################
     # functions to manipulate orientations and positions of model, view, light
@@ -694,6 +693,9 @@ class Canvas(app.Canvas):
         Replaces the camera in its original position.
         """
         self.viewCoordinates = [0, 0, -2.5]
+        if self.lightCoordinates[2] < self.viewCoordinates[2]:
+            self.lightCoordinates[2] = -2.1
+            self.updateLight()
         self.updateView()
 
     def resetModel(self, event=None):
@@ -839,6 +841,10 @@ class Canvas(app.Canvas):
         else:
             self._fps_callback = None
 
+    # In order to be able to call this from class and not instance,
+    # keyactionDictionnary should be a class attributes, but this one holds
+    # instance methods to be called... How to manage this?
+    # @staticmethod
     def getCommandsDocs(self):
         commandDoc = ''
         command = ''
@@ -871,7 +877,12 @@ def fun(x):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Canvas.keysDoc Here',
+    # TODO Here find a way to obtain keyDocs from Canvas getCommandsDocs methods...
+    # without having to instanciate it...
+    # c1 = Canvas()
+    # parser = argparse.ArgumentParser(description=textwrap.dedent(c1.getCommandsDocs()),
+    #                                  epilog= textwrap.dedent("""Examples:
+    parser = argparse.ArgumentParser(description=textwrap.dedent('getCommandsDocs()'),
                                      epilog= textwrap.dedent("""Examples:
     python3 gs3D.py
     python3 gs3D.py -c osmort
@@ -900,7 +911,7 @@ if __name__ == '__main__':
                         help="Colormap used")
 
     args = parser.parse_args()
-
+    # del c1
 
     c = Canvas(modelSize=(args.Size, args.Size),
                size=(args.Window, args.Window),

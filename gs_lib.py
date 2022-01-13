@@ -264,6 +264,7 @@ stackedColormaps = {
     }
 }
 
+
 def get_colormap(name, size=256):
     vispy_cmaps = color.get_colormaps()
     if name in vispy_cmaps:
@@ -311,8 +312,11 @@ def createAndRegisterCmap(name, cmapNameList, proportions=None):
             cmapName), proportion)(np.linspace(0, 1, proportion)))
     newcmp_r = ListedColormap(np.vstack(newColors_r),
                               name=invertCmapName(name))
-    cm.register_cmap(name=name, cmap=newcmp)
-    cm.register_cmap(name=invertCmapName(name), cmap=newcmp_r)
+    try:
+        _ = cm.get_cmap(name)
+    except:
+        cm.register_cmap(name=name, cmap=newcmp)
+        cm.register_cmap(name=invertCmapName(name), cmap=newcmp_r)
 
 
 def createAndRegisterLinearSegmentedCmap(name, colors, nodes=None):
@@ -329,8 +333,11 @@ def createAndRegisterLinearSegmentedCmap(name, colors, nodes=None):
     nodes.reverse()
     nodes = [1-x for x in nodes]
     newcmp_r = LinearSegmentedColormap.from_list(invertCmapName(name), list(zip(nodes, colors)))
-    cm.register_cmap(name=name, cmap=newcmp)
-    cm.register_cmap(name=invertCmapName(name), cmap=newcmp_r)
+    try:
+        _ = cm.get_cmap(name)
+    except:
+        cm.register_cmap(name=name, cmap=newcmp)
+        cm.register_cmap(name=invertCmapName(name), cmap=newcmp_r)
 
 
 def createColormaps():

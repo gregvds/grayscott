@@ -563,6 +563,7 @@ uniform sampler2D texture; // u:= r or b following pinpong
 uniform lowp sampler1D cmap;          // colormap used to render reagent concentration
 uniform sampler2D shadowMap;
 uniform lowp float u_Tolerance_constant;
+uniform lowp float vsf_gate;
 
 uniform bool ambient;
 uniform bool diffuse;
@@ -624,6 +625,17 @@ float when_le(float x, float y) {
 }
 
 //-------------------------------------------------------------------------
+// Vector conversions methods
+
+vec3 scale_from_ndc(vec3 vertex) {
+    return vertex * 0.5 + 0.5;
+}
+
+vec3 persp_divide(vec4 vertex) {
+    return vertex.xyz / vertex.w;
+}
+
+//-------------------------------------------------------------------------
 
 // Determine if this fragment is in a shadow. Returns true or false.
 bool in_shadow(void) {
@@ -632,25 +644,27 @@ bool in_shadow(void) {
   // Device Coordinates (NDC), but the perspective division has not been
   // performed yet. Perform the perspective divide. The (x,y,z) vertex location
   // components are now each in the range [-1.0,+1.0].
-  vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
+//  vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
 
   // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
   // to the range [0.0,1.0]. This mapping is done by scaling
   // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
   // shifting the values by +0.5.
-  vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
+//  vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
+  vec3 vertex_relative_to_light = scale_from_ndc(persp_divide(v_Vertex_relative_to_light));
 
   // Get the z value of this fragment in relationship to the light source.
   // This value was stored in the shadow map (depth buffer of the frame buffer)
   // which was passed to the shader as a texture map.
-  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
+//  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
 
   // The texture map contains a single depth value for each pixel. However,
   // the texture2D sampler always returns a color from a texture. For a
   // gl.DEPTH_COMPONENT texture, the color contains the depth value in
   // each of the color components. If the value was d, then the color returned
   // is (d,d,d,1). This is a "color" (depth) value between [0.0,+1.0].
-  float shadowmap_distance = shadowmap_color.r;
+//  float shadowmap_distance = shadowmap_color.r;
+  float shadowmap_distance = texture2D(shadowMap, vertex_relative_to_light.xy).r;
 
   // Test the distance between this fragment and the light source as
   // calculated using the shadowmap transformation (vertex_relative_to_light.z) and
@@ -676,29 +690,32 @@ float pcf(void) {
    vec2( 0.34495938, 0.29387760 )
   );
   float lowp visibility = 1.0;
-  float lowp spreading = 800;
+  float lowp spreading = 2000;
 
   // The vertex location rendered from the light source is almost in Normalized
   // Device Coordinates (NDC), but the perspective division has not been
   // performed yet. Perform the perspective divide. The (x,y,z) vertex location
   // components are now each in the range [-1.0,+1.0].
-  vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
+//  vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
 
   // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
   // to the range [0.0,1.0]. This mapping is done by scaling
   // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
   // shifting the values by +0.5.
-  vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
+//  vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
+  vec3 vertex_relative_to_light = scale_from_ndc(persp_divide(v_Vertex_relative_to_light));
 
   // Get the z value of this fragment in relationship to the light source.
   // This value was stored in the shadow map (depth buffer of the frame buffer)
   // which was passed to the shader as a texture map.
-  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
+//  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
+//  float shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy).r;
 
   int lowp index;
   for (int i=0; i<4; i++) {
     visibility -= .2 *
-        when_lt(shadowmap_color.r,
+//        when_lt(shadowmap_color.r,
+        when_lt(texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[i]/spreading).r,
                 vertex_relative_to_light.z - u_Tolerance_constant );
   }
   return visibility;
@@ -707,41 +724,42 @@ float pcf(void) {
 
 //-------------------------------------------------------------------------
 
-    float vsf(void)
-    {
-        // The vertex location rendered from the light source is almost in Normalized
-        // Device Coordinates (NDC), but the perspective division has not been
-        // performed yet. Perform the perspective divide. The (x,y,z) vertex location
-        // components are now each in the range [-1.0,+1.0].
-        vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
+float vsf(void)
+{
+    // The vertex location rendered from the light source is almost in Normalized
+    // Device Coordinates (NDC), but the perspective division has not been
+    // performed yet. Perform the perspective divide. The (x,y,z) vertex location
+    // components are now each in the range [-1.0,+1.0].
+//    vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
 
-        // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
-        // to the range [0.0,1.0]. This mapping is done by scaling
-        // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
-        // shifting the values by +0.5.
-        vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
+    // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
+    // to the range [0.0,1.0]. This mapping is done by scaling
+    // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
+    // shifting the values by +0.5.
+//    vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
+    vec3 vertex_relative_to_light = scale_from_ndc(persp_divide(v_Vertex_relative_to_light));
 
-        // We retrieve the two moments previously stored (depth and depth*depth)
-        vec2 moments = texture2D(shadowMap,vertex_relative_to_light.xy).rg;
+    // We retrieve the two moments previously stored (depth and depth*depth)
+    vec2 moments = texture2D(shadowMap, vertex_relative_to_light.xy).rg;
 
+    // Surface is fully lit. as the current fragment is before the light occluder
+    if (vertex_relative_to_light.z <= moments.x)
+        return 1.0 ;
 
-        // Surface is fully lit. as the current fragment is before the light occluder
-        if (vertex_relative_to_light.z <= moments.x)
-        	return 1.0 ;
+    // to avoid out of shadow frustum requests
+    if (v_Vertex_relative_to_light.w > 0.0) {
+        // The fragment is either in shadow or penumbra. We now use chebyshev's upperBound to check
+        // How likely this pixel is to be lit (p_max)
+        float variance = moments.y - (moments.x*moments.x);
+        variance = max(variance, vsf_gate);
 
-        if (v_Vertex_relative_to_light.w > 0.0) {
-            // The fragment is either in shadow or penumbra. We now use chebyshev's upperBound to check
-            // How likely this pixel is to be lit (p_max)
-            float variance = moments.y - (moments.x*moments.x);
-            variance = max(variance, 0.00002);
+        float d = vertex_relative_to_light.z - moments.x;
+        float p_max = variance / (variance + d*d);
 
-            float d = vertex_relative_to_light.z - moments.x;
-            float p_max = variance / (variance + d*d);
-
-            return p_max;
-        }
-        return 1.0;
+        return p_max;
     }
+    return 1.0;
+}
 
 
 //-------------------------------------------------------------------------
