@@ -884,19 +884,16 @@ class Canvas(app.Canvas):
             command = "Keys "
             for modifier in modifiers:
                 command += "'%s' + " % modifier
-            command += "'%s':" % key
+            command += "'%s': %s(" % (key, function.__name__)
+            if len(args) > 0:
+                for arg in args:
+                    if arg == args[-1]:
+                        command += "'%s'" % str(arg)
+                    else:
+                        command += "'%s', " % str(arg)
+            command += ")"
             if function.__doc__ is not None:
                 command += textwrap.dedent(function.__doc__)
-            else:
-                command += "\n%s\n" % function.__name__
-            # command += "\n"
-            if len(args) > 0:
-                command += "Arguments passed:"
-                for arg in args:
-                    command += " '%s'" % str(arg)
-                command += "\n"
-            else:
-                command += "No arguments passed.\n"
             command += "\n"
             commandDoc += command
         return commandDoc
