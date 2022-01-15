@@ -34,46 +34,12 @@
     Gray-Scott reaction-diffusion model
     -----------------------------------
 
-    Pearson's pattern can be switched with keys:
-            'a': 'alpha_left',
-            'A': 'alpha_right',
-            'b': 'beta_left',
-            'B': 'beta_right',
-            'd': 'delta_left',
-            'D': 'delta_right',
-            'e': 'epsilon_left',
-            'E': 'epsilon_right',
-            'g': 'gamma_left',
-            'G': 'gamma_right',
-            'h': 'eta',
-            'i': 'iota',
-            'k': 'kappa_left',
-            'K': 'kappa_right',
-            'l': 'lambda_left',
-            'L': 'lambda_right',
-            'm': 'mu_left',
-            'M': 'mu_right',
-            'n': 'nu_left',
-            'p': 'pi_left',
-            't': 'theta_left',
-            'T': 'theta_right',
-            'x': 'xi_left',
-            'z': 'zeta_left',
-            'Z': 'zeta_right'
-    Several colormaps are available via keys 1 - 0, shifted for reversed version.
-    shift + Mouse left click in the grid refills reagent v at 0.5.
-    shift + Mouse right click in the grid put reagent v at 0.
-    Mouse click and drag rotate the plane.
-    key / switch presentation between u and v.
-    Spacebar reseeds the grid.
-    key Up/Down and Left/right move the light in X and Y
-    mouse scroll dolly in/out
-    Shift + mouse scroll dolly in/out the light source
-    +/- keys to increase/decrease computation cycles per frame
+    3D presentation of a model of Reaction-Diffusion.
+    For more use help, call python3 gs3D.py -h
 """
 
 ################################################################################
-from math import tan, atan, pi, sqrt, asin
+from math import tan, sin, cos, pi, atan, asin, sqrt
 
 import argparse
 import textwrap
@@ -100,6 +66,106 @@ from shaders import shadow_fragment
 # gl.use_gl('gl+')
 
 ################################################################################
+
+
+################################################################################
+
+
+class Camera():
+    """
+    Simple class that represents a camera, and holds all its characteristics.
+    """
+    def __init__(self,
+               eye=[0,0,1],
+               target=[0,0,0],
+               up=[0,0,1],
+               fov=60.0,
+               aspect=1.0,
+               near=1.0,
+               far=100.0):
+        self.eye = eye
+        self.target = target
+        self.up = up
+        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        self.fov = fov
+        self.aspect = aspect
+        self.near = near
+        self.far = far
+        self.projection = perspective(fov, aspect, near, far)
+
+        self.azimuth = 0.0
+        self.elevation = 0.0
+        self.distance = np.linalg.norm(np.subtract(self.target, self.eye))
+        self.distanceMin = 0.7
+        self.distanceMax = 5.0
+        self.sensitivity = 5.0
+
+    def setEye(self, eye):
+        """Sets the coordinates of the camera, computes its view matrix and return it"""
+        self.eye = eye
+        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        return self.view
+
+    def setTarget(self, target):
+        """Sets the target at which the camera is pointing, compute its view matrix and returns it"""
+        self.target = target
+        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        return self.view
+
+    def setProjection(self, fov=None, aspect=None, near=None, far=None):
+        """Compute the projection matrix of the camera and returns it"""
+        self.fov = fov or self.fov
+        self.aspect = aspect or self.aspect
+        self.near = near or self.near
+        self.far = far or self.far
+        self.projection = perspective(self.fov, self.aspect, self.near, self.far)
+        return self.projection
+
+    def move(self, azimuth=None, elevation=None, distance=None, target=[0, 0, 0]):
+        """Moves the camera according to the azimuth, elevation, distance and
+           target received, compute its view matrix and returns it
+        """
+        self.azimuth = azimuth or self.azimuth
+        self.elevation = elevation or self.elevation
+        self.distance = distance or self.distance
+        self.distance = min(max(self.distance, self.distanceMin), self.distanceMax)
+        x = self.distance * sin(self.elevation) * sin(self.azimuth)
+        y = self.distance * sin(-self.elevation) * cos(self.azimuth)
+        z = self.distance * cos(self.elevation)
+        self.eye = [x, y, z]
+        self.target = target
+        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        return self.view
+
+    def zoomOn(self, objectWidth=sqrt(2.0), margin=0.02):
+        """Compute a projection matrix which frustum just covers the width of
+           the object given. This is used in all directions. This width should
+           be the diameter of the sphere containing the object, centered on the
+           center of the object. it returns the projection matrix.
+        """
+        self.distance = np.linalg.norm(np.subtract(self.target, self.eye))
+        radius = objectWidth/2.0*(1.0+margin)
+        fov = 2 * asin(radius / self.distance) * 180. / pi
+        near = self.distance - radius
+        far = self.distance + radius
+        return self.setProjection(fov, self.aspect, near, far)
+
+    def lookAt(self, eye, target, up=[0, 0, 1]):
+        """Computes matrix to put eye looking at target point."""
+        eye = np.asarray(eye).astype(np.float32)
+        target = np.asarray(target).astype(np.float32)
+        up = np.asarray(up).astype(np.float32)
+
+        vforward = eye - target
+        vforward /= np.linalg.norm(vforward)
+        vright = np.cross(up, vforward)
+        vright /= np.linalg.norm(vright)
+        vup = np.cross(vforward, vright)
+        view = np.r_[vright, -np.dot(vright, eye),
+                     vup, -np.dot(vup, eye),
+                     vforward, -np.dot(vforward, eye),
+                     [0, 0, 0, 1]].reshape(4, 4, order='F')
+        return view
 
 
 class Canvas(app.Canvas):
@@ -161,13 +227,16 @@ class Canvas(app.Canvas):
         'Z': 'zeta_right'
     }
 
+    species = import_pearsons_types()
+
+    createColormaps()
+
 
     def __init__(self,
                  size=(1024, 1024),
                  modelSize=(512,512),
                  specie='alpha_left',
-                 cmap='irkoutsk',
-                 options=False):
+                 cmap='irkoutsk'):
         app.Canvas.__init__(self,
                             size=size,
                             title='3D Gray-Scott Reaction-Diffusion: - GregVDS',
@@ -200,14 +269,23 @@ class Canvas(app.Canvas):
         # each GPU computation/rendering cycle
         self.initializeGrid()
         self.pingpong = 1
+        # cycle of computation per frame
+        self.cycle = 0
 
         # Build view, model, projection
         # --------------------------------------
-        self.viewCoordinates = [0, 0, -2.5]
-        self.view = translate((self.viewCoordinates[0], self.viewCoordinates[1], self.viewCoordinates[2]))
         self.model = np.eye(4, dtype=np.float32)
-        self.modelAzimuth = 0
-        self.modelDirection = 0
+
+        self.viewCoordinates = [0, 0, -2.5]
+
+        self.camera = Camera(eye=[0, 0, 2.5],
+                             target=[0,0,0],
+                             up=[0,1,0],
+                             fov=24.0,
+                             aspect=self.size[0] / float(self.size[1]),
+                             near=0.1,
+                             far=20.0)
+        self.view = self.camera.view
 
         # light Parameters: direction, shininess exponant, attenuation parameters,
         # ambientLight intensity, ambientColor, diffuseColor and specularColor
@@ -219,10 +297,9 @@ class Canvas(app.Canvas):
         self.c3 = 0.02
         self.ambientIntensity = 0.5
         self.ambientColor = np.array((1., 1., 1., 1))
-        self.diffuseColor = (1., 1., .9, 1.)
-        self.specularColor = (1., 1., .95, 1.)
+        self.diffuseColor = np.array((1., 1., .9, 1.))
+        self.specularColor = np.array((1., 1., .95, 1.))
         self.shininess = 91.0
-        self.useMaterial = False
 
         # Build view, projection for shadowCam
         # --------------------------------------
@@ -242,7 +319,6 @@ class Canvas(app.Canvas):
 
         # Build a lightbox for specular Environment
         # --------------------------------------
-        # self.lightBoxTexture = createLightBox()
         self.lightBoxTexture = np.zeros((6, 1024, 1024, 3), dtype=np.float32)
         # self.lightBoxTexture[2] = read_png(load_data_file("skybox/sky-left.png"))/255. #DOWN
         # self.lightBoxTexture[3] = read_png(load_data_file("skybox/sky-right.png"))/255. #UP
@@ -270,25 +346,18 @@ class Canvas(app.Canvas):
         # Colormaps related variables
         # --------------------------------------
         self.cmapName = cmap
-        createColormaps()
 
         # Pearson's patterns related variables
         # definition of parameters for du, dv, f, k
         # --------------------------------------
         self.specie = specie
-        self.species = import_pearsons_types()
         self.setSpecie(specie=self.specie)
 
         # Mouse interactions parameters
         # --------------------------------------
-        self.mouseDown = False
-        self.mousePressControlPos = [0.0, 0.0]
-        self.mousePressAltPos     = [0.0, 0.0]
-        self.mousePressShiftPos   = [0.0, 0.0]
-        self.brush     = np.zeros((1, 1, 2), dtype=np.float32)
+        self.pressed = False
+        self.brush = [0, 0]
         self.brushType = 0
-
-        self.holdModel = False
 
         # ? better computation ?
         # --------------------------------------
@@ -321,7 +390,7 @@ class Canvas(app.Canvas):
         self.renderProgram["dy"] = 1./self.h
         self.renderProgram['pingpong'] = self.pingpong
         self.renderProgram["reagent"] = 1
-        self.renderProgram["u_view"] = self.view
+        self.renderProgram["u_view"] = self.camera.view
         self.renderProgram["u_model"] = self.model
         self.renderProgram["shadowMap"] = self.shadowTexture
         self.renderProgram["shadowMap"].interpolation = gl.GL_LINEAR
@@ -373,16 +442,12 @@ class Canvas(app.Canvas):
         self.shadowBuffer = FrameBuffer(color=self.renderProgram["shadowMap"],
                                        depth=gloo.RenderBuffer((self.shadowMapSize, self.shadowMapSize), format='depth'))
 
-        # cycle of computation per frame
-        self.cycle = 0
-
-        self.activate_zoom()
-
         # OpenGL initialization
         # --------------------------------------
         gloo.set_state(clear_color=(0.30, 0.30, 0.35, 1.00), depth_test=True,
                        line_width=0.75)
 
+        self.activate_zoom()
         self.show()
 
     ############################################################################
@@ -390,7 +455,6 @@ class Canvas(app.Canvas):
 
     def on_draw(self, event):
         # Render next model state into buffer
-        # if self.holdModel is not True:
         with self.modelbuffer:
             gloo.set_viewport(0, 0, self.h, self.w)
             gloo.set_state(depth_test=False,
@@ -436,8 +500,7 @@ class Canvas(app.Canvas):
 
     def activate_zoom(self):
         gloo.set_viewport(0, 0, *self.physical_size)
-        projection = perspective(24, self.size[0] / float(self.size[1]),
-                                 0.1, 20.0)
+        projection = self.camera.setProjection(aspect=self.size[0] / float(self.size[1]))
         if hasattr(self, 'renderProgram'):
             self.renderProgram['u_projection'] = projection
         if hasattr(self, 'coordinatesProgram'):
@@ -448,10 +511,11 @@ class Canvas(app.Canvas):
 
     def on_mouse_wheel(self, event):
         # no shift modifier key
-        # Move the plane AND light in z
-        self.viewCoordinates[2] += event.delta[1]/2
-        self.viewCoordinates[2] = np.clip(self.viewCoordinates[2], -5.0, -0.7)
-        self.updateView()
+        # Move the camera AND light in z
+        self.view = self.camera.move(distance=self.camera.distance - event.delta[1])
+        if hasattr(self, 'renderProgram'):
+            self.renderProgram["u_view"] = self.view
+
         self.lightCoordinates[2] += event.delta[1]/2
         self.lightCoordinates[2] = np.clip(self.lightCoordinates[2], self.viewCoordinates[2]+.1, -0.8)
         # shift modifier key
@@ -461,52 +525,46 @@ class Canvas(app.Canvas):
         self.updateLight()
 
     def on_mouse_press(self, event):
-        self.mouseDown = True
+        self.pressed = True
         (x, y) = event.pos
         (sx, sy) = self.size
         xpos = x/sx
         ypos = 1 - y/sy
         if len(event.modifiers) == 0:
-            self.mousePressShiftPos = [xpos, ypos]
+            # self.mousePos = [xpos, ypos]
+            self.mousePos = event.pos
         elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
             self.computeProgram['brush'] = [xpos, ypos]
             self.computeProgram['brushtype'] = event.button
 
+    def on_mouse_release(self, event):
+        self.pressed = False
+        self.computeProgram['brush'] = [0, 0]
+        self.computeProgram['brushtype'] = 0
+
     def on_mouse_move(self, event):
-        if(self.mouseDown):
+        if(self.pressed):
             (x, y) = event.pos
             (sx, sy) = self.size
             xpos = x/sx
             ypos = 1 - y/sy
             if len(event.modifiers) == 0:
-                self.modelAzimuth += 40. * (self.mousePressShiftPos[1] - ypos)
-                self.modelDirection -= 40. * (self.mousePressShiftPos[0] - xpos)
-                self.modelAzimuth = np.clip(self.modelAzimuth, -90, 0)
-                self.modelDirection = np.clip(self.modelDirection, -90, 90)
-                self.mousePressShiftPos = [xpos, ypos]
-                self.updateModel()
+                dazimuth = (event.pos[0] - self.mousePos[0]) * (2*pi) / self.size[0]
+                delevation = (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
+                self.mousePos = event.pos
+                self.view = self.camera.move(azimuth = self.camera.azimuth - dazimuth/self.camera.sensitivity,
+                                             elevation=self.camera.elevation - delevation/self.camera.sensitivity)
+                if hasattr(self, 'renderProgram'):
+                    self.renderProgram["u_view"] = self.view
             elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
-                """
-                print("x, y: %s, %s" % (x, y))
-                print("sx, sy: %s, %s" % (sx, sy))
-                print("texCoordx, texcoordy: %s, %s" % (int(x/sx*self.w), int(y/sy*self.h)))
-                print('CoordinatesBuffer: %s' % self.coordinatesBuffer.read())
-                texCoords = self.coordinatesBuffer.read()[int(x/sx*self.w), int(y/sy*self.h)]
-                print("texCoords: %s" % texCoords)
-                """
                 # update brush coords here
                 self.computeProgram['brush'] = [xpos, ypos]
                 self.computeProgram['brushtype'] = event.button
 
-    def on_mouse_release(self, event):
-        self.mouseDown = False
-        self.computeProgram['brush'] = [0, 0]
-        self.computeProgram['brushtype'] = 0
-
     NO_ACTION = (None, None)
 
     def on_key_press(self, event):
-        # treats all key event that are defined in keyactionDictionnary
+        """treats all key event that are defined in keyactionDictionnary"""
         eventKey = ''
         eventModifiers = []
         if len(event.text) > 0:
@@ -516,7 +574,7 @@ class Canvas(app.Canvas):
         for each in event.modifiers:
             eventModifiers.append(each)
         eventModifiers = tuple(eventModifiers)
-        (func, args) = self.keyactionDictionnary.get((eventKey, eventModifiers), self.NO_ACTION)
+        (func, args) = Canvas.keyactionDictionnary.get((eventKey, eventModifiers), self.NO_ACTION)
         if func is not None:
             func(self, event, *args)
 
@@ -548,31 +606,13 @@ class Canvas(app.Canvas):
             self.renderProgram["texture"].wrapping = gl.GL_REPEAT
 
     def setSpecie(self, event=None, specie=''):
-        """
-        Set the feed, kill and diffusion rates for the choosen pattern
-        """
+        """Set the feed, kill and diffusion rates for the choosen pattern"""
         if specie != '':
             self.specie = specie
             self.printPearsonPatternDescription()
             self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
-            self.P[:, :] = self.species[self.specie][0:4]
-            self.modulateFK()
-            # self.updateComputeParams()
-
-    def modulateFK(self, pos=None):
-        f = self.P[0, 0, 2]
-        k = self.P[0, 0, 3]
-        if pos is not None:
-            self.fModAmount += 0.002 * (pos[1] - self.mousePressAltPos[1])
-            self.kModAmount += 0.001 * (pos[0] - self.mousePressAltPos[0])
-        rows, cols = self.h, self.w
-        sinsF = np.sin(np.linspace(0.0, 2*np.pi, cols))
-        sinsK = np.sin(np.linspace(0.0, 2*np.pi, rows))
-        for i in range(rows):
-            self.P[i, :, 2] = np.clip(f + self.fModAmount*sinsF, self.fMin, self.fMax)
-        for i in range(cols):
-            self.P[:, i, 3] = np.clip(k + self.kModAmount*sinsK, self.kMin, self.kMax)
-        self.updateComputeParams()
+            self.P[:, :] = Canvas.species[self.specie][0:4]
+            self.updateComputeParams()
 
     def updateComputeParams(self):
         self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
@@ -602,25 +642,18 @@ class Canvas(app.Canvas):
             self.cycle = 0
         print(' Number of cycles: %3.0f' % (1 + 2 * self.cycle), end='\r')
 
-    def pause(self, event=None):
-        self.holdModel = not self.holdModel
-
     ############################################################################
     # functions related to the Gray-Scott model appearances/representation
 
     def switchReagent(self, event=None):
-        """
-        Toggles between representing U or V concentrations.
-        """
+        """Toggles between representing U or V concentrations."""
         self.renderProgram["reagent"] = 1 - self.renderProgram["reagent"]
         self.shadowProgram["reagent"] = 1 - self.shadowProgram["reagent"]
         reagents = ('U', 'V')
         print(' Displaying %s reagent concentration.' % reagents[int(self.renderProgram["reagent"])], end="\r")
 
     def setColorMap(self, event=None, name=''):
-        """
-        Set the colormap used to render the concentration
-        """
+        """Set the colormap used to render the concentration"""
         if name != '':
             self.cmapName = name
             self.renderProgram["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
@@ -681,42 +714,13 @@ class Canvas(app.Canvas):
     ############################################################################
     # functions to manipulate orientations and positions of model, view, light
 
-    def resetView(self, event=None):
+    def resetCamera(self, event=None):
         """
         Replaces the camera in its original position.
         """
-        self.viewCoordinates = [0, 0, -2.5]
-        if self.lightCoordinates[2] < self.viewCoordinates[2]:
-            self.lightCoordinates[2] = -2.1
-            self.updateLight()
-        self.updateView()
-
-    def resetModel(self, event=None):
-        """
-        Replaces the grid in its original unrotated vertical orientation.
-        """
-        self.modelAzimuth = 0
-        self.modelDirection = 0
-        self.updateModel()
-
-    def updateModel(self):
-        model = self.rotateModel()
+        self.view = self.camera.setEye([0,0,2.5])
         if hasattr(self, 'renderProgram'):
-            self.renderProgram["u_model"] = model
-        if hasattr(self, 'shadowProgram'):
-            self.shadowProgram["u_model"] = model
-        if hasattr(self, 'coordinatesProgram'):
-            self.coordinatesProgram["u_model"] = model
-
-    def rotateModel(self):
-        # model is able to rotate but does not move
-        # around x axis (vertical to horizontal plane)
-        azRotationMatrix = rotate(self.modelAzimuth, (1, 0, 0))
-        # print('azRotationMatrix:\n %s' % azRotationMatrix)
-        # around y axis (like a turntable)
-        diRotationMatrix = rotate(self.modelDirection, (0, 0, 1))
-        # print('diRotationMatrix:\n %s' % diRotationMatrix)
-        return np.matmul(np.matmul(self.model, diRotationMatrix), azRotationMatrix)
+            self.renderProgram["u_view"] = self.view
 
     def updateLight(self, event=None, coordinatesDelta=(0,0,0)):
         """
@@ -732,23 +736,13 @@ class Canvas(app.Canvas):
             self.renderProgram["u_light_position"] = self.lightCoordinates
         self.updateLightCam()
 
-    def updateView(self):
-        # view is able to move along z axis only (in/out)
-        self.view = translate((self.viewCoordinates[0],
-                               self.viewCoordinates[1],
-                               self.viewCoordinates[2]))
-        if hasattr(self, 'renderProgram'):
-            self.renderProgram["u_view"] = self.view
-        if hasattr(self, 'coordinatesProgram'):
-            self.coordinatesProgram["u_view"] = self.view
-        self.updateLightCam()
-
     def updateLightCam(self):
         # lightcam is placed at the light coordinates
         self.shadowViewCoordinates = self.lightCoordinates
         self.shadowView = translate((-self.shadowViewCoordinates[0],
                                      -self.shadowViewCoordinates[1],
                                      self.shadowViewCoordinates[2]))
+
         # point camera at center of the model, and compute projection parameters
         self.shadowView, (self.shadowCamFoV, self.shadowCamNear, self.shadowCamFar) = self.rotateShadowView(self.shadowView,
                                                     self.shadowViewCoordinates,
@@ -758,6 +752,12 @@ class Canvas(app.Canvas):
                                             self.size[0] / float(self.size[1]),
                                             self.shadowCamNear,
                                             self.shadowCamFar)
+        """
+        # This would be much more clean, but currently does not work properly...
+        self.shadowView = lookAt(self.shadowViewCoordinates, self.shadowCamAt)
+        self.shadowProjection = zoomOn(self.shadowViewCoordinates, self.shadowCamAt)
+        """
+
         if hasattr(self, 'shadowProgram'):
             self.shadowProgram["u_view"] = self.shadowView
             self.shadowProgram["u_projection"] = self.shadowProjection
@@ -784,18 +784,6 @@ class Canvas(app.Canvas):
         near = length - radius
         far = length + radius
         return rotatedView, (fov, near, far)
-
-    ############################################################################
-    # Output functions
-
-    def printPearsonPatternDescription(self):
-        self.title2 = '3D Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
-        print('Pearson\'s Pattern %s' % self.specie)
-        print(self.species[self.specie][4])
-        print('        dU  dV  f     k \n        %s %s %s %s' % (self.species[self.specie][0],
-                                                                 self.species[self.specie][1],
-                                                                 self.species[self.specie][2],
-                                                                 self.species[self.specie][3]))
 
     ############################################################################
     # Debug/utilities functions
@@ -835,19 +823,17 @@ class Canvas(app.Canvas):
             self._fps_callback = None
 
     # Dictionnary to map key commands to function
-    # All these functions will receive the calling event even if not used.
     # --------------------------------------
     keyactionDictionnary = {
         (' ', ()): (initializeGrid, ()),
         ('/', ('Shift',)): (switchReagent, ()),
         ('P', ('Control',)): (increaseCycle, ()),
         ('O', ('Control',)): (decreaseCycle, ()),
-        ('=', ()): (resetModel, ()),
         ('Up', ()): (updateLight, ((0, 0.02, 0),)),
         ('Down', ()): (updateLight, ((0, -0.02, 0),)),
         ('Left', ()): (updateLight, ((-0.02, 0, 0),)),
         ('Right', ()): (updateLight, ((0.02, 0, 0),)),
-        ('@', ()): (resetView, ()),
+        ('@', ()): (resetCamera, ()),
         (',', ('Control',)): (modifyLightCharacteristic, ('ambient',)),
         (';', ('Control',)): (modifyLightCharacteristic, ('diffuse',)),
         (':', ('Control',)): (modifyLightCharacteristic, ('specular',)),
@@ -867,7 +853,19 @@ class Canvas(app.Canvas):
         keyactionDictionnary[(key, ())] = (setSpecie, (speciesDictionnary[key],))
     for key in speciesDictionnaryShifted.keys():
         keyactionDictionnary[(key, ('Shift',))] = (setSpecie, (speciesDictionnaryShifted[key],))
-    # Canvas.keysDoc = self.getCommandsDocs()
+
+    ############################################################################
+    # Output functions
+
+    def printPearsonPatternDescription(self):
+        self.title2 = '3D Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
+        specie = Canvas.species[self.specie]
+        print('Pearson\'s Pattern %s' % self.specie)
+        print(specie[4])
+        print('        dU  dV  f     k \n        %s %s %s %s' % (specie[0],
+                                                                 specie[1],
+                                                                 specie[2],
+                                                                 specie[3]))
 
     @staticmethod
     def getCommandsDocs():
