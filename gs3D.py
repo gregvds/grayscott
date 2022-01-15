@@ -161,6 +161,7 @@ class Canvas(app.Canvas):
         'Z': 'zeta_right'
     }
 
+
     def __init__(self,
                  size=(1024, 1024),
                  modelSize=(512,512),
@@ -187,7 +188,7 @@ class Canvas(app.Canvas):
         # texcoord being vec2
         # normal being vec3
         # color being vec4
-        V, F, outline = create_plane(width_segments=self.w, height_segments=self.h)
+        V, F, outline = create_plane(width_segments=self.w, height_segments=self.h, direction='+z')
         vertices = VertexBuffer(V)
         self.faces = IndexBuffer(F)
 
@@ -288,41 +289,6 @@ class Canvas(app.Canvas):
         self.brushType = 0
 
         self.holdModel = False
-
-        # Dictionnary to map key commands to function
-        # All these functions will receive the calling event even if not used.
-        # --------------------------------------
-        self.keyactionDictionnary = {
-            (' ', ()): (self.initializeGrid, ()),
-            ('/', ('Shift',)): (self.switchReagent, ()),
-            ('P', ('Control',)): (self.increaseCycle, ()),
-            ('O', ('Control',)): (self.decreaseCycle, ()),
-            ('=', ()): (self.resetModel, ()),
-            ('Up', ()): (self.updateLight, ((0, 0.02, 0),)),
-            ('Down', ()): (self.updateLight, ((0, -0.02, 0),)),
-            ('Left', ()): (self.updateLight, ((-0.02, 0, 0),)),
-            ('Right', ()): (self.updateLight, ((0.02, 0, 0),)),
-            ('@', ()): (self.resetView, ()),
-            (',', ('Control',)): (self.modifyLightCharacteristic, ('ambient',)),
-            (';', ('Control',)): (self.modifyLightCharacteristic, ('diffuse',)),
-            (':', ('Control',)): (self.modifyLightCharacteristic, ('specular',)),
-            ('=', ('Control',)): (self.modifyLightCharacteristic, ('shadow',)),
-            ('N', ('Control',)): (self.modifyLightCharacteristic, ('attenuation',)),
-            ('L', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '-')),
-            ('M', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+')),
-            ('J', ('Control',)): (self.modifyLightCharacteristic, ('vsf_gate', '-')),
-            ('K', ('Control',)): (self.modifyLightCharacteristic, ('vsf_gate', '+')),
-            ('I', ('Control',)): (self.modifyLightCharacteristic, ('lightbox',))
-        }
-        for key in Canvas.colormapDictionnary.keys():
-            self.keyactionDictionnary[(key,())] = (self.setColorMap, (Canvas.colormapDictionnary[key],))
-        for key in Canvas.colormapDictionnaryShifted.keys():
-            self.keyactionDictionnary[(key,('Shift',))] = (self.setColorMap, (Canvas.colormapDictionnaryShifted[key],))
-        for key in Canvas.speciesDictionnary.keys():
-            self.keyactionDictionnary[(key,())] = (self.setSpecie, (Canvas.speciesDictionnary[key],))
-        for key in Canvas.speciesDictionnaryShifted.keys():
-            self.keyactionDictionnary[(key,('Shift',))] = (self.setSpecie, (Canvas.speciesDictionnaryShifted[key],))
-        Canvas.keysDoc = self.getCommandsDocs()
 
         # ? better computation ?
         # --------------------------------------
@@ -552,7 +518,7 @@ class Canvas(app.Canvas):
         eventModifiers = tuple(eventModifiers)
         (func, args) = self.keyactionDictionnary.get((eventKey, eventModifiers), self.NO_ACTION)
         if func is not None:
-            func(event, *args)
+            func(self, event, *args)
 
     ############################################################################
     # functions related to the Gray-Scott model parameters
@@ -868,15 +834,52 @@ class Canvas(app.Canvas):
         else:
             self._fps_callback = None
 
-    # In order to be able to call this from class and not instance,
-    # keyactionDictionnary should be a class attributes, but this one holds
-    # instance methods to be called... How to manage this?
-    # @staticmethod
-    def getCommandsDocs(self):
+    # Dictionnary to map key commands to function
+    # All these functions will receive the calling event even if not used.
+    # --------------------------------------
+    keyactionDictionnary = {
+        (' ', ()): (initializeGrid, ()),
+        ('/', ('Shift',)): (switchReagent, ()),
+        ('P', ('Control',)): (increaseCycle, ()),
+        ('O', ('Control',)): (decreaseCycle, ()),
+        ('=', ()): (resetModel, ()),
+        ('Up', ()): (updateLight, ((0, 0.02, 0),)),
+        ('Down', ()): (updateLight, ((0, -0.02, 0),)),
+        ('Left', ()): (updateLight, ((-0.02, 0, 0),)),
+        ('Right', ()): (updateLight, ((0.02, 0, 0),)),
+        ('@', ()): (resetView, ()),
+        (',', ('Control',)): (modifyLightCharacteristic, ('ambient',)),
+        (';', ('Control',)): (modifyLightCharacteristic, ('diffuse',)),
+        (':', ('Control',)): (modifyLightCharacteristic, ('specular',)),
+        ('=', ('Control',)): (modifyLightCharacteristic, ('shadow',)),
+        ('N', ('Control',)): (modifyLightCharacteristic, ('attenuation',)),
+        ('L', ('Control',)): (modifyLightCharacteristic, ('shininess', '-')),
+        ('M', ('Control',)): (modifyLightCharacteristic, ('shininess', '+')),
+        ('J', ('Control',)): (modifyLightCharacteristic, ('vsf_gate', '-')),
+        ('K', ('Control',)): (modifyLightCharacteristic, ('vsf_gate', '+')),
+        ('I', ('Control',)): (modifyLightCharacteristic, ('lightbox',))
+    }
+    for key in colormapDictionnary.keys():
+        keyactionDictionnary[(key, ())] = (setColorMap, (colormapDictionnary[key],))
+    for key in colormapDictionnaryShifted.keys():
+        keyactionDictionnary[(key, ('Shift',))] = (setColorMap, (colormapDictionnaryShifted[key],))
+    for key in speciesDictionnary.keys():
+        keyactionDictionnary[(key, ())] = (setSpecie, (speciesDictionnary[key],))
+    for key in speciesDictionnaryShifted.keys():
+        keyactionDictionnary[(key, ('Shift',))] = (setSpecie, (speciesDictionnaryShifted[key],))
+    # Canvas.keysDoc = self.getCommandsDocs()
+
+    @staticmethod
+    def getCommandsDocs():
+        """
+        Calss static method to harvest all __doc__
+        from methods bound to keys, modifiers.
+        Result to be used as description by the parser help.
+        """
         commandDoc = ''
         command = ''
-        for (key, modifiers) in self.keyactionDictionnary.keys():
-            (function, args) = self.keyactionDictionnary[(key, modifiers)]
+        for (key, modifiers) in Canvas.keyactionDictionnary.keys():
+            (function, args) = Canvas.keyactionDictionnary[(key, modifiers)]
             # command = "keys '%s' + '%s':" % (modifiers, key)
             command = "Keys "
             for modifier in modifiers:
@@ -904,12 +907,8 @@ def fun(x):
 
 
 if __name__ == '__main__':
-    # TODO Here find a way to obtain keyDocs from Canvas getCommandsDocs methods...
-    # without having to instanciate it...
-    # c1 = Canvas()
-    # parser = argparse.ArgumentParser(description=textwrap.dedent(c1.getCommandsDocs()),
-    #                                  epilog= textwrap.dedent("""Examples:
-    parser = argparse.ArgumentParser(description=textwrap.dedent('getCommandsDocs()'),
+
+    parser = argparse.ArgumentParser(description=textwrap.dedent(Canvas.getCommandsDocs()),
                                      epilog= textwrap.dedent("""Examples:
     python3 gs3D.py
     python3 gs3D.py -c osmort
@@ -938,7 +937,6 @@ if __name__ == '__main__':
                         help="Colormap used")
 
     args = parser.parse_args()
-    # del c1
 
     c = Canvas(modelSize=(args.Size, args.Size),
                size=(args.Window, args.Window),

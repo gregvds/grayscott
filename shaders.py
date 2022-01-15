@@ -834,6 +834,7 @@ void main()
         }
     }
 
+    float lightBoxReflectionIntensity = 0.0;
     if (lightBox) {
         // Calculate a vector from the fragment location to the camera.
         // The camera is at the origin, so negating the vertex location gives the vector
@@ -846,6 +847,7 @@ void main()
         reflectedDirection.z = -reflectedDirection.z;
         //reflectedDirection.y = -temp;
         reflected_color = textureCube(cubeMap, reflectedDirection);
+        lightBoxReflectionIntensity = .2;
         //gl_FragColor = reflected_color;
         //return;
     }
@@ -854,7 +856,9 @@ void main()
     // don't really know on which part of the light sources should the attenuation play
     // Maybe not on the ambient_color?
     // gl_FragColor = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
-    gl_FragColor = reflected_color*.2 + .8*(ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color));
+    gl_FragColor = lightBoxReflectionIntensity * reflected_color +
+           (1.0 - lightBoxReflectionIntensity) * (ambient_color +
+                visibility * attenuationFactor * (diffuse_color + specular_color));
 }
 """
 
