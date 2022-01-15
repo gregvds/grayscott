@@ -83,9 +83,10 @@ import numpy as np
 from vispy import app, gloo
 from vispy.geometry import create_plane
 from vispy.gloo import gl, Program, VertexBuffer, IndexBuffer, FrameBuffer
+from vispy.io import read_png, load_data_file
 from vispy.util.transforms import perspective, translate, rotate
 
-from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid)
+from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid, createLightBox)
 
 from shaders import compute_vertex
 from shaders import compute_fragment_2 as compute_fragment
@@ -191,11 +192,11 @@ class Canvas(app.Canvas):
         self.faces = IndexBuffer(F)
 
         # Build texture data
+        # --------------------------------------
         # the texture contains 4 layers r, g, b, a
         # containing U and V concentrations twice
         # and are used through pingpong alternatively
         # each GPU computation/rendering cycle
-        # --------------------------------------
         self.initializeGrid()
         self.pingpong = 1
 
@@ -216,9 +217,9 @@ class Canvas(app.Canvas):
         self.c2 = .8
         self.c3 = 0.02
         self.ambientIntensity = 0.5
-        self.ambientColor = np.array((0.5, 0.5, 0.5, 1))
-        self.diffuseColor = (1., 1., 1., 1.)
-        self.specularColor = (1., 1., 1., 1.)
+        self.ambientColor = np.array((1., 1., 1., 1))
+        self.diffuseColor = (1., 1., .9, 1.)
+        self.specularColor = (1., 1., .95, 1.)
         self.shininess = 91.0
         self.useMaterial = False
 
@@ -238,6 +239,24 @@ class Canvas(app.Canvas):
 
         self.displaySwitch = 0
 
+        # Build a lightbox for specular Environment
+        # --------------------------------------
+        # self.lightBoxTexture = createLightBox()
+        self.lightBoxTexture = np.zeros((6, 1024, 1024, 3), dtype=np.float32)
+        # self.lightBoxTexture[2] = read_png(load_data_file("skybox/sky-left.png"))/255. #DOWN
+        # self.lightBoxTexture[3] = read_png(load_data_file("skybox/sky-right.png"))/255. #UP
+        # self.lightBoxTexture[0] = read_png(load_data_file("skybox/sky-front.png"))/255. #LEFT
+        # self.lightBoxTexture[1] = read_png(load_data_file("skybox/sky-back.png"))/255. #RIGHT
+        # self.lightBoxTexture[4] = read_png(load_data_file("skybox/sky-up.png"))/255. #BACK
+        # self.lightBoxTexture[5] = read_png(load_data_file("skybox/sky-down.png"))/255. #FRONT
+
+        self.lightBoxTexture[2] = read_png(load_data_file("skybox/sky-down.png"))/255. #DOWN
+        self.lightBoxTexture[3] = np.rot90(read_png(load_data_file("skybox/sky-up.png"))/255., 3) #UP
+        self.lightBoxTexture[0] = read_png(load_data_file("skybox/sky-left.png"))/255. #LEFT
+        self.lightBoxTexture[1] = np.rot90(read_png(load_data_file("skybox/sky-right.png"))/255., 2) #RIGHT
+        self.lightBoxTexture[4] = np.rot90(read_png(load_data_file("skybox/sky-back.png"))/255., 3) #BACK
+        self.lightBoxTexture[5] = np.rot90(read_png(load_data_file("skybox/sky-front.png"))/255., 1) #FRONT
+
         # DEBUG, toggles to switch on and off different parts of lighting
         # --------------------------------------
         self.ambient     = True
@@ -245,6 +264,7 @@ class Canvas(app.Canvas):
         self.diffuse     = True
         self.specular    = True
         self.shadow      = 3
+        self.lightBox    = True
 
         # Colormaps related variables
         # --------------------------------------
@@ -291,7 +311,8 @@ class Canvas(app.Canvas):
             ('L', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '-')),
             ('M', ('Control',)): (self.modifyLightCharacteristic, ('shininess', '+')),
             ('J', ('Control',)): (self.modifyLightCharacteristic, ('vsf_gate', '-')),
-            ('K', ('Control',)): (self.modifyLightCharacteristic, ('vsf_gate', '+'))
+            ('K', ('Control',)): (self.modifyLightCharacteristic, ('vsf_gate', '+')),
+            ('I', ('Control',)): (self.modifyLightCharacteristic, ('lightbox',))
         }
         for key in Canvas.colormapDictionnary.keys():
             self.keyactionDictionnary[(key,())] = (self.setColorMap, (Canvas.colormapDictionnary[key],))
@@ -329,25 +350,27 @@ class Canvas(app.Canvas):
         self.renderProgram["texture"] = self.computeProgram["texture"]
         self.renderProgram["texture"].interpolation = gl.GL_LINEAR
         self.renderProgram["texture"].wrapping = gl.GL_REPEAT
+        self.renderProgram["scalingFactor"] = 30. * (self.w/512)
         self.renderProgram["dx"] = 1./self.w
         self.renderProgram["dy"] = 1./self.h
         self.renderProgram['pingpong'] = self.pingpong
         self.renderProgram["reagent"] = 1
+        self.renderProgram["u_view"] = self.view
+        self.renderProgram["u_model"] = self.model
         self.renderProgram["shadowMap"] = self.shadowTexture
         self.renderProgram["shadowMap"].interpolation = gl.GL_LINEAR
         self.renderProgram["shadowMap"].wrapping = gl.GL_CLAMP_TO_EDGE
         self.renderProgram["u_Shadowmap_projection"] = self.shadowProjection
         self.renderProgram["u_Shadowmap_view"] = self.shadowView
-        self.renderProgram["u_Tolerance_constant"] = 0.005
-        self.renderProgram["vsf_gate"] = 2.5e-08
-        self.renderProgram["scalingFactor"] = 30. * (self.w/512)
-        self.renderProgram["u_view"] = self.view
-        self.renderProgram["u_model"] = self.model
+        self.renderProgram["u_Tolerance_constant"] = 5e-03
+        self.renderProgram["vsf_gate"] = 2.5e-05
         self.renderProgram["ambient"] = self.ambient
         self.renderProgram["attenuation"] = self.attenuation
         self.renderProgram["diffuse"] = self.diffuse
         self.renderProgram["specular"] = self.specular
         self.renderProgram["shadow"] = self.shadow
+        self.renderProgram["lightBox"] = self.lightBox
+        self.renderProgram["cubeMap"] = gloo.TextureCube(self.lightBoxTexture, interpolation='linear')
         self.renderProgram["u_light_position"] = self.lightCoordinates
         self.renderProgram["u_light_intensity"] = self.lightIntensity
         self.renderProgram["u_Ambient_color"] = self.ambientColor
@@ -568,7 +591,7 @@ class Canvas(app.Canvas):
             self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
             self.P[:, :] = self.species[self.specie][0:4]
             self.modulateFK()
-            self.updateComputeParams()
+            # self.updateComputeParams()
 
     def modulateFK(self, pos=None):
         f = self.P[0, 0, 2]
@@ -684,6 +707,10 @@ class Canvas(app.Canvas):
         elif lightType == "vsf_gate" and modification == '-':
             self.renderProgram['vsf_gate'] = self.renderProgram['vsf_gate'] / 2.0
             print("vsf_gate: %s" % self.renderProgram['vsf_gate'])
+        elif lightType == "lightbox":
+            self.lightBox = not self.lightBox
+            self.renderProgram["lightBox"] = self.lightBox
+            print("LightBox %s" % self.lightBox)
 
     ############################################################################
     # functions to manipulate orientations and positions of model, view, light

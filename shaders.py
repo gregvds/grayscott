@@ -445,7 +445,7 @@ attribute lowp vec4 color;
 // Data (to be interpolated) that is passed on to the fragment shader
 varying vec3 v_position;
 varying mediump vec3 v_normal;
-varying lowp vec4 v_color;
+// varying lowp vec4 v_color;
 varying vec2 v_texcoord;
 varying mediump vec4 v_Vertex_relative_to_light;
 
@@ -558,6 +558,8 @@ uniform lowp float u_Shininess;
 uniform lowp float c1;
 uniform lowp float c2;
 uniform lowp float c3;
+uniform bool lightBox;
+uniform samplerCube cubeMap;
 
 uniform sampler2D texture; // u:= r or b following pinpong
 uniform lowp sampler1D cmap;          // colormap used to render reagent concentration
@@ -628,42 +630,26 @@ float when_le(float x, float y) {
 // Vector conversions methods
 
 vec3 scale_from_ndc(vec3 vertex) {
+    // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
+    // to the range [0.0,1.0]. This mapping is done by scaling
+    // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
+    // shifting the values by +0.5.
     return vertex * 0.5 + 0.5;
 }
 
 vec3 persp_divide(vec4 vertex) {
+    // The vertex location rendered from the light source is almost in Normalized
+    // Device Coordinates (NDC), but the perspective division has not been
+    // performed yet. Perform the perspective divide. The (x,y,z) vertex location
+    // components are now each in the range [-1.0,+1.0].
     return vertex.xyz / vertex.w;
 }
 
 //-------------------------------------------------------------------------
-
 // Determine if this fragment is in a shadow. Returns true or false.
+
 bool in_shadow(void) {
-
-  // The vertex location rendered from the light source is almost in Normalized
-  // Device Coordinates (NDC), but the perspective division has not been
-  // performed yet. Perform the perspective divide. The (x,y,z) vertex location
-  // components are now each in the range [-1.0,+1.0].
-//  vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
-
-  // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
-  // to the range [0.0,1.0]. This mapping is done by scaling
-  // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
-  // shifting the values by +0.5.
-//  vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
   vec3 vertex_relative_to_light = scale_from_ndc(persp_divide(v_Vertex_relative_to_light));
-
-  // Get the z value of this fragment in relationship to the light source.
-  // This value was stored in the shadow map (depth buffer of the frame buffer)
-  // which was passed to the shader as a texture map.
-//  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
-
-  // The texture map contains a single depth value for each pixel. However,
-  // the texture2D sampler always returns a color from a texture. For a
-  // gl.DEPTH_COMPONENT texture, the color contains the depth value in
-  // each of the color components. If the value was d, then the color returned
-  // is (d,d,d,1). This is a "color" (depth) value between [0.0,+1.0].
-//  float shadowmap_distance = shadowmap_color.r;
   float shadowmap_distance = texture2D(shadowMap, vertex_relative_to_light.xy).r;
 
   // Test the distance between this fragment and the light source as
@@ -680,9 +666,9 @@ bool in_shadow(void) {
 
 //-------------------------------------------------------------------------
 // Determine if this fragment is in a shadow. Returns ratio of visibility.
-// Sample the shadowmap N times instead of once and modulate the visibility
-float pcf(void) {
+// Sample the shadowmap 4 times instead of once and modulate the visibility
 
+float pcf(void) {
   vec2 lowp poissonDisk[4] = vec2[](
    vec2( -0.94201624, -0.39906216 ),
    vec2( 0.94558609, -0.76890725 ),
@@ -692,29 +678,11 @@ float pcf(void) {
   float lowp visibility = 1.0;
   float lowp spreading = 2000;
 
-  // The vertex location rendered from the light source is almost in Normalized
-  // Device Coordinates (NDC), but the perspective division has not been
-  // performed yet. Perform the perspective divide. The (x,y,z) vertex location
-  // components are now each in the range [-1.0,+1.0].
-//  vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
-
-  // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
-  // to the range [0.0,1.0]. This mapping is done by scaling
-  // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
-  // shifting the values by +0.5.
-//  vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
   vec3 vertex_relative_to_light = scale_from_ndc(persp_divide(v_Vertex_relative_to_light));
-
-  // Get the z value of this fragment in relationship to the light source.
-  // This value was stored in the shadow map (depth buffer of the frame buffer)
-  // which was passed to the shader as a texture map.
-//  vec4 shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy);
-//  float shadowmap_color = texture2D(shadowMap, vertex_relative_to_light.xy).r;
 
   int lowp index;
   for (int i=0; i<4; i++) {
     visibility -= .2 *
-//        when_lt(shadowmap_color.r,
         when_lt(texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[i]/spreading).r,
                 vertex_relative_to_light.z - u_Tolerance_constant );
   }
@@ -723,20 +691,10 @@ float pcf(void) {
 //-------------------------------------------------------------------------
 
 //-------------------------------------------------------------------------
+// Variance shadow filter algorithms using moments
 
 float vsf(void)
 {
-    // The vertex location rendered from the light source is almost in Normalized
-    // Device Coordinates (NDC), but the perspective division has not been
-    // performed yet. Perform the perspective divide. The (x,y,z) vertex location
-    // components are now each in the range [-1.0,+1.0].
-//    vec3 mediump vertex_relative_to_light = v_Vertex_relative_to_light.xyz / v_Vertex_relative_to_light.w;
-
-    // Convert the the values from Normalized Device Coordinates (range [-1.0,+1.0])
-    // to the range [0.0,1.0]. This mapping is done by scaling
-    // the values by 0.5, which gives values in the range [-0.5,+0.5] and then
-    // shifting the values by +0.5.
-//    vertex_relative_to_light = vertex_relative_to_light * 0.5 + 0.5;
     vec3 vertex_relative_to_light = scale_from_ndc(persp_divide(v_Vertex_relative_to_light));
 
     // We retrieve the two moments previously stored (depth and depth*depth)
@@ -775,9 +733,13 @@ void main()
     vec4 lowp diffuse_color = vec4(0, 0, 0, 1);
     vec4 lowp specular_color = vec4(0, 0, 0, 1);
     vec4 lowp potential_specular_light = vec4(0, 0, 0, 1);
+    vec4 lowp reflected_color = vec4(0, 0, 0, 0);
     float light_distance;
     float lowp attenuationFactor = 1.0;
     float lowp visibility = 1.0;
+
+    //--------------------------------------------------------------------------
+    // Sampling of the model concentrations that give the surface color
 
     float u;
     vec4 texValue = texture2D(texture, v_texcoord);
@@ -785,39 +747,42 @@ void main()
         texValue.g * when_eq_int(reagent, 0) * when_eq_int(pingpong, 0) +
         texValue.b * when_eq_int(reagent, 1) * when_eq_int(pingpong, 1) +
         texValue.a * when_eq_int(reagent, 0) * when_eq_int(pingpong, 1);
-    vec4 lowp v_color = texture1D(cmap, u);
+    vec4 lowp surface_color = texture1D(cmap, u);
 
-    // Calculate the ambient color as a percentage of the surface color
+    //--------------------------------------------------------------------------
+    // Base definition of the colors as modulation of surface color, partial colors and light intensity
+
     if (ambient) {
-        ambient_color = vec4(u_ambient_intensity * vec3(v_color), v_color.a);
+        ambient_color = vec4(u_ambient_intensity * vec3(surface_color), surface_color.a) * u_Ambient_color;
     }
     if (diffuse) {
-        diffuse_color = v_color;
+        diffuse_color = surface_color * vec4(u_light_intensity, 1) * u_diffuse_color;
     }
     if (specular) {
-        potential_specular_light = vec4(u_light_intensity, 1);
+        potential_specular_light = vec4(u_light_intensity, 1) * u_specular_color;
     }
 
-    // simple shadow mapping
+    //--------------------------------------------------------------------------
+    // shadows computation following several algorithms
+
     if (shadow == 1 && in_shadow()) {
+        // simple shadow mapping
         // This fragment only receives ambient light because it is in a shadow.
         gl_FragColor = ambient_color;
         return;
-    }
-
-    // Percent shadow mapping through multiple sampling
-    if (shadow == 2) {
+    } else if (shadow == 2) {
+        // Percent shadow mapping through multiple sampling
         // proportion of full light for this fragment
         visibility = pcf();
-    }
-
-    // variance shadow mapping with one sampling
-    if (shadow == 3) {
+    } else if (shadow == 3) {
+        // variance shadow mapping with one sampling
         // proportion of full light for this fragment
         visibility = vsf();
     }
 
+    //--------------------------------------------------------------------------
     // Calculate a vector from the fragment location to the light source
+    // This will be used for attenuation, diffuse and specular lighting computation
     to_light = u_light_position - v_position;
 
     // while computing this vector, let's compute its length and the attenuation
@@ -829,27 +794,23 @@ void main()
     }
     to_light = normalize( to_light );
 
-    // Normal vector computed here, cruder result...
-//    vec3 fdx = vec3(dFdx(v_position.x),dFdx(v_position.y),dFdx(v_position.z));
-//    vec3 fdy = vec3(dFdy(v_position.x),dFdy(v_position.y),dFdy(v_position.z));
-//    vec3 N = normalize(cross(fdx,fdy));
-//    vec3 v_normal2 = vec3(u_view * u_model * vec4(N, 0.0));
-
     // The vertex's normal vector is being interpolated across the primitive
     // which can make it un-normalized. So normalize the vertex's normal vector.
     vertex_normal = normalize( v_normal );
-//    vertex_normal = normalize( v_normal2 );
 
+    // Calculate the cosine of the angle between the vertex's normal vector
+    // and the vector going to the light.
+    cos_angle = dot(vertex_normal, to_light);
+
+    //--------------------------------------------------------------------------
     if (diffuse) {
-        // Calculate the cosine of the angle between the vertex's normal vector
-        // and the vector going to the light.
-        cos_angle = dot(vertex_normal, to_light);
         //cos_angle = clamp(cos_angle, 0.0, 1.0);
 
         // Scale the color of this fragment based on its angle to the light.
         diffuse_color = diffuse_color * clamp(cos_angle, 0.0, 1.0);
     }
 
+    //--------------------------------------------------------------------------
     if (specular) {
         // Calculate the reflection vector
         reflection = 2.0 * cos_angle * vertex_normal - to_light;
@@ -873,9 +834,27 @@ void main()
         }
     }
 
+    if (lightBox) {
+        // Calculate a vector from the fragment location to the camera.
+        // The camera is at the origin, so negating the vertex location gives the vector
+        to_camera = -1.0 * v_position;
+        to_camera = normalize( to_camera );
+
+        vec3 reflectedDirection = normalize(reflect(to_camera, vertex_normal));
+        //reflectedDirection.x = -reflectedDirection.x;
+        //float temp = reflectedDirection.z;
+        reflectedDirection.z = -reflectedDirection.z;
+        //reflectedDirection.y = -temp;
+        reflected_color = textureCube(cubeMap, reflectedDirection);
+        //gl_FragColor = reflected_color;
+        //return;
+    }
+
+    //--------------------------------------------------------------------------
     // don't really know on which part of the light sources should the attenuation play
     // Maybe not on the ambient_color?
-    gl_FragColor = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
+    // gl_FragColor = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
+    gl_FragColor = reflected_color*.2 + .8*(ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color));
 }
 """
 

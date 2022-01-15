@@ -416,3 +416,20 @@ def setup_grid(rows, cols, blob_scale=0.1):
     )
 
     return grid
+
+
+def createLightBox(size=(1024, 1024)):
+    lightBox = np.zeros((6, 1024, 1024, 4), dtype=np.float32)
+    width = 384
+    height = 128
+    for i in range(128, 128+height):
+        for j in range(128, 128+width):
+            lightBox[1][i][j] = np.array((.5, .5, .45, .7)) # RIGHT light
+    # lightBox[2] = np.ones((1024, 1024, 3), dtype=np.float32) * np.array((0,0,0)) #DOWN
+    # lightBox[3] = np.ones((1024, 1024, 3), dtype=np.float32) * np.array((1,1,1)) #UP
+    # lightBox[0] = np.ones((1024, 1024, 3), dtype=np.float32) * np.array((0,1,0)) #LEFT
+    # lightBox[1] = np.ones((1024, 1024, 3), dtype=np.float32) * np.array((1,0,0)) #RIGHT
+    # lightBox[4] = np.ones((1024, 1024, 3), dtype=np.float32) * np.array((0,0,1)) #BACK
+    # lightBox[5] = np.ones((1024, 1024, 3), dtype=np.float32) * np.array((1,1,0)) #FRONT
+
+    return lightBox
