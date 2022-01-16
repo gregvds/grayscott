@@ -307,7 +307,7 @@ uniform int pingpong;
 uniform float dx;                // horizontal distance between texels
 uniform float dy;                // vertical distance between texels
 uniform sampler2D texture; // u:= r or b following pinpong
-uniform sampler2D params;  // rU,rV,f,k := r,g,b,a
+uniform vec4 params;  // rU,rV,f,k := r,g,b,a
 uniform vec2 brush;        // coordinates of mouse down
 uniform int brushtype;
 
@@ -366,11 +366,10 @@ void main()
     float lv = l.g;
     float uvv = u * v * v;
 
-    vec4 q = texture2D(params, p).rgba;
-    float ru = q.r;                                   // rate of diffusion of U
-    float rv = q.g;                                   // rate of diffusion of V
-    float f  = q.b;                                   // feed of U
-    float k  = q.a;                                   // kill of V
+      float ru = params.r;
+      float rv = params.g;
+      float f = params.b;
+      float k = params.a;
     // Gray-Scott equation diffusion+-reaction
     // U + 2V -> V + 2V
 // For the moment let's put off the dd and dt vars as they are fixed = 1.0

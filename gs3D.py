@@ -39,7 +39,7 @@
 """
 
 ################################################################################
-from math import sin, cos, pi, asin, sqrt, atan2
+from math import pi, sin, cos, tan, asin, sqrt, atan2
 import argparse
 import textwrap
 
@@ -100,6 +100,8 @@ class Camera():
 
         self.distanceMin = 0.5
         self.distanceMax = 10.0
+        self.elevationMin = pi/2.0*.01
+        self.elevationMax = pi/2.0*.99
 
         self.sensitivity = 5.0
 
@@ -136,6 +138,7 @@ class Camera():
         """
         self.azimuth = azimuth or self.azimuth
         self.elevation = elevation or self.elevation
+        self.elevation = min(max(self.elevation, self.elevationMin), self.elevationMax)
         self.distance = distance or self.distance
         self.distance = min(max(self.distance, self.distanceMin), self.distanceMax)
         z = self.distance * sin(self.elevation) * sin(self.azimuth)
@@ -168,8 +171,9 @@ class Camera():
         self.distance = np.linalg.norm(np.subtract(self.target, self.eye))
         radius = objectWidth/2.0*(1.0+margin)
         fov = 2 * asin(radius / self.distance) * 180. / pi
-        near = self.distance - radius
-        far = self.distance + radius
+        ratioNearFar = 2.0
+        near = self.distance - radius * 1.0 / ratioNearFar
+        far = self.distance + radius * ratioNearFar
         return self.setProjection(fov, self.aspect, near, far)
 
     def lookAt(self, eye, target, up=[0, 0, 1]):
@@ -330,13 +334,7 @@ class GrayScottModel():
         if specie != '':
             self.specie = specie
             self.printPearsonPatternDescription()
-            self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
-            self.P[:, :] = GrayScottModel.species[self.specie][0:4]
-            self.updateComputeParams()
-
-    def updateComputeParams(self):
-        self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
-        self.program["params"] = self.params
+            self.program["params"] = GrayScottModel.species[self.specie][0:4]
 
     def interact(self, brushCoords, brushType):
         """
@@ -400,17 +398,12 @@ class ShadowRenderer():
         self.grayScottModel = grayScottModel
         self.camera = camera
 
-        # self.viewiew = self.camera.view
+        # self.view = self.camera.view
         self.projection = self.camera.zoomOn(objectWidth=sqrt(2.0), margin=0.02)
 
-        # Currently, the shadowmap is a simple image for I cannot set properly
-        # the FrameBuffer depth part (RenderBuffer)...
-        # Finally, this is useful to pass moments1 and 2 for VSF mapping :-)
         self.shadowMapSize = 2048
         self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
         self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
-        # self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize), dtype=np.float32) * .1
-        # self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_LUMINANCE, internalformat='r32f')
 
         # Build shadowmap render program
         # --------------------------------------
@@ -505,14 +498,14 @@ class MainRenderer():
         self.lightBoxTexture[5] = np.rot90(read_png(load_data_file("skybox/sky-front.png"))/255., 1) #FRONT
         # self.lightBoxTexture = createLightBox()
 
-        # DEBUG, toggles to switch on and off different parts of lighting
+        # Toggles to switch on and off different parts of lighting
         # --------------------------------------
         self.ambient     = True
         self.attenuation = True
         self.diffuse     = True
         self.specular    = True
         self.shadow      = 3
-        self.lightBox    = True    #DEBUG
+        self.lightBox    = True
 
         # Build render program
         # --------------------------------------
@@ -560,6 +553,11 @@ class MainRenderer():
                                   depth=gloo.RenderBuffer((self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize), format='depth'))
 
     def refreshTextureInterpolation(self):
+        """
+        As the GrayScottModel renderer uses a texture with interpolation set
+        at gl.GL_NEAREST, when it is reinitialized, the interpolation here is
+        lost and has to be reset to gl.GL_LINEAR.
+        """
         if self.grayScottModel.gridReinitialized is True:
             self.program["texture"].interpolation = gl.GL_LINEAR
             self.grayScottModel.gridReinitialized = False
@@ -594,6 +592,11 @@ class MainRenderer():
         distance = self.camera.distance - dDistance
         self.view = self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
         self.program["u_view"] = self.view
+        # TODO:
+        # It would be possible here to compute a rough estimate of the size of
+        # the object seen and adjust to the nearest the fov of the shadowmap
+        # camera so as to exploit at its best its resolution...
+        self.adjustShadowMapFrustum()
 
     def zoomCamera(self, percentage=0.0):
         """
@@ -601,10 +604,29 @@ class MainRenderer():
         """
         self.projection = self.camera.setProjection(fov=self.camera.fov*(1+percentage))
         self.program["u_projection"] = self.projection
+        # TODO:
+        # It would be possible here to compute a rough estimate of the size of
+        # the object seen and adjust to the nearest the fov of the shadowmap
+        # camera so as to exploit at its best its resolution...
+        self.adjustShadowMapFrustum()
+
+    def adjustShadowMapFrustum(self):
+        """
+        Attempts at adjusting at its narrowest possible the
+        shadowRenderer camera projection to optimize its resolution.
+        """
+        fieldWidth = self.camera.distance * 2.0 * sin(self.camera.fov/2.0 * pi / 180.0)
+        # The lower the elevation the more problematic the shadow frustum can be
+        # The wider the fov of the self.camera, the more problematic too...
+        securityBuffer = .02 + sin(self.camera.elevation)
+        fieldWidth = min(fieldWidth, sqrt(2.0))
+        self.shadowRenderer.camera.zoomOn(fieldWidth, margin=securityBuffer)
+        self.program["u_Shadowmap_projection"] = self.shadowRenderer.camera.projection
+        self.shadowRenderer.program["u_projection"] = self.shadowRenderer.camera.projection
 
     def resetCamera(self, event=None):
         """
-        Replaces the camera in its original position.
+        Replaces the camera at its original position.
         """
         # self.view = self.camera.setEye(self.camera.defaultEye)
         self.view = self.camera.move(self.camera.defaultAzimuth,
@@ -688,10 +710,6 @@ class Canvas(app.Canvas):
                                              gridSize=modelSize,
                                              specie=specie)
 
-        # Build model
-        # --------------------------------------
-        self.model = np.eye(4, dtype=np.float32)
-
         # Build main camera for view and projection
         # --------------------------------------
         self.camera = Camera(eye=[-2, 2, 0],
@@ -709,6 +727,10 @@ class Canvas(app.Canvas):
                              up=[0,1,0],
                              aspect=self.size[0] / float(self.size[1]))
 
+        # Build model
+        # --------------------------------------
+        self.model = np.eye(4, dtype=np.float32)
+
         # Build shadow renderer using the model, grayScottModel and lightCamera
         # --------------------------------------
         self.shadowRenderer = ShadowRenderer(self.model, self.grayScottModel, self.lightCamera)
@@ -724,16 +746,12 @@ class Canvas(app.Canvas):
         # Mouse interactions parameters
         # --------------------------------------
         self.pressed = False
+
         self.displaySwitch = 0
 
         # ? better computation ?
         # --------------------------------------
         gl.GL_FRAGMENT_PRECISION_HIGH = 1
-
-        # # Define a 'DepthBuffer' to render the shadowmap from the light
-        # # --------------------------------------
-        # self.shadowBuffer = FrameBuffer(color=self.mainRenderer.program["shadowMap"],
-        #                                depth=gloo.RenderBuffer((self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize), format='depth'))
 
         # OpenGL initialization
         # --------------------------------------
