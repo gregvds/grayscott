@@ -500,7 +500,8 @@ void main()
     // A new position vertex is build from the old vertex xy and the concentrations
     // rendered by the compute_fragment(2), hence the surface of the gridplane is
     // embossed or displaced
-    vec3 position2 = vec3(position.x, position.y, c);
+//    vec3 position2 = vec3(position.x, position.y, c);
+    vec3 position2 = vec3(position.x, c, position.z);
     vec4 modelPosition2 = u_model * vec4(position2, 1.0);
     vec4 viewModelPosition2 = u_view * modelPosition2;
 
@@ -549,11 +550,11 @@ uniform mat4 u_model;
 
 // Light model
 uniform lowp vec3 u_light_position;
-uniform lowp vec3 u_light_intensity;
-uniform lowp vec4 u_Ambient_color;
+uniform vec3 u_light_intensity;
+uniform vec4 u_Ambient_color;
 uniform lowp float u_ambient_intensity;
-uniform lowp vec4 u_diffuse_color;
-uniform lowp vec4 u_specular_color;
+uniform vec4 u_diffuse_color;
+uniform vec4 u_specular_color;
 uniform lowp float u_Shininess;
 uniform lowp float c1;
 uniform lowp float c2;
@@ -562,7 +563,7 @@ uniform bool lightBox;
 uniform samplerCube cubeMap;
 
 uniform sampler2D texture; // u:= r or b following pinpong
-uniform lowp sampler1D cmap;          // colormap used to render reagent concentration
+uniform sampler1D cmap;          // colormap used to render reagent concentration
 uniform sampler2D shadowMap;
 uniform lowp float u_Tolerance_constant;
 uniform lowp float vsf_gate;
@@ -729,11 +730,11 @@ void main()
     vec3 mediump reflection;
     vec3 mediump to_camera;
     float cos_angle = 0.0;
-    vec4 lowp ambient_color = vec4(0, 0, 0, 1);
-    vec4 lowp diffuse_color = vec4(0, 0, 0, 1);
-    vec4 lowp specular_color = vec4(0, 0, 0, 1);
-    vec4 lowp potential_specular_light = vec4(0, 0, 0, 1);
-    vec4 lowp reflected_color = vec4(0, 0, 0, 0);
+    vec4 ambient_color = vec4(0, 0, 0, 1);
+    vec4 diffuse_color = vec4(0, 0, 0, 1);
+    vec4 specular_color = vec4(0, 0, 0, 1);
+    vec4 potential_specular_light = vec4(0, 0, 0, 1);
+    vec4 reflected_color = vec4(0, 0, 0, 0);
     float light_distance;
     float lowp attenuationFactor = 1.0;
     float lowp visibility = 1.0;
@@ -811,14 +812,28 @@ void main()
     }
 
     //--------------------------------------------------------------------------
+    // Calculate a vector from the fragment location to the light source
+    // This has to be recomputed flipping the x axis... WHY?!
+    to_light = vec3(-u_light_position.x - v_position.x,
+                    u_light_position.y - v_position.y,
+                    u_light_position.z- v_position.z);
+
+    to_light = normalize( to_light );
+
+    // Calculate the cosine of the angle between the vertex's normal vector
+    // and the vector going to the light.
+    cos_angle = dot(vertex_normal, to_light);
+
+    //--------------------------------------------------------------------------
     if (specular) {
         // Calculate the reflection vector
         reflection = 2.0 * cos_angle * vertex_normal - to_light;
         reflection = normalize( reflection );
 
         // Calculate a vector from the fragment location to the camera.
-        // The camera is at the origin, so negating the vertex location gives the vector
-        to_camera = -1.0 * v_position;
+        // (WRONG!) The camera is at the origin, so negating the vertex location gives the vector
+        // The model is at the origin and the camera is moved away, so no negation!
+        to_camera = 1.0 * v_position;
         to_camera = normalize( to_camera );
 
         // Calculate the cosine of the angle between the reflection vector
@@ -834,20 +849,19 @@ void main()
         }
     }
 
+    //--------------------------------------------------------------------------
     float lightBoxReflectionIntensity = 0.0;
     if (lightBox) {
         // Calculate a vector from the fragment location to the camera.
-        // The camera is at the origin, so negating the vertex location gives the vector
-        to_camera = -1.0 * v_position;
+        // (WRONG!) The camera is at the origin, so negating the vertex location gives the vector
+        // The model is at the origin and the camera is moved away, so no negation!
+        to_camera = 1.0 * v_position;
         to_camera = normalize( to_camera );
 
-        vec3 reflectedDirection = normalize(reflect(to_camera, vertex_normal));
-        //reflectedDirection.x = -reflectedDirection.x;
-        //float temp = reflectedDirection.z;
-        reflectedDirection.z = -reflectedDirection.z;
-        //reflectedDirection.y = -temp;
+        vec3 reflectedDirection = normalize(reflect(v_position, vertex_normal));
         reflected_color = textureCube(cubeMap, reflectedDirection);
-        lightBoxReflectionIntensity = .2;
+        // Fixed value for now... Should implement fresnel effect.
+        lightBoxReflectionIntensity = .2;      //DEBUG
         //gl_FragColor = reflected_color;
         //return;
     }
@@ -913,7 +927,9 @@ void main()
               when_eq_int(pingpong, 1) * when_eq_int(reagent, 0) * textureValues.a;
 
     c = (1.0 - c)/scalingFactor;
-    vec3 position2 = vec3(position.x, position.y, c);
+//    vec3 position2 = vec3(position.x, position.y, c);
+    vec3 position2 = vec3(position.x, c, position.z);
+
 
     // Export of the gl_position to the fragment to render depth
     w_position = u_projection * u_view * u_model * vec4(position2, 1.0);
@@ -952,64 +968,6 @@ void main()
 
     gl_FragColor = vec4(moment1, moment2, 0.0, 0.0);
 //    gl_FragColor.r = depth;
-}
-"""
-
-################################################################################
-# WIP
-# 3D shaders and fragment to render offsets coordinates to be picked by mouse click and drag
-# Currently not in use. Intent was to be able to pick up on the object texcoords
-# to pass to model to activate brush at is proper location...
-
-coord_vertex = """
-precision highp float;
-precision highp vec2;
-precision highp vec3;
-precision highp vec4;
-precision highp mat4;
-
-// Scene transformations
-uniform mat4 u_projection;
-uniform mat4 u_view;
-uniform mat4 u_model;
-
-// Original model data
-attribute vec3 position;
-attribute vec2 texcoord;
-attribute vec3 normal;
-attribute vec4 color;
-
-// Data (to be interpolated) that is passed on to the fragment shader
-varying vec3 v_position;
-varying vec2 v_texcoord;
-
-void main()
-{
-    // Perform the model and view transformations on the vertex and pass this
-    // location to the fragment shader.
-    v_position = vec3(u_view * u_model * vec4(position, 1.0));
-
-    // Pass the texcoord to the fragment shader.
-    v_texcoord = texcoord;
-
-    // Transform the location of the vertex for the rest of the graphics pipeline
-    gl_Position = u_projection * u_view * u_model * vec4(position, 1.0);
-}
-"""
-
-coord_fragment = """
-precision highp float;
-precision highp vec2;
-precision highp vec3;
-precision highp vec4;
-precision highp mat4;
-
-// Data coming from the vertex shader
-varying vec3 v_position;
-varying vec2 v_texcoord;
-void main()
-{
-    gl_FragColor = vec4(v_texcoord.x, v_texcoord.y, 0, 0);
 }
 """
 

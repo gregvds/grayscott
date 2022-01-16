@@ -39,8 +39,7 @@
 """
 
 ################################################################################
-from math import sin, cos, pi, asin, sqrt
-
+from math import sin, cos, pi, asin, sqrt, atan2
 import argparse
 import textwrap
 
@@ -65,6 +64,132 @@ from shaders import shadow_fragment
 # gl.use_gl('gl+')
 
 ################################################################################
+
+
+class Camera():
+    """
+    Simple class that represents a camera, and holds all its characteristics.
+    """
+
+    def __init__(self,
+               eye=[0,0,1],
+               target=[0,0,0],
+               up=[0,0,1],
+               fov=60.0,
+               aspect=1.0,
+               near=1.0,
+               far=100.0):
+        self.defaultEye = eye
+        self.eye = eye
+        self.target = target
+        self.up = up
+        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        self.fov = fov
+        self.defaultFov = fov
+        self.fovMin = 5.0
+        self.fovMax = 120.0
+        self.aspect = aspect
+        self.near = near
+        self.far = far
+        self.projection = perspective(fov, aspect, near, far)
+
+        (self.azimuth, self.elevation, self.distance) = self.InitializeAzElDi()
+        self.defaultAzimuth = self.azimuth
+        self.defaultElevation = self.elevation
+        self.defaultDistance = self.distance
+
+        self.distanceMin = 0.5
+        self.distanceMax = 10.0
+
+        self.sensitivity = 5.0
+
+    def InitializeAzElDi(self):
+        """
+        Computes azimuth, elevation and distance from eye and target received.
+        """
+        (dx, dy, dz) = np.subtract(self.target, self.eye)
+        distance = np.linalg.norm((dx, dy, dz))
+        elevation = atan2(-dy, sqrt(dx**2 + dz**2))
+        azimuth = atan2(-dz, -dx)
+        return (azimuth, elevation, distance)
+
+    def setEye(self, eye):
+        """
+        Sets the coordinates of the camera, computes its view matrix and return it.
+        """
+        self.eye = eye
+        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        return self.view
+
+    def setTarget(self, target):
+        """
+        Sets the target at which the camera is pointing, compute its view matrix and returns it.
+        """
+        self.target = target
+        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        return self.view
+
+    def move(self, azimuth=None, elevation=None, distance=None, target=[0, 0, 0]):
+        """
+        Moves the camera according to the azimuth, elevation, distance and
+        target received, compute its view matrix and returns it
+        """
+        self.azimuth = azimuth or self.azimuth
+        self.elevation = elevation or self.elevation
+        self.distance = distance or self.distance
+        self.distance = min(max(self.distance, self.distanceMin), self.distanceMax)
+        z = self.distance * sin(self.elevation) * sin(self.azimuth)
+        x = self.distance * sin(self.elevation) * cos(self.azimuth)
+        y = self.distance * cos(self.elevation)
+        self.eye = [x, y, z]
+        self.target = target
+        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        return self.view
+
+    def setProjection(self, fov=None, aspect=None, near=None, far=None):
+        """
+        Compute the projection matrix of the camera and returns it.
+        """
+        self.fov = fov or self.fov
+        self.fov = min(max(self.fov, self.fovMin), self.fovMax)
+        self.aspect = aspect or self.aspect
+        self.near = near or self.near
+        self.far = far or self.far
+        self.projection = perspective(self.fov, self.aspect, self.near, self.far)
+        return self.projection
+
+    def zoomOn(self, objectWidth=sqrt(2.0), margin=0.02):
+        """
+        Compute a projection matrix which frustum just covers the width of
+        the object given. This is used in all directions. This width should
+        be the diameter of the sphere containing the object, centered on the
+        center of the object. it returns the projection matrix.
+        """
+        self.distance = np.linalg.norm(np.subtract(self.target, self.eye))
+        radius = objectWidth/2.0*(1.0+margin)
+        fov = 2 * asin(radius / self.distance) * 180. / pi
+        near = self.distance - radius
+        far = self.distance + radius
+        return self.setProjection(fov, self.aspect, near, far)
+
+    def lookAt(self, eye, target, up=[0, 0, 1]):
+        """
+        Computes matrix to put eye looking at target point.
+        """
+        eye = np.asarray(eye).astype(np.float32)
+        target = np.asarray(target).astype(np.float32)
+        up = np.asarray(up).astype(np.float32)
+
+        vforward = eye - target
+        vforward /= np.linalg.norm(vforward)
+        vright = np.cross(up, vforward)
+        vright /= np.linalg.norm(vright)
+        vup = np.cross(vforward, vright)
+        view = np.r_[vright, -np.dot(vright, eye),
+                     vup, -np.dot(vup, eye),
+                     vforward, -np.dot(vforward, eye),
+                     [0, 0, 0, 1]].reshape(4, 4, order='F')
+        return view
 
 
 class GrayScottModel():
@@ -127,7 +252,7 @@ class GrayScottModel():
         # texcoord being vec2
         # normal being vec3
         # color being vec4
-        V, F, outline = create_plane(width_segments=self.w, height_segments=self.h, direction='+z')
+        V, F, outline = create_plane(width_segments=self.w, height_segments=self.h, direction='+y')
         self.vertices = VertexBuffer(V)
         self.faces = IndexBuffer(F)
 
@@ -156,6 +281,11 @@ class GrayScottModel():
         # defines parameters for du, dv, f, k
         # and passes them to program
         self.setSpecie(specie=self.specie)
+
+        # Define a FrameBuffer to update model state in texture
+        # --------------------------------------
+        self.buffer = FrameBuffer(color=self.program["texture"],
+                                  depth=gloo.RenderBuffer((self.h, self.w), format='depth'))
 
         # cycle of computation per frame
         # --------------------------------------
@@ -257,123 +387,10 @@ class GrayScottModel():
         self.program["pingpong"] = self.pingpong
 
 
-class Camera():
-    """
-    Simple class that represents a camera, and holds all its characteristics.
-    """
-
-    def __init__(self,
-               eye=[0,0,1],
-               target=[0,0,0],
-               up=[0,0,1],
-               fov=60.0,
-               aspect=1.0,
-               near=1.0,
-               far=100.0):
-        self.defaultEye = eye
-        self.eye = eye
-        self.target = target
-        self.up = up
-        self.view = self.lookAt(self.eye, self.target, up=self.up)
-        self.fov = fov
-        self.defaultFov = fov
-        self.fovMin = 5.0
-        self.fovMax = 120.0
-        self.aspect = aspect
-        self.near = near
-        self.far = far
-        self.projection = perspective(fov, aspect, near, far)
-
-        self.azimuth = 0.0
-        self.elevation = 0.0
-        self.defaultAzimuth = 0.0
-        self.defaultElevation = 0.0
-        self.distance = np.linalg.norm(np.subtract(self.target, self.eye))
-        self.defaultDistance = 2.5
-        self.distanceMin = 0.7
-        self.distanceMax = 5.0
-        self.sensitivity = 5.0
-
-    def setEye(self, eye):
-        """
-        Sets the coordinates of the camera, computes its view matrix and return it.
-        """
-        self.eye = eye
-        self.view = self.lookAt(self.eye, self.target, up=self.up)
-        return self.view
-
-    def setTarget(self, target):
-        """
-        Sets the target at which the camera is pointing, compute its view matrix and returns it.
-        """
-        self.target = target
-        self.view = self.lookAt(self.eye, self.target, up=self.up)
-        return self.view
-
-    def move(self, azimuth=None, elevation=None, distance=None, target=[0, 0, 0]):
-        """
-        Moves the camera according to the azimuth, elevation, distance and
-        target received, compute its view matrix and returns it
-        """
-        self.azimuth = azimuth or self.azimuth
-        self.elevation = elevation or self.elevation
-        self.distance = distance or self.distance
-        self.distance = min(max(self.distance, self.distanceMin), self.distanceMax)
-        x = self.distance * sin(self.elevation) * sin(self.azimuth)
-        y = self.distance * sin(-self.elevation) * cos(self.azimuth)
-        z = self.distance * cos(self.elevation)
-        self.eye = [x, y, z]
-        self.target = target
-        self.view = self.lookAt(self.eye, self.target, up=self.up)
-        return self.view
-
-    def setProjection(self, fov=None, aspect=None, near=None, far=None):
-        """
-        Compute the projection matrix of the camera and returns it.
-        """
-        self.fov = fov or self.fov
-        self.fov = min(max(self.fov, self.fovMin), self.fovMax)
-        self.aspect = aspect or self.aspect
-        self.near = near or self.near
-        self.far = far or self.far
-        self.projection = perspective(self.fov, self.aspect, self.near, self.far)
-        return self.projection
-
-    def zoomOn(self, objectWidth=sqrt(2.0), margin=0.02):
-        """
-        Compute a projection matrix which frustum just covers the width of
-        the object given. This is used in all directions. This width should
-        be the diameter of the sphere containing the object, centered on the
-        center of the object. it returns the projection matrix.
-        """
-        self.distance = np.linalg.norm(np.subtract(self.target, self.eye))
-        radius = objectWidth/2.0*(1.0+margin)
-        fov = 2 * asin(radius / self.distance) * 180. / pi
-        near = self.distance - radius
-        far = self.distance + radius
-        return self.setProjection(fov, self.aspect, near, far)
-
-    def lookAt(self, eye, target, up=[0, 0, 1]):
-        """
-        Computes matrix to put eye looking at target point.
-        """
-        eye = np.asarray(eye).astype(np.float32)
-        target = np.asarray(target).astype(np.float32)
-        up = np.asarray(up).astype(np.float32)
-
-        vforward = eye - target
-        vforward /= np.linalg.norm(vforward)
-        vright = np.cross(up, vforward)
-        vright /= np.linalg.norm(vright)
-        vup = np.cross(vforward, vright)
-        view = np.r_[vright, -np.dot(vright, eye),
-                     vup, -np.dot(vup, eye),
-                     vforward, -np.dot(vforward, eye),
-                     [0, 0, 0, 1]].reshape(4, 4, order='F')
-        return view
-
-
 class ShadowRenderer():
+    """
+    A renderer for shadowmap.
+    """
 
     def __init__(self,
                  model,
@@ -448,6 +465,8 @@ class MainRenderer():
                    "Percent 4 samplings      ",
                    "Variance shadow mapping  ")
 
+    REAGENTS = ('U', 'V')
+
     def __init__(self,
                  model,
                  grayScottModel,
@@ -459,16 +478,17 @@ class MainRenderer():
         self.camera = camera
         self.cmapName = cmap
         self.shadowRenderer = shadowRenderer
+        self.reagent = 1
 
         # light Parameters: direction, shininess exponant, attenuation parameters,
         # ambientLight intensity, ambientColor, diffuseColor and specularColor
         # --------------------------------------
-        self.lightCoordinates = np.array([-.4, .4, -2.1])
+        self.lightCoordinates = [-self.camera.eye[0], self.camera.eye[1], -self.camera.eye[2]]
         self.lightIntensity = (1., 1., 1.)
-        self.c1 = .8
-        self.c2 = .8
-        self.c3 = 0.02
-        self.ambientIntensity = 0.5
+        self.c1 = 1.0
+        self.c2 = .2
+        self.c3 = 0.01
+        self.ambientIntensity = 0.4
         self.ambientColor = np.array((1., 1., 1., 1))
         self.diffuseColor = np.array((1., 1., .9, 1.))
         self.specularColor = np.array((1., 1., .95, 1.))
@@ -477,19 +497,13 @@ class MainRenderer():
         # Build a lightbox for specular Environment
         # --------------------------------------
         self.lightBoxTexture = np.zeros((6, 1024, 1024, 3), dtype=np.float32)
-        # self.lightBoxTexture[2] = read_png(load_data_file("skybox/sky-left.png"))/255. #DOWN
-        # self.lightBoxTexture[3] = read_png(load_data_file("skybox/sky-right.png"))/255. #UP
-        # self.lightBoxTexture[0] = read_png(load_data_file("skybox/sky-front.png"))/255. #LEFT
-        # self.lightBoxTexture[1] = read_png(load_data_file("skybox/sky-back.png"))/255. #RIGHT
-        # self.lightBoxTexture[4] = read_png(load_data_file("skybox/sky-up.png"))/255. #BACK
-        # self.lightBoxTexture[5] = read_png(load_data_file("skybox/sky-down.png"))/255. #FRONT
-
         self.lightBoxTexture[2] = read_png(load_data_file("skybox/sky-down.png"))/255. #DOWN
         self.lightBoxTexture[3] = np.rot90(read_png(load_data_file("skybox/sky-up.png"))/255., 3) #UP
         self.lightBoxTexture[0] = read_png(load_data_file("skybox/sky-left.png"))/255. #LEFT
         self.lightBoxTexture[1] = np.rot90(read_png(load_data_file("skybox/sky-right.png"))/255., 2) #RIGHT
         self.lightBoxTexture[4] = np.rot90(read_png(load_data_file("skybox/sky-back.png"))/255., 3) #BACK
         self.lightBoxTexture[5] = np.rot90(read_png(load_data_file("skybox/sky-front.png"))/255., 1) #FRONT
+        # self.lightBoxTexture = createLightBox()
 
         # DEBUG, toggles to switch on and off different parts of lighting
         # --------------------------------------
@@ -498,7 +512,7 @@ class MainRenderer():
         self.diffuse     = True
         self.specular    = True
         self.shadow      = 3
-        self.lightBox    = True
+        self.lightBox    = True    #DEBUG
 
         # Build render program
         # --------------------------------------
@@ -511,7 +525,7 @@ class MainRenderer():
         self.program["dx"] = 1./self.grayScottModel.w
         self.program["dy"] = 1./self.grayScottModel.h
         self.program['pingpong'] = self.grayScottModel.pingpong
-        self.program["reagent"] = 1
+        self.program["reagent"] = self.reagent
         self.program["u_view"] = self.camera.view
         self.program["u_model"] = self.model
         self.program["shadowMap"] = self.shadowRenderer.shadowTexture
@@ -540,6 +554,11 @@ class MainRenderer():
         self.program['c3'] = self.c3
         self.setColorMap(name=self.cmapName)
 
+        # Define a 'DepthBuffer' to render the shadowmap from the light
+        # --------------------------------------
+        self.buffer = FrameBuffer(color=self.program["shadowMap"],
+                                  depth=gloo.RenderBuffer((self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize), format='depth'))
+
     def refreshTextureInterpolation(self):
         if self.grayScottModel.gridReinitialized is True:
             self.program["texture"].interpolation = gl.GL_LINEAR
@@ -556,6 +575,15 @@ class MainRenderer():
             self.cmapName = name
             self.program["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
             print(' Using colormap %s.' % name, end="\r")
+
+    def switchReagent(self, event=None):
+        """
+        Toggles between representing U or V concentrations.
+        """
+        self.reagent = 1 - self.reagent
+        self.program["reagent"] = self.reagent
+        self.shadowRenderer.program["reagent"] = self.reagent
+        print(' Displaying %s reagent concentration.' % MainRenderer.REAGENTS[self.reagent], end="\r")
 
     def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
         """
@@ -666,7 +694,7 @@ class Canvas(app.Canvas):
 
         # Build main camera for view and projection
         # --------------------------------------
-        self.camera = Camera(eye=[0, 0, 2.5],
+        self.camera = Camera(eye=[-2, 2, 0],
                              target=[0,0,0],
                              up=[0,1,0],
                              fov=24.0,
@@ -676,7 +704,7 @@ class Canvas(app.Canvas):
 
         # Build light camera for shadow view and projection
         # --------------------------------------
-        self.lightCamera = Camera(eye=[-.4, .4, 2.1],
+        self.lightCamera = Camera(eye=[2, 2, -1],
                              target=[0,0,0],
                              up=[0,1,0],
                              aspect=self.size[0] / float(self.size[1]))
@@ -693,25 +721,19 @@ class Canvas(app.Canvas):
                                          self.shadowRenderer,
                                          cmap=cmap)
 
-        self.displaySwitch = 0
-
         # Mouse interactions parameters
         # --------------------------------------
         self.pressed = False
+        self.displaySwitch = 0
 
         # ? better computation ?
         # --------------------------------------
         gl.GL_FRAGMENT_PRECISION_HIGH = 1
 
-        # Define a FrameBuffer to update model state in texture
-        # --------------------------------------
-        self.modelbuffer = FrameBuffer(color=self.grayScottModel.program["texture"],
-                                       depth=gloo.RenderBuffer((self.grayScottModel.h, self.grayScottModel.w), format='depth'))
-
-        # Define a 'DepthBuffer' to render the shadowmap from the light
-        # --------------------------------------
-        self.shadowBuffer = FrameBuffer(color=self.mainRenderer.program["shadowMap"],
-                                       depth=gloo.RenderBuffer((self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize), format='depth'))
+        # # Define a 'DepthBuffer' to render the shadowmap from the light
+        # # --------------------------------------
+        # self.shadowBuffer = FrameBuffer(color=self.mainRenderer.program["shadowMap"],
+        #                                depth=gloo.RenderBuffer((self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize), format='depth'))
 
         # OpenGL initialization
         # --------------------------------------
@@ -720,14 +742,13 @@ class Canvas(app.Canvas):
 
         self.activate_zoom()
         self.show()
-        self.displaySwitch = 0
 
     ############################################################################
     #
 
     def on_draw(self, event):
         # Render next model state into buffer
-        with self.modelbuffer:
+        with self.grayScottModel.buffer:
             gloo.set_viewport(0, 0, self.grayScottModel.h, self.grayScottModel.w)
             gloo.set_state(depth_test=False,
                            clear_color='black',
@@ -736,13 +757,14 @@ class Canvas(app.Canvas):
 
         # Render the shadowmap into buffer
         if self.mainRenderer.shadow > 0:
-            with self.shadowBuffer:
+            with self.mainRenderer.buffer:
                 gloo.set_viewport(0, 0, self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize)
                 gloo.set_state(depth_test=True,
                                polygon_offset=(1, 1),
                                polygon_offset_fill=True)
                 gloo.clear(color=True, depth=True)
-                self.shadowRenderer.draw()
+                self.mainRenderer.shadowRenderer.draw()
+
         # DEBUG
         if self.displaySwitch == 0:
             gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
@@ -753,13 +775,14 @@ class Canvas(app.Canvas):
                            polygon_offset_fill=True)
             gloo.clear(color=True, depth=True)
             self.mainRenderer.draw()
+        # To check the view from the lightCamera for shadowmap rendering
         else:
             gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
             gloo.set_state(depth_test=True,
                            polygon_offset=(1, 1),
                            polygon_offset_fill=True)
             gloo.clear(color=True, depth=True)
-            self.shadowRenderer.draw()
+            self.mainRenderer.shadowRenderer.draw()
 
         # exchange between rg and ba sets in texture
         self.grayScottModel.flipPingpong()
@@ -806,7 +829,7 @@ class Canvas(app.Canvas):
             ypos = 1 - y/sy
             if len(event.modifiers) == 0:
                 # no Shift modifier key: moves the camera
-                dazimuth = (event.pos[0] - self.mousePos[0]) * (2*pi) / self.size[0]
+                dazimuth = -1.0 * (event.pos[0] - self.mousePos[0]) * (2*pi) / self.size[0]
                 delevation = (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
                 self.mousePos = event.pos
                 self.mainRenderer.moveCamera(dAzimuth=dazimuth, dElevation=delevation)
@@ -839,20 +862,13 @@ class Canvas(app.Canvas):
                 print("Method %s does not seem to be found..." % str(fun))
 
     ############################################################################
-    # functions related to the Gray-Scott model appearances/representation
-
-    def switchReagent(self, event=None):
-        """Toggles between representing U or V concentrations."""
-        self.mainRenderer.program["reagent"] = 1 - self.mainRenderer.program["reagent"]
-        self.shadowRenderer.program["reagent"] = 1 - self.shadowRenderer.program["reagent"]
-        reagents = ('U', 'V')
-        print(' Displaying %s reagent concentration.' % reagents[int(self.mainRenderer.program["reagent"])], end="\r")
-
-    ############################################################################
     # Debug/utilities functions
 
     def switchDisplay(self, event=None):
-        self.displaySwitch = (self.displaySwitch + 1) % 3
+        """
+        Toggles between mainRenderer display and shadowRenderer display.
+        """
+        self.displaySwitch = (self.displaySwitch + 1) % 2
 
     def measure_fps2(self, window=1, callback=' %1.1f FPS                   '):
         """Measure the current FPS
@@ -890,13 +906,9 @@ class Canvas(app.Canvas):
     keyactionDictionnary = {
         ('=', ()): (switchDisplay, ()),
         (' ', ()): (GrayScottModel.initializeGrid, ()),
-        ('/', ('Shift',)): (switchReagent, ()),
+        ('/', ('Shift',)): (MainRenderer.switchReagent, ()),
         ('P', ('Control',)): (GrayScottModel.increaseCycle, ()),
         ('O', ('Control',)): (GrayScottModel.decreaseCycle, ()),
-        # ('Up', ()): (updateLight, ((0, 0.02, 0),)),
-        # ('Down', ()): (updateLight, ((0, -0.02, 0),)),
-        # ('Left', ()): (updateLight, ((-0.02, 0, 0),)),
-        # ('Right', ()): (updateLight, ((0.02, 0, 0),)),
         ('@', ()): (MainRenderer.resetCamera, ()),
         (',', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('ambient',)),
         (';', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('diffuse',)),
@@ -977,12 +989,12 @@ if __name__ == '__main__':
     parser.add_argument("-p",
                         "--Pattern",
                         choices=GrayScottModel.speciesDictionnary.values(),
-                        default="lambda_left",
+                        default="alpha_left",
                         help="Pearson\' pattern")
     parser.add_argument("-c",
                         "--Colormap",
                         choices=MainRenderer.colormapDictionnary.values(),
-                        default="irkoutsk",
+                        default="antidetroit",
                         help="Colormap used")
 
     args = parser.parse_args()
