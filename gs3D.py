@@ -72,32 +72,34 @@ class Camera():
     """
 
     def __init__(self,
-               eye=[0,0,1],
+               eye=[1,1,-1],
                target=[0,0,0],
-               up=[0,0,1],
+               up=[0,1,0],
                fov=60.0,
                aspect=1.0,
                near=1.0,
                far=100.0):
-        self.defaultEye = eye
         self.eye = eye
         self.target = target
         self.up = up
-        self.view = self.lookAt(self.eye, self.target, up=self.up)
         self.fov = fov
-        self.defaultFov = fov
-        self.fovMin = 5.0
-        self.fovMax = 120.0
         self.aspect = aspect
         self.near = near
         self.far = far
-        self.projection = perspective(fov, aspect, near, far)
 
+        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        self.projection = perspective(fov, aspect, near, far)
         (self.azimuth, self.elevation, self.distance) = self.InitializeAzElDi()
+
+        self.defaultEye = eye
+        self.defaultTarget = target
+        self.defaultFov = fov
         self.defaultAzimuth = self.azimuth
         self.defaultElevation = self.elevation
         self.defaultDistance = self.distance
 
+        self.fovMin = 5.0
+        self.fovMax = 120.0
         self.distanceMin = 0.5
         self.distanceMax = 10.0
         self.elevationMin = pi/2.0*.01
@@ -109,10 +111,10 @@ class Camera():
         """
         Computes azimuth, elevation and distance from eye and target received.
         """
-        (dx, dy, dz) = np.subtract(self.target, self.eye)
+        (dx, dy, dz) = np.subtract(self.eye, self.target)
         distance = np.linalg.norm((dx, dy, dz))
-        elevation = atan2(-dy, sqrt(dx**2 + dz**2))
-        azimuth = atan2(-dz, -dx)
+        elevation = atan2(dy, sqrt(dx**2 + dz**2))
+        azimuth = atan2(dz, dx)
         return (azimuth, elevation, distance)
 
     def setEye(self, eye):
@@ -120,6 +122,7 @@ class Camera():
         Sets the coordinates of the camera, computes its view matrix and return it.
         """
         self.eye = eye
+        self.InitializeAzElDi()
         self.view = self.lookAt(self.eye, self.target, up=self.up)
         return self.view
 
@@ -128,6 +131,7 @@ class Camera():
         Sets the target at which the camera is pointing, compute its view matrix and returns it.
         """
         self.target = target
+        self.InitializeAzElDi()
         self.view = self.lookAt(self.eye, self.target, up=self.up)
         return self.view
 
@@ -138,6 +142,8 @@ class Camera():
         """
         self.azimuth = azimuth or self.azimuth
         self.elevation = elevation or self.elevation
+        # clamp elevation to avoid awkward flip turn when camera is placed exactly
+        # facing down
         self.elevation = min(max(self.elevation, self.elevationMin), self.elevationMax)
         self.distance = distance or self.distance
         self.distance = min(max(self.distance, self.distanceMin), self.distanceMax)
@@ -306,6 +312,7 @@ class GrayScottModel():
         self.UV += np.random.uniform(-0.02, 0.1, (self.h, self.w, 4))
         self.UV[:, :, 2] = self.UV[:, :, 0]
         self.UV[:, :, 3] = self.UV[:, :, 1]
+        self.UV = np.rot90(self.UV, k=1)
         if not hasattr(self, 'texture'):
             self.texture = gloo.Texture2D(data=self.UV, format=gl.GL_RGBA, internalformat='rgba32f', interpolation='linear')
         else:
@@ -417,7 +424,7 @@ class ShadowRenderer():
         self.program["scalingFactor"] = 30. * (self.grayScottModel.w/512)
         self.program["u_model"] = self.model
         self.program["u_view"] = self.camera.view
-        self.program['u_projection'] = self.camera.zoomOn(objectWidth=sqrt(2.0), margin=0.02)
+        self.program['u_projection'] = self.projection
 
     def draw(self, drawingType='triangles'):
         self.program.draw(drawingType, self.grayScottModel.faces)
@@ -476,10 +483,10 @@ class MainRenderer():
         # light Parameters: direction, shininess exponant, attenuation parameters,
         # ambientLight intensity, ambientColor, diffuseColor and specularColor
         # --------------------------------------
-        self.lightCoordinates = [-self.camera.eye[0], self.camera.eye[1], -self.camera.eye[2]]
+        self.lightCoordinates = [self.camera.eye[0], self.camera.eye[1], self.camera.eye[2]]
         self.lightIntensity = (1., 1., 1.)
         self.c1 = 1.0
-        self.c2 = .2
+        self.c2 = 0.1
         self.c3 = 0.01
         self.ambientIntensity = 0.4
         self.ambientColor = np.array((1., 1., 1., 1))
@@ -489,6 +496,7 @@ class MainRenderer():
 
         # Build a lightbox for specular Environment
         # --------------------------------------
+        # WHY?! all these png have to sometimes be rotated to stitch together nicely ?!WHY
         self.lightBoxTexture = np.zeros((6, 1024, 1024, 3), dtype=np.float32)
         self.lightBoxTexture[2] = read_png(load_data_file("skybox/sky-down.png"))/255. #DOWN
         self.lightBoxTexture[3] = np.rot90(read_png(load_data_file("skybox/sky-up.png"))/255., 3) #UP
@@ -511,40 +519,40 @@ class MainRenderer():
         # --------------------------------------
         self.program = Program(render_3D_vertex, render_3D_fragment)
         self.program.bind(self.grayScottModel.vertices)
-        self.program["texture"] = self.grayScottModel.program["texture"]
+        self.program["texture"]                 = self.grayScottModel.program["texture"]
         self.program["texture"].interpolation = gl.GL_LINEAR
         self.program["texture"].wrapping = gl.GL_REPEAT
-        self.program["scalingFactor"] = 30. * (self.grayScottModel.w/512)
-        self.program["dx"] = 1./self.grayScottModel.w
-        self.program["dy"] = 1./self.grayScottModel.h
-        self.program['pingpong'] = self.grayScottModel.pingpong
-        self.program["reagent"] = self.reagent
-        self.program["u_view"] = self.camera.view
-        self.program["u_model"] = self.model
-        self.program["shadowMap"] = self.shadowRenderer.shadowTexture
+        self.program["scalingFactor"]           = 30. * (self.grayScottModel.w / 512)
+        self.program["dx"]                      = 1. / self.grayScottModel.w
+        self.program["dy"]                      = 1. / self.grayScottModel.h
+        self.program['pingpong']                = self.grayScottModel.program['pingpong']
+        self.program["reagent"]                 = self.reagent
+        self.program["u_view"]                  = self.camera.view
+        self.program["u_model"]                 = self.model
+        self.program["shadowMap"]               = self.shadowRenderer.shadowTexture
         self.program["shadowMap"].interpolation = gl.GL_LINEAR
-        self.program["shadowMap"].wrapping = gl.GL_CLAMP_TO_EDGE
+        self.program["shadowMap"].wrapping      = gl.GL_CLAMP_TO_EDGE
         self.program["u_Shadowmap_projection"] = self.shadowRenderer.camera.projection
-        self.program["u_Shadowmap_view"] = self.shadowRenderer.camera.view
-        self.program["u_Tolerance_constant"] = 5e-03
-        self.program["vsf_gate"] = 2.5e-05
-        self.program["ambient"] = self.ambient
-        self.program["attenuation"] = self.attenuation
-        self.program["diffuse"] = self.diffuse
-        self.program["specular"] = self.specular
-        self.program["shadow"] = self.shadow
-        self.program["lightBox"] = self.lightBox
-        self.program["cubeMap"] = gloo.TextureCube(self.lightBoxTexture, interpolation='linear')
-        self.program["u_light_position"] = self.lightCoordinates
-        self.program["u_light_intensity"] = self.lightIntensity
-        self.program["u_Ambient_color"] = self.ambientColor
-        self.program["u_ambient_intensity"] = self.ambientIntensity
-        self.program["u_diffuse_color"] = self.diffuseColor
-        self.program["u_specular_color"] = self.specularColor
-        self.program['u_Shininess'] = self.shininess
-        self.program['c1'] = self.c1
-        self.program['c2'] = self.c2
-        self.program['c3'] = self.c3
+        self.program["u_Shadowmap_view"]       = self.shadowRenderer.camera.view
+        self.program["u_Tolerance_constant"]   = 5e-03
+        self.program["vsf_gate"]               = 2.5e-05
+        self.program["ambient"]                = self.ambient
+        self.program["attenuation"]            = self.attenuation
+        self.program["diffuse"]                = self.diffuse
+        self.program["specular"]               = self.specular
+        self.program["shadow"]                 = self.shadow
+        self.program["lightBox"]               = self.lightBox
+        self.program["cubeMap"]                = gloo.TextureCube(self.lightBoxTexture, interpolation='linear')
+        self.program["u_light_position"]       = self.lightCoordinates
+        self.program["u_light_intensity"]      = self.lightIntensity
+        self.program["u_Ambient_color"]        = self.ambientColor
+        self.program["u_ambient_intensity"]    = self.ambientIntensity
+        self.program["u_diffuse_color"]        = self.diffuseColor
+        self.program["u_specular_color"]       = self.specularColor
+        self.program['u_Shininess']            = self.shininess
+        self.program['c1']                     = self.c1
+        self.program['c2']                     = self.c2
+        self.program['c3']                     = self.c3
         self.setColorMap(name=self.cmapName)
 
         # Define a 'DepthBuffer' to render the shadowmap from the light
@@ -587,27 +595,21 @@ class MainRenderer():
         """
         Moves the camera according to inputs. Compute view Matrix.
         """
-        azimuth = self.camera.azimuth - dAzimuth/self.camera.sensitivity
-        elevation = self.camera.elevation - dElevation/self.camera.sensitivity
-        distance = self.camera.distance - dDistance
-        self.view = self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
-        self.program["u_view"] = self.view
-        # TODO:
-        # It would be possible here to compute a rough estimate of the size of
-        # the object seen and adjust to the nearest the fov of the shadowmap
-        # camera so as to exploit at its best its resolution...
+        azimuth = self.camera.azimuth + dAzimuth/self.camera.sensitivity
+        elevation = self.camera.elevation + dElevation/self.camera.sensitivity
+        distance = self.camera.distance + dDistance
+        # self.view = self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
+        # self.program["u_view"] = self.view
+        self.program["u_view"] = self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
         self.adjustShadowMapFrustum()
 
     def zoomCamera(self, percentage=0.0):
         """
         Zoom with camera according to inputs. Computes projection Matrix.
         """
-        self.projection = self.camera.setProjection(fov=self.camera.fov*(1+percentage))
-        self.program["u_projection"] = self.projection
-        # TODO:
-        # It would be possible here to compute a rough estimate of the size of
-        # the object seen and adjust to the nearest the fov of the shadowmap
-        # camera so as to exploit at its best its resolution...
+        # self.projection = self.camera.setProjection(fov=self.camera.fov*(1+percentage))
+        # self.program["u_projection"] = self.projection
+        self.program["u_projection"] = self.camera.setProjection(fov=self.camera.fov*(1+percentage))
         self.adjustShadowMapFrustum()
 
     def adjustShadowMapFrustum(self):
@@ -618,7 +620,9 @@ class MainRenderer():
         fieldWidth = self.camera.distance * 2.0 * sin(self.camera.fov/2.0 * pi / 180.0)
         # The lower the elevation the more problematic the shadow frustum can be
         # The wider the fov of the self.camera, the more problematic too...
-        securityBuffer = .02 + sin(self.camera.elevation)
+        securityBuffer = .02 # + sin(self.camera.elevation)
+        # We limit the extent of the shadowMap projection to the model, useless
+        # to go wider than that.
         fieldWidth = min(fieldWidth, sqrt(2.0))
         self.shadowRenderer.camera.zoomOn(fieldWidth, margin=securityBuffer)
         self.program["u_Shadowmap_projection"] = self.shadowRenderer.camera.projection
@@ -655,7 +659,7 @@ class MainRenderer():
             self.program[lightType] = self.specular
             print(' Specular light: %s       ' % self.specular, end="\r")
         elif lightType == 'shadow':
-            self.shadow = (self.shadow + 1) % 4
+            self.shadow = (self.shadow + 1) % len(MainRenderer.SHADOW_TYPE)
             self.program[lightType] = self.shadow
             print(' Shadows: %s              ' % self.SHADOW_TYPE[self.shadow], end="\r")
         elif lightType == 'attenuation':
@@ -674,21 +678,20 @@ class MainRenderer():
             print(' Shininess exponant: %3.0f' % self.shininess, end="\r")
         elif lightType == "vsf_gate" and modification == '+':
             self.program['vsf_gate'] = self.program['vsf_gate'] * 2.0
-            print("vsf_gate: %s" % self.program['vsf_gate'])
+            print(" vsf_gate: %s             " % self.program['vsf_gate'])
         elif lightType == "vsf_gate" and modification == '-':
             self.program['vsf_gate'] = self.program['vsf_gate'] / 2.0
-            print("vsf_gate: %s" % self.program['vsf_gate'])
+            print(" vsf_gate: %s             " % self.program['vsf_gate'])
         elif lightType == "lightbox":
             self.lightBox = not self.lightBox
             self.program["lightBox"] = self.lightBox
-            print("LightBox %s" % self.lightBox)
+            print(" LightBox %s              " % self.lightBox)
 
     def updateAspect(self, aspect):
         """
         Compute projection Matrix for new Wndow aspect.
         """
-        projection = self.camera.setProjection(aspect=aspect)
-        self.program['u_projection'] = projection
+        self.program['u_projection'] = self.camera.setProjection(aspect=aspect)
 
 
 class Canvas(app.Canvas):
@@ -710,19 +713,9 @@ class Canvas(app.Canvas):
                                              gridSize=modelSize,
                                              specie=specie)
 
-        # Build main camera for view and projection
-        # --------------------------------------
-        self.camera = Camera(eye=[-2, 2, 0],
-                             target=[0,0,0],
-                             up=[0,1,0],
-                             fov=24.0,
-                             aspect=self.size[0] / float(self.size[1]),
-                             near=0.1,
-                             far=20.0)
-
         # Build light camera for shadow view and projection
         # --------------------------------------
-        self.lightCamera = Camera(eye=[2, 2, -1],
+        self.lightCamera = Camera(eye=[0, 2, 2],
                              target=[0,0,0],
                              up=[0,1,0],
                              aspect=self.size[0] / float(self.size[1]))
@@ -734,6 +727,16 @@ class Canvas(app.Canvas):
         # Build shadow renderer using the model, grayScottModel and lightCamera
         # --------------------------------------
         self.shadowRenderer = ShadowRenderer(self.model, self.grayScottModel, self.lightCamera)
+
+        # Build main camera for view and projection
+        # --------------------------------------
+        self.camera = Camera(eye=[0, 2, -2],
+                             target=[0,0,0],
+                             up=[0,1,0],
+                             fov=24.0,
+                             aspect=self.size[0] / float(self.size[1]),
+                             near=0.1,
+                             far=20.0)
 
         # Build main renderer using the model, grayScottModel, shadowRenderer and camera
         # --------------------------------------
@@ -804,7 +807,6 @@ class Canvas(app.Canvas):
 
         # exchange between rg and ba sets in texture
         self.grayScottModel.flipPingpong()
-        self.mainRenderer.program["pingpong"] = self.grayScottModel.pingpong
         self.mainRenderer.refreshTextureInterpolation()
         self.update()
 
@@ -820,20 +822,20 @@ class Canvas(app.Canvas):
 
     def on_mouse_wheel(self, event):
         # no Shift modifier key: moves the camera
-        self.mainRenderer.moveCamera(dDistance=event.delta[1])
+        self.mainRenderer.moveCamera(dDistance=-event.delta[1])
         # Shift modifier key: zoom in out
         self.mainRenderer.zoomCamera(event.delta[0])
 
     def on_mouse_press(self, event):
         self.pressed = True
-        (x, y) = event.pos
-        (sx, sy) = self.size
-        xpos = x/sx
-        ypos = 1 - y/sy
         if len(event.modifiers) == 0:
             self.mousePos = event.pos
         elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
-            self.grayScottModel.interact([xpos, ypos], event.button)
+            (x, y) = event.pos
+            (sx, sy) = self.size
+            xpos = 1 - x/sx
+            ypos = 1 - y/sy
+            self.grayScottModel.interact([ypos, xpos], event.button)
 
     def on_mouse_release(self, event):
         self.pressed = False
@@ -841,19 +843,19 @@ class Canvas(app.Canvas):
 
     def on_mouse_move(self, event):
         if(self.pressed):
-            (x, y) = event.pos
-            (sx, sy) = self.size
-            xpos = x/sx
-            ypos = 1 - y/sy
             if len(event.modifiers) == 0:
                 # no Shift modifier key: moves the camera
-                dazimuth = -1.0 * (event.pos[0] - self.mousePos[0]) * (2*pi) / self.size[0]
-                delevation = (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
+                dazimuth = (event.pos[0] - self.mousePos[0]) * (2*pi) / self.size[0]
+                delevation = -1.0 * (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
                 self.mousePos = event.pos
                 self.mainRenderer.moveCamera(dAzimuth=dazimuth, dElevation=delevation)
             elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
+                (x, y) = event.pos
+                (sx, sy) = self.size
+                xpos = 1 - x/sx
+                ypos = 1 - y/sy
                 # update brush coords here
-                self.grayScottModel.interact([xpos, ypos], event.button)
+                self.grayScottModel.interact([ypos, xpos], event.button)
 
     NO_ACTION = (None, None)
 
@@ -1006,12 +1008,14 @@ if __name__ == '__main__':
                         help="Size of window")
     parser.add_argument("-p",
                         "--Pattern",
-                        choices=GrayScottModel.speciesDictionnary.values(),
+                        choices={**GrayScottModel.speciesDictionnary,
+                                 **GrayScottModel.speciesDictionnaryShifted}.values(),
                         default="alpha_left",
                         help="Pearson\' pattern")
     parser.add_argument("-c",
                         "--Colormap",
-                        choices=MainRenderer.colormapDictionnary.values(),
+                        choices={**MainRenderer.colormapDictionnary,
+                                 **MainRenderer.colormapDictionnaryShifted}.values(),
                         default="antidetroit",
                         help="Colormap used")
 
