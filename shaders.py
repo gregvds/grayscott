@@ -878,10 +878,8 @@ void main()
         vec3 reflectedDirection = normalize(reflect(v_position, vertex_normal));
         reflected_color = textureCube(cubeMap, reflectedDirection);
 
-
         fresnelFactor = dot(vertex_normal, to_camera);
         fresnelFactor = max(fresnelFactor, 0.0);
-        //fresnelFactor = (fresnelFactor + 1.0) / 2.0;
         fresnelFactor = 1.0 - fresnelFactor;
         fresnelFactor = pow(fresnelFactor, fresnelPower);
 

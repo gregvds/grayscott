@@ -87,9 +87,26 @@ class Camera():
         self.near = near
         self.far = far
 
-        self.view = self.lookAt(self.eye, self.target, up=self.up)
-        self.projection = perspective(fov, aspect, near, far)
+        self.fovMin = 5.0
+        self.fovMax = 120.0
+        self.fovRange = self.fovMax - self.fovMin
+        self.distanceMin = 0.5
+        self.distanceMax = 10.0
+        self.elevationMin = pi/2.0*.01
+        self.elevationMax = pi/2.0*.99
+        self.elevationRange = self.elevationMax - self.elevationMin
+
+        self.centerModFromElev = 0
+        self.centerModFromFov = 0
+
         (self.azimuth, self.elevation, self.distance) = self.InitializeAzElDi()
+        # these parameters modulate the target y to better center the grid in
+        # the view, according to fov and elevation. They are first computed by
+        # the two calls at move and setProjection. See methods for details.
+        self.centerModFromElev = 0
+        self.centerModFromFov = 0
+        self.move()
+        self.setProjection()
 
         self.defaultEye = eye
         self.defaultTarget = target
@@ -98,12 +115,6 @@ class Camera():
         self.defaultElevation = self.elevation
         self.defaultDistance = self.distance
 
-        self.fovMin = 5.0
-        self.fovMax = 120.0
-        self.distanceMin = 0.5
-        self.distanceMax = 10.0
-        self.elevationMin = pi/2.0*.01
-        self.elevationMax = pi/2.0*.99
 
         self.sensitivity = 5.0
 
@@ -135,32 +146,38 @@ class Camera():
         self.view = self.lookAt(self.eye, self.target, up=self.up)
         return self.view
 
-    def move(self, azimuth=None, elevation=None, distance=None, target=[0, 0, 0]):
+    def move(self, azimuth=None, elevation=None, distance=None, target=None):
         """
         Moves the camera according to the azimuth, elevation, distance and
-        target received, compute its view matrix and returns it
+        target received, compute its view matrix and returns it.
+        It also compute the modulation of target y according to elevation.
         """
         self.azimuth = azimuth or self.azimuth
         self.elevation = elevation or self.elevation
         # clamp elevation to avoid awkward flip turn when camera is placed exactly
         # facing down
         self.elevation = min(max(self.elevation, self.elevationMin), self.elevationMax)
+        self.centerModFromElev = (1.0 - (2.0 * abs(((self.elevation - self.elevationMin) / self.elevationRange) - .5))**1)
+        self.view = self.lookAt(self.eye, target=[0,self.centerModFromFov*self.centerModFromElev, 0])
         self.distance = distance or self.distance
         self.distance = min(max(self.distance, self.distanceMin), self.distanceMax)
         z = self.distance * sin(self.elevation) * sin(self.azimuth)
         x = self.distance * sin(self.elevation) * cos(self.azimuth)
         y = self.distance * cos(self.elevation)
         self.eye = [x, y, z]
-        self.target = target
+        self.target = target or self.target
         self.view = self.lookAt(self.eye, self.target, up=self.up)
         return self.view
 
     def setProjection(self, fov=None, aspect=None, near=None, far=None):
         """
         Compute the projection matrix of the camera and returns it.
+        it also computes the modulation of target y according to fov.
         """
         self.fov = fov or self.fov
         self.fov = min(max(self.fov, self.fovMin), self.fovMax)
+        self.centerModFromFov = -0.6 * (self.fov - self.fovMin) / self.fovRange
+        self.view = self.lookAt(self.eye, target=[0,self.centerModFromFov*self.centerModFromElev, 0])
         self.aspect = aspect or self.aspect
         self.near = near or self.near
         self.far = far or self.far
@@ -175,17 +192,20 @@ class Camera():
         center of the object. it returns the projection matrix.
         """
         self.distance = np.linalg.norm(np.subtract(self.target, self.eye))
-        radius = objectWidth/2.0*(1.0+margin)
+        radius = min(objectWidth/2.0*(1.0+margin), sqrt(2.0)*0.51)
         fov = 2 * asin(radius / self.distance) * 180. / pi
         ratioNearFar = 2.0
         near = self.distance - radius * 1.0 / ratioNearFar
         far = self.distance + radius * ratioNearFar
         return self.setProjection(fov, self.aspect, near, far)
 
-    def lookAt(self, eye, target, up=[0, 0, 1]):
+    def lookAt(self, eye, target, up=[0, 1, 0]):
         """
         Computes matrix to put eye looking at target point.
         """
+        self.eye = eye
+        self.target = target
+        self.up = up
         eye = np.asarray(eye).astype(np.float32)
         target = np.asarray(target).astype(np.float32)
         up = np.asarray(up).astype(np.float32)
@@ -199,6 +219,8 @@ class Camera():
                      vup, -np.dot(vup, eye),
                      vforward, -np.dot(vforward, eye),
                      [0, 0, 0, 1]].reshape(4, 4, order='F')
+        self.view = view
+        self.InitializeAzElDi()
         return view
 
 
@@ -606,9 +628,8 @@ class MainRenderer():
         """
         Zoom with camera according to inputs. Computes projection Matrix.
         """
-        # self.projection = self.camera.setProjection(fov=self.camera.fov*(1+percentage))
-        # self.program["u_projection"] = self.projection
         self.program["u_projection"] = self.camera.setProjection(fov=self.camera.fov*(1+percentage))
+        self.program["u_view"] = self.camera.view
         self.adjustShadowMapFrustum()
 
     def adjustShadowMapFrustum(self):
@@ -619,7 +640,7 @@ class MainRenderer():
         fieldWidth = self.camera.distance * 2.0 * sin(self.camera.fov/2.0 * pi / 180.0)
         # The lower the elevation the more problematic the shadow frustum can be
         # The wider the fov of the self.camera, the more problematic too...
-        securityBuffer = .02 # + sin(self.camera.elevation)
+        securityBuffer = .02 + sin(self.camera.elevation)
         # We limit the extent of the shadowMap projection to the model, useless
         # to go wider than that.
         fieldWidth = min(fieldWidth, sqrt(2.0))
