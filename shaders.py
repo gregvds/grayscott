@@ -496,9 +496,11 @@ void main()
     hR = (1.0 - hR)/scalingFactor;
     hD = (1.0 - hD)/scalingFactor;
     hU = (1.0 - hU)/scalingFactor;
+
     // A new position vertex is build from the old vertex xy and the concentrations
     // rendered by the compute_fragment(2), hence the surface of the gridplane is
     // embossed or displaced
+// This changes for the plane is facing '+y'
 //    vec3 position2 = vec3(position.x, position.y, c);
     vec3 position2 = vec3(position.x, c, position.z);
     vec4 modelPosition2 = u_model * vec4(position2, 1.0);
@@ -515,8 +517,11 @@ void main()
     // Here since position has been realtime modified, normals have to be computed again
     vec3 normal2;
     normal2.x = (hL - hR)/dx;
-    normal2.y = (hD - hU)/dy;
-    normal2.z = 2.0;
+// This changes for the plane is facing '+y'
+//    normal2.y = (hD - hU)/dy;
+//    normal2.z = 2.0;
+    normal2.y = 2.0;
+    normal2.z = (hD - hU)/dy;
     normal2 = normalize(normal2);
 
     // Perform the model and view transformations on the vertex's normal vector
@@ -811,28 +816,14 @@ void main()
     }
 
     //--------------------------------------------------------------------------
-    // Calculate a vector from the fragment location to the light source
-    // This has to be recomputed flipping the x axis... WHY?!
-    to_light = vec3(-u_light_position.x - v_position.x,
-                    u_light_position.y - v_position.y,
-                    u_light_position.z- v_position.z);
-
-    to_light = normalize( to_light );
-
-    // Calculate the cosine of the angle between the vertex's normal vector
-    // and the vector going to the light.
-    cos_angle = dot(vertex_normal, to_light);
-
-    //--------------------------------------------------------------------------
     if (specular) {
         // Calculate the reflection vector
         reflection = 2.0 * cos_angle * vertex_normal - to_light;
         reflection = normalize( reflection );
 
         // Calculate a vector from the fragment location to the camera.
-        // (WRONG!) The camera is at the origin, so negating the vertex location gives the vector
-        // The model is at the origin and the camera is moved away, so no negation!
-        to_camera = 1.0 * v_position;
+        // The camera is at the origin, so negating the vertex location gives the vector
+        to_camera = -1.0 * v_position;
         to_camera = normalize( to_camera );
 
         // Calculate the cosine of the angle between the reflection vector
