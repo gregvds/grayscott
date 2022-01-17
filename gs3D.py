@@ -486,9 +486,9 @@ class MainRenderer():
         self.lightCoordinates = [self.camera.eye[0], self.camera.eye[1], self.camera.eye[2]]
         self.lightIntensity = (1., 1., 1.)
         self.c1 = 1.0
-        self.c2 = 0.1
-        self.c3 = 0.01
-        self.ambientIntensity = 0.4
+        self.c2 = 0.5
+        self.c3 = 0.02
+        self.ambientIntensity = 0.5
         self.ambientColor = np.array((1., 1., 1., 1))
         self.diffuseColor = np.array((1., 1., .9, 1.))
         self.specularColor = np.array((1., 1., .95, 1.))
@@ -496,14 +496,13 @@ class MainRenderer():
 
         # Build a lightbox for specular Environment
         # --------------------------------------
-        # WHY?! all these png have to sometimes be rotated to stitch together nicely ?!WHY
         self.lightBoxTexture = np.zeros((6, 1024, 1024, 3), dtype=np.float32)
-        self.lightBoxTexture[2] = read_png(load_data_file("skybox/sky-down.png"))/255. #DOWN
-        self.lightBoxTexture[3] = np.rot90(read_png(load_data_file("skybox/sky-up.png"))/255., 3) #UP
-        self.lightBoxTexture[0] = read_png(load_data_file("skybox/sky-left.png"))/255. #LEFT
-        self.lightBoxTexture[1] = np.rot90(read_png(load_data_file("skybox/sky-right.png"))/255., 2) #RIGHT
-        self.lightBoxTexture[4] = np.rot90(read_png(load_data_file("skybox/sky-back.png"))/255., 3) #BACK
-        self.lightBoxTexture[5] = np.rot90(read_png(load_data_file("skybox/sky-front.png"))/255., 1) #FRONT
+        self.lightBoxTexture[0] = np.rot90(read_png(load_data_file("skybox/sky-right.png"))/255., 1) #RIGHT
+        self.lightBoxTexture[1] = np.rot90(read_png(load_data_file("skybox/sky-left.png"))/255., 1) #LEFT
+        self.lightBoxTexture[2] = np.rot90(read_png(load_data_file("skybox/sky-front.png"))/255., 1) #DOWN
+        self.lightBoxTexture[3] = np.rot90(read_png(load_data_file("skybox/sky-back.png"))/255., 1) #UP
+        self.lightBoxTexture[4] = np.rot90(read_png(load_data_file("skybox/sky-up.png"))/255., 1) #BACK
+        self.lightBoxTexture[5] = np.rot90(read_png(load_data_file("skybox/sky-down.png"))/255., 1) #FRONT
         # self.lightBoxTexture = createLightBox()
 
         # Toggles to switch on and off different parts of lighting
