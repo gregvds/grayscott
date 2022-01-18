@@ -423,48 +423,68 @@ class GrayScottModel():
         self.program["pingpong"] = self.pingpong
 
 
-class ShadowRenderer():
+class Renderer():
+    """
+    Generic renderer that holds the common functions.
+    """
+
+    def __init__(self,
+                 grayScottModel,
+                 camera,
+                 vertex_shader,
+                 fragment_shader):
+        self.grayScottModel = grayScottModel
+        self.camera = camera
+        self.reagent = 1
+
+        # Build render program
+        # --------------------------------------
+        self.program = Program(vertex_shader, fragment_shader)
+        self.program.bind(self.grayScottModel.vertices)
+        self.program['pingpong']      = self.grayScottModel.program['pingpong']
+        self.program["reagent"]       = self.reagent
+        self.program["scalingFactor"] = 30. * (self.grayScottModel.w / 512)
+        self.program["u_pvm"]         = self.camera.pvm
+
+    def draw(self, drawingType='triangles'):
+        self.program.draw(drawingType, self.grayScottModel.faces)
+
+
+class ShadowRenderer(Renderer):
     """
     A renderer for shadowmap.
     """
 
     def __init__(self,
                  grayScottModel,
-                 camera):
-        self.grayScottModel = grayScottModel
-        self.camera = camera
+                 camera,
+                 shadowMapSize=1024):
+        super().__init__(grayScottModel,
+                        camera,
+                        shadow_vertex,
+                        shadow_fragment)
 
-        # self.view = self.camera.view
-        self.projection = self.camera.zoomOn(objectWidth=sqrt(2.0), margin=0.02)
-
-        self.shadowMapSize = 2048
+        self.shadowMapSize = shadowMapSize
         self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
         self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
 
-        # Build shadowmap render program
+        # Complete shadowmap render program
         # --------------------------------------
-        self.program = Program(shadow_vertex, shadow_fragment, count=self.grayScottModel.w*self.grayScottModel.h)
-        self.program.bind(self.grayScottModel.vertices)
+        self.camera.zoomOn(objectWidth=sqrt(2.0), margin=0.02)
+        self.program['u_pvm'] = self.camera.pvm
         self.program["texture"] = self.grayScottModel.program["texture"]
         self.program["texture"].interpolation = gl.GL_LINEAR
         self.program["texture"].wrapping = gl.GL_REPEAT
-        self.program['pingpong'] = self.grayScottModel.pingpong
-        self.program["reagent"] = 1
-        self.program["scalingFactor"] = 30. * (self.grayScottModel.w/512)
-        self.program['u_pvm'] = self.camera.pvm
-
-    def draw(self, drawingType='triangles'):
-        self.program.draw(drawingType, self.grayScottModel.faces)
 
 
-class MainRenderer():
+class MainRenderer(Renderer):
 
     colormapDictionnary = {
         '&': 'Boston',
         'é': 'malmo_r',
         '"': 'papetee_r',
         '\'': 'oslo',
-        '(': 'Lochinver_r',
+        '(': 'honolulu_r',
         '§': 'Rejkjavik_r',
         'è': 'antidetroit',
         '!': 'osmort',
@@ -477,7 +497,7 @@ class MainRenderer():
         '2': 'malmo',
         '3': 'papetee',
         '4': 'oslo_r',
-        '5': 'Lochinver',
+        '5': 'honolulu',
         '6': 'Rejkjavik',
         '7': 'detroit',
         '8': 'tromso',
@@ -499,11 +519,13 @@ class MainRenderer():
                  camera,
                  shadowRenderer,
                  cmap='irkoutsk'):
-        self.grayScottModel = grayScottModel
-        self.camera = camera
-        self.cmapName = cmap
+        super().__init__(grayScottModel,
+                        camera,
+                        render_3D_vertex,
+                        render_3D_fragment)
+
         self.shadowRenderer = shadowRenderer
-        self.reagent = 1
+        self.cmapName = cmap
 
         # light Parameters: direction, shininess exponant, attenuation parameters,
         # ambientLight intensity, ambientColor, diffuseColor and specularColor
@@ -541,24 +563,20 @@ class MainRenderer():
         self.shadow      = 3
         self.lightBox    = True
 
-        # Build render program
+        # Complete render program
         # --------------------------------------
-        self.program = Program(render_3D_vertex, render_3D_fragment)
-        self.program.bind(self.grayScottModel.vertices)
         self.program["texture"]                = self.grayScottModel.program["texture"]
         self.program["texture"].interpolation  = gl.GL_LINEAR
         self.program["texture"].wrapping       = gl.GL_REPEAT
-        self.program["scalingFactor"]          = 30. * (self.grayScottModel.w / 512)
         self.program["dx"]                     = 1. / self.grayScottModel.w
         self.program["dy"]                     = 1. / self.grayScottModel.h
-        self.program['pingpong']               = self.grayScottModel.program['pingpong']
-        self.program["reagent"]                = self.reagent
         self.program["u_vm"]                   = self.camera.vm
-        self.program["u_pvm"]                  = self.camera.pvm
+
         self.program["shadowMap"]              = self.shadowRenderer.shadowTexture
         self.program["shadowMap"].interpolation = gl.GL_LINEAR
         self.program["shadowMap"].wrapping     = gl.GL_CLAMP_TO_EDGE
         self.program["u_shadowmap_pvm"]        = self.shadowRenderer.camera.pvm
+
         self.program["u_Tolerance_constant"]   = 5e-03
         self.program["vsf_gate"]               = 2.5e-05
         self.program["ambient"]                = self.ambient
@@ -578,6 +596,7 @@ class MainRenderer():
         self.program['c1']                     = self.c1
         self.program['c2']                     = self.c2
         self.program['c3']                     = self.c3
+
         self.setColorMap(name=self.cmapName)
 
         # Define a 'DepthBuffer' to render the shadowmap from the light
@@ -594,9 +613,6 @@ class MainRenderer():
         if self.grayScottModel.gridReinitialized is True:
             self.program["texture"].interpolation = gl.GL_LINEAR
             self.grayScottModel.gridReinitialized = False
-
-    def draw(self, drawingType='triangles'):
-        self.program.draw(drawingType, self.grayScottModel.faces)
 
     def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
         """
@@ -753,7 +769,9 @@ class Canvas(app.Canvas):
 
         # Build shadow renderer using the model, grayScottModel and lightCamera
         # --------------------------------------
-        self.shadowRenderer = ShadowRenderer(self.grayScottModel, self.lightCamera)
+        self.shadowRenderer = ShadowRenderer(self.grayScottModel,
+                                             self.lightCamera,
+                                             shadowMapSize=2048)
 
         # Build main camera for view and projection
         # --------------------------------------

@@ -918,7 +918,6 @@ void main()
 
     // Export of the gl_position to the fragment to render depth
     // WIP toward less matrix multiplication inside the program...
-//    w_position = u_projection * u_view * u_model * vec4(position2, 1.0);
     w_position = u_pvm * vec4(position2, 1.0);
     // Transform the location of the vertex for the rest of the graphics pipeline
     gl_Position = w_position;
