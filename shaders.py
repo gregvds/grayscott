@@ -433,6 +433,7 @@ uniform lowp float dx;                // horizontal distance between texels
 uniform lowp float dy;                // vertical distance between texels
 
 // Light model
+uniform vec3 u_light_position;
 uniform lowp vec4 u_color;
 
 // Original model data
@@ -443,6 +444,7 @@ attribute lowp vec4 color;
 
 // Data (to be interpolated) that is passed on to the fragment shader
 varying vec3 v_position;
+varying vec3 v_light_position;
 varying mediump vec3 v_normal;
 // varying lowp vec4 v_color;
 varying vec2 v_texcoord;
@@ -509,6 +511,8 @@ void main()
     // Perform the model and view transformations on the vertex and pass this
     // location to the fragment shader.
     v_position = vec3(viewModelPosition2);
+
+    v_light_position = vec3(u_view * u_model * vec4(u_light_position.xyz, 1.0));
 
     // Calculate this vertex's location from the light source. This is
     // used in the fragment shader to determine if fragments receive direct light.
@@ -580,6 +584,7 @@ uniform lowp int shadow;
 
 // Data coming from the vertex shader
 varying vec3 v_position;
+varying vec3 v_light_position;
 varying mediump vec3 v_normal;
 varying vec2 v_texcoord;
 varying mediump vec4 v_Vertex_relative_to_light;
@@ -725,31 +730,6 @@ float vsf(void)
 }
 
 //-------------------------------------------------------------------------
-// Returns the linear interpolation of a and b based on weight w.
-// a and b are either both scalars or both vectors of the same length.
-// The weight w may be a scalar or a vector of the same length as a and b.
-// w can be any value (so is not restricted to be between zero and one);
-// if w has values outside the [0,1] range, it actually extrapolates.
-
-float lerp(float a, float b, float w)
-{
-  return a + w*(b-a);
-}
-
-//-------------------------------------------------------------------------
-// Returns x saturated to the range [0,1] as follows:
-// 1) Returns 0 if x is less than 0; else
-// 2) Returns 1 if x is greater than 1; else
-// 3) Returns x otherwise.
-// For vectors, the returned vector contains the saturated result
-// of each element of the vector x saturated to [0,1].
-
-float saturate(float x)
-{
-  return max(0, min(1, x));
-}
-
-//-------------------------------------------------------------------------
 
 
 void main()
@@ -813,7 +793,8 @@ void main()
     //--------------------------------------------------------------------------
     // Calculate a vector from the fragment location to the light source
     // This will be used for attenuation, diffuse and specular lighting computation
-    to_light = u_light_position - v_position;
+
+    to_light = v_light_position - v_position;
 
     // while computing this vector, let's compute its length and the attenuation
     // due to it before normalizing it

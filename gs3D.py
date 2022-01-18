@@ -464,7 +464,7 @@ class MainRenderer():
         'è': 'antidetroit',
         '!': 'osmort',
         'ç': 'irkoutsk_r',
-        'à': 'krasnoiarsk_r'
+        'à': 'vancouver_r'
     }
 
     colormapDictionnaryShifted = {
@@ -477,7 +477,7 @@ class MainRenderer():
         '7': 'detroit',
         '8': 'tromso',
         '9': 'irkoutsk',
-        '0': 'krasnoiarsk'
+        '0': 'vancouver'
     }
 
     createColormaps()
@@ -505,7 +505,9 @@ class MainRenderer():
         # light Parameters: direction, shininess exponant, attenuation parameters,
         # ambientLight intensity, ambientColor, diffuseColor and specularColor
         # --------------------------------------
-        self.lightCoordinates = [self.camera.eye[0], self.camera.eye[1], self.camera.eye[2]]
+        self.lightCoordinates = [self.shadowRenderer.camera.eye[0],
+                                 self.shadowRenderer.camera.eye[1],
+                                 self.shadowRenderer.camera.eye[2]]
         self.lightIntensity = (1., 1., 1.)
         self.c1 = 1.0
         self.c2 = 0.5
@@ -842,9 +844,9 @@ class Canvas(app.Canvas):
 
     def on_mouse_wheel(self, event):
         # no Shift modifier key: moves the camera
-        self.mainRenderer.moveCamera(dDistance=-event.delta[1])
+        self.mainRenderer.moveCamera(dDistance=(-event.delta[1])/3.0)
         # Shift modifier key: zoom in out
-        self.mainRenderer.zoomCamera(event.delta[0])
+        self.mainRenderer.zoomCamera((event.delta[0])/3.0)
 
     def on_mouse_press(self, event):
         self.pressed = True
