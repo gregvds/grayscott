@@ -444,15 +444,45 @@ class Renderer():
         self.program['pingpong']      = self.grayScottModel.program['pingpong']
         self.program["reagent"]       = self.reagent
         self.program["scalingFactor"] = 30. * (self.grayScottModel.w / 512)
+        self.program["u_vm"]          = self.camera.vm
         self.program["u_pvm"]         = self.camera.pvm
 
     def draw(self, drawingType='triangles'):
         self.program.draw(drawingType, self.grayScottModel.faces)
 
+    def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
+        """
+        Moves the camera according to inputs. Compute view Matrix.
+        """
+        azimuth = self.camera.azimuth + dAzimuth/self.camera.sensitivity
+        elevation = self.camera.elevation + dElevation/self.camera.sensitivity
+        distance = self.camera.distance + dDistance
+        self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
+        self.program["u_vm"]  = self.camera.vm
+        self.program["u_pvm"] = self.camera.pvm
+
+    def resetCamera(self, event=None):
+        """
+        Replaces the camera at its original position.
+        """
+        self.camera.move(self.camera.defaultAzimuth,
+                                     self.camera.defaultElevation,
+                                     self.camera.defaultDistance)
+        self.camera.setProjection(fov=self.camera.defaultFov)
+        self.program["u_vm"]  = self.camera.vm
+        self.program["u_pvm"] = self.camera.pvm
+
+    def switchReagent(self, event=None):
+        """
+        Toggles between representing U or V concentrations.
+        """
+        self.reagent = 1 - self.reagent
+        self.program["reagent"] = self.reagent
+
 
 class ShadowRenderer(Renderer):
     """
-    A renderer for shadowmap.
+    Renderer for shadowmap.
     """
 
     def __init__(self,
@@ -478,6 +508,9 @@ class ShadowRenderer(Renderer):
 
 
 class MainRenderer(Renderer):
+    """
+    Renderer responsible for the main display of the scene on the canvas.
+    """
 
     colormapDictionnary = {
         '&': 'Boston',
@@ -560,7 +593,7 @@ class MainRenderer(Renderer):
         self.attenuation = True
         self.diffuse     = True
         self.specular    = True
-        self.shadow      = 3
+        self.shadow      = 2
         self.lightBox    = True
 
         # Complete render program
@@ -570,7 +603,7 @@ class MainRenderer(Renderer):
         self.program["texture"].wrapping       = gl.GL_REPEAT
         self.program["dx"]                     = 1. / self.grayScottModel.w
         self.program["dy"]                     = 1. / self.grayScottModel.h
-        self.program["u_vm"]                   = self.camera.vm
+        # self.program["u_vm"]                   = self.camera.vm
 
         self.program["shadowMap"]              = self.shadowRenderer.shadowTexture
         self.program["shadowMap"].interpolation = gl.GL_LINEAR
@@ -586,7 +619,10 @@ class MainRenderer(Renderer):
         self.program["shadow"]                 = self.shadow
         self.program["lightBox"]               = self.lightBox
         self.program["cubeMap"]                = gloo.TextureCube(self.lightBoxTexture, interpolation='linear')
-        self.program["u_light_position"]       = self.lightCoordinates
+        self.program["u_fresnel_power"]        = 2.0
+        self.program["u_light_position"]       = [self.shadowRenderer.camera.eye[0],
+                                                  self.shadowRenderer.camera.eye[1],
+                                                  self.shadowRenderer.camera.eye[2]]
         self.program["u_light_intensity"]      = self.lightIntensity
         self.program["u_Ambient_color"]        = self.ambientColor
         self.program["u_ambient_intensity"]    = self.ambientIntensity
@@ -618,12 +654,9 @@ class MainRenderer(Renderer):
         """
         Moves the camera according to inputs. Compute view Matrix.
         """
-        azimuth = self.camera.azimuth + dAzimuth/self.camera.sensitivity
-        elevation = self.camera.elevation + dElevation/self.camera.sensitivity
-        distance = self.camera.distance + dDistance
-        self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
-        self.program["u_vm"]                  = self.camera.vm
-        self.program["u_pvm"]                 = self.camera.pvm
+        super().moveCamera(dAzimuth, dElevation, dDistance)
+        # WIP without this option still in developpment, this method could be
+        # deleted...
         # self.adjustShadowMapFrustum()
 
     def zoomCamera(self, percentage=0.0):
@@ -634,6 +667,28 @@ class MainRenderer(Renderer):
         self.program["u_vm"]                  = self.camera.vm
         self.program["u_pvm"]                 = self.camera.pvm
         # self.adjustShadowMapFrustum()
+
+    def moveLight(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
+        """
+        Moves the light, and the camera attached for shadowmap rendering
+        WIP NOT PERFECT CURRENTLY...
+        """
+        self.shadowRenderer.moveCamera(dAzimuth, dElevation, dDistance)
+        self.program["u_shadowmap_pvm"] = self.shadowRenderer.camera.pvm
+        self.program["u_light_position"] = [self.shadowRenderer.camera.eye[0],
+                                            self.shadowRenderer.camera.eye[1],
+                                            self.shadowRenderer.camera.eye[2]]
+
+    def resetLight(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
+        """
+        Moves the light, and the camera attached for shadowmap rendering
+        WIP NOT PERFECT CURRENTLY...
+        """
+        self.shadowRenderer.resetCamera()
+        self.program["u_shadowmap_pvm"] = self.shadowRenderer.camera.pvm
+        self.program["u_light_position"] = [self.shadowRenderer.camera.eye[0],
+                                            self.shadowRenderer.camera.eye[1],
+                                            self.shadowRenderer.camera.eye[2]]
 
     def adjustShadowMapFrustum(self):
         """
@@ -656,17 +711,6 @@ class MainRenderer(Renderer):
         Compute projection Matrix for new Wndow aspect.
         """
         self.camera.setProjection(aspect=aspect)
-        self.program["u_vm"]                  = self.camera.vm
-        self.program["u_pvm"]                 = self.camera.pvm
-
-    def resetCamera(self, event=None):
-        """
-        Replaces the camera at its original position.
-        """
-        self.camera.move(self.camera.defaultAzimuth,
-                                     self.camera.defaultElevation,
-                                     self.camera.defaultDistance)
-        self.camera.setProjection(fov=self.camera.defaultFov)
         self.program["u_vm"]                  = self.camera.vm
         self.program["u_pvm"]                 = self.camera.pvm
 
@@ -706,12 +750,12 @@ class MainRenderer(Renderer):
             self.shininess = np.clip(self.shininess, 0.1, 8192)
             self.program['u_Shininess'] = self.shininess
             print(' Shininess exponant: %3.0f' % self.shininess, end="\r")
-        elif lightType == "vsf_gate" and modification == '+':
-            self.program['vsf_gate'] = self.program['vsf_gate'] * 2.0
-            print(" vsf_gate: %s             " % self.program['vsf_gate'])
-        elif lightType == "vsf_gate" and modification == '-':
-            self.program['vsf_gate'] = self.program['vsf_gate'] / 2.0
-            print(" vsf_gate: %s             " % self.program['vsf_gate'])
+        elif lightType == "u_fresnel_power" and modification == '+':
+            self.program['u_fresnel_power'] = self.program['u_fresnel_power'] * sqrt(2.0)
+            print(" u_fresnel_power: %s             " % self.program['u_fresnel_power'])
+        elif lightType == "u_fresnel_power" and modification == '-':
+            self.program['u_fresnel_power'] = self.program['u_fresnel_power'] / sqrt(2.0)
+            print(" u_fresnel_power: %s             " % self.program['u_fresnel_power'])
         elif lightType == "lightbox":
             self.lightBox = not self.lightBox
             self.program["lightBox"] = self.lightBox
@@ -730,9 +774,8 @@ class MainRenderer(Renderer):
         """
         Toggles between representing U or V concentrations.
         """
-        self.reagent = 1 - self.reagent
-        self.program["reagent"] = self.reagent
-        self.shadowRenderer.program["reagent"] = self.reagent
+        super().switchReagent()
+        self.shadowRenderer.switchReagent()
         print(' Displaying %s reagent concentration.' % MainRenderer.REAGENTS[self.reagent], end="\r")
 
 
@@ -873,9 +916,8 @@ class Canvas(app.Canvas):
 
     def on_mouse_press(self, event):
         self.pressed = True
-        if len(event.modifiers) == 0:
-            self.mousePos = event.pos
-        elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
+        self.mousePos = event.pos
+        if len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
             (x, y) = event.pos
             (sx, sy) = self.size
             xpos = 1 - x/sx
@@ -895,12 +937,19 @@ class Canvas(app.Canvas):
                 self.mousePos = event.pos
                 self.mainRenderer.moveCamera(dAzimuth=dazimuth, dElevation=delevation)
             elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
+                # Shift modifier: interact with V concentrations
                 (x, y) = event.pos
                 (sx, sy) = self.size
                 xpos = 1 - x/sx
                 ypos = 1 - y/sy
                 # update brush coords here
                 self.grayScottModel.interact([ypos, xpos], event.button)
+            elif len(event.modifiers) == 1 and event.modifiers[0] == 'Control':
+                # Control Modifier: move the light
+                dazimuth = (event.pos[0] - self.mousePos[0]) * (2*pi) / self.size[0]
+                delevation = -1.0 * (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
+                self.mousePos = event.pos
+                self.mainRenderer.moveLight(dAzimuth=dazimuth, dElevation=delevation)
 
     NO_ACTION = (None, None)
 
@@ -923,6 +972,8 @@ class Canvas(app.Canvas):
                 func(self.grayScottModel, event, *args)
             elif hasattr(self.mainRenderer, func.__name__):
                 func(self.mainRenderer, event, *args)
+            elif hasattr(self.shadowRenderer, func.__name__):
+                func(self.shadowRenderer, event, *args)
             else:
                 print("Method %s does not seem to be found..." % str(fun))
 
@@ -975,6 +1026,7 @@ class Canvas(app.Canvas):
         ('P', ('Control',)): (GrayScottModel.increaseCycle, ()),
         ('O', ('Control',)): (GrayScottModel.decreaseCycle, ()),
         ('@', ()): (MainRenderer.resetCamera, ()),
+        ('<', ()): (MainRenderer.resetLight, ()),
         (',', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('ambient',)),
         (';', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('diffuse',)),
         (':', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('specular',)),
@@ -982,8 +1034,8 @@ class Canvas(app.Canvas):
         ('N', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('attenuation',)),
         ('L', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shininess', '-')),
         ('M', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shininess', '+')),
-        ('J', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('vsf_gate', '-')),
-        ('K', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('vsf_gate', '+')),
+        ('J', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('u_fresnel_power', '-')),
+        ('K', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('u_fresnel_power', '+')),
         ('I', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('lightbox',))
     }
     for key in MainRenderer.colormapDictionnary.keys():

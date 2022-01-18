@@ -558,6 +558,7 @@ uniform lowp float c2;
 uniform lowp float c3;
 uniform bool lightBox;
 uniform samplerCube cubeMap;
+uniform float u_fresnel_power;
 
 uniform sampler2D texture; // u:= r or b following pinpong
 uniform sampler1D cmap;          // colormap used to render reagent concentration
@@ -800,6 +801,8 @@ void main()
 
     // Calculate the cosine of the angle between the vertex's normal vector
     // and the vector going to the light.
+    // = 1 when vertices parallel,
+    // = 0 when vertices perpendicular
     cos_angle = dot(vertex_normal, to_light);
 
     //--------------------------------------------------------------------------
@@ -823,6 +826,8 @@ void main()
 
         // Calculate the cosine of the angle between the reflection vector
         // and the vector going to the camera.
+        // = 1 when vertices parallel,
+        // = 0 when vertices perpendicular
         cos_angle = dot(reflection, to_camera);
         cos_angle = clamp(cos_angle, 0.0, 1.0);
         cos_angle = pow(cos_angle, u_Shininess);
@@ -835,27 +840,25 @@ void main()
     }
 
     //--------------------------------------------------------------------------
-    float lightBoxReflectionIntensity = 0.3;
+    float lightBoxReflectionIntensity = .25;
     float fresnelFactor;
-    float fresnelPower = 4;
-    float shininess = .1;
     if (lightBox) {
         // Calculate a vector from the fragment location to the camera.
         // The camera is at the origin, so negating the vertex location gives the vector
         to_camera = -1.0 * v_position;
         to_camera = normalize( to_camera );
 
+//        reflected_color = vec4(vertex_normal.x, vertex_normal.y, vertex_normal.z, 1);
+
         vec3 reflectedDirection = normalize(reflect(v_position, vertex_normal));
-        reflected_color = textureCube(cubeMap, reflectedDirection);
+//        reflected_color = 1.0 * textureCube(cubeMap, reflectedDirection);
 
-        fresnelFactor = dot(vertex_normal, to_camera);
-        fresnelFactor = max(fresnelFactor, 0.0);
-        fresnelFactor = 1.0 - fresnelFactor;
-        fresnelFactor = pow(fresnelFactor, fresnelPower);
+        fresnelFactor = dot(to_camera, vertex_normal);
+        fresnelFactor = max(1.0 - fresnelFactor, 0.0);
+        fresnelFactor = pow(fresnelFactor, u_fresnel_power);
+//        reflected_color = vec4(fresnelFactor, fresnelFactor, fresnelFactor, 1);
 
-        reflected_color = mix(reflected_color, vec4(1,1,1,0), fresnelFactor);
-        reflected_color *= pow(max(dot(vertex_normal, to_camera), 0.0), shininess);
-        reflected_color *= lightBoxReflectionIntensity;
+        reflected_color = lightBoxReflectionIntensity * reflected_color * fresnelFactor;
     }
 
     //--------------------------------------------------------------------------
@@ -878,6 +881,7 @@ precision highp sampler2D;
 
 
 // Scene transformations
+uniform mat4 u_vm;
 uniform mat4 u_pvm;
 
 // Model parameters
@@ -917,7 +921,6 @@ void main()
     vec3 position2 = vec3(position.x, c, position.z);
 
     // Export of the gl_position to the fragment to render depth
-    // WIP toward less matrix multiplication inside the program...
     w_position = u_pvm * vec4(position2, 1.0);
     // Transform the location of the vertex for the rest of the graphics pipeline
     gl_Position = w_position;
