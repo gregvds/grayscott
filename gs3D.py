@@ -72,6 +72,7 @@ class Camera():
     """
 
     def __init__(self,
+               model,
                eye=[1,1,-1],
                target=[0,0,0],
                up=[0,1,0],
@@ -96,8 +97,6 @@ class Camera():
         self.elevationMax = pi/2.0*.99
         self.elevationRange = self.elevationMax - self.elevationMin
 
-        self.centerModFromElev = 0
-        self.centerModFromFov = 0
 
         (self.azimuth, self.elevation, self.distance) = self.InitializeAzElDi()
         # these parameters modulate the target y to better center the grid in
@@ -105,6 +104,12 @@ class Camera():
         # the two calls at move and setProjection. See methods for details.
         self.centerModFromElev = 0
         self.centerModFromFov = 0
+        self.model = model
+        self.view = np.eye(4, dtype=np.float32)
+        self.projection = np.eye(4, dtype=np.float32)
+        self.vm = np.eye(4, dtype=np.float32)
+        self.pvm = np.eye(4, dtype=np.float32)
+
         self.move()
         self.setProjection()
 
@@ -114,7 +119,6 @@ class Camera():
         self.defaultAzimuth = self.azimuth
         self.defaultElevation = self.elevation
         self.defaultDistance = self.distance
-
 
         self.sensitivity = 5.0
 
@@ -133,7 +137,6 @@ class Camera():
         Sets the coordinates of the camera, computes its view matrix and return it.
         """
         self.eye = eye
-        self.InitializeAzElDi()
         self.view = self.lookAt(self.eye, self.target, up=self.up)
         return self.view
 
@@ -142,7 +145,6 @@ class Camera():
         Sets the target at which the camera is pointing, compute its view matrix and returns it.
         """
         self.target = target
-        self.InitializeAzElDi()
         self.view = self.lookAt(self.eye, self.target, up=self.up)
         return self.view
 
@@ -153,20 +155,19 @@ class Camera():
         It also compute the modulation of target y according to elevation.
         """
         self.azimuth = azimuth or self.azimuth
-        self.elevation = elevation or self.elevation
         # clamp elevation to avoid awkward flip turn when camera is placed exactly
         # facing down
+        self.elevation = elevation or self.elevation
         self.elevation = min(max(self.elevation, self.elevationMin), self.elevationMax)
-        self.centerModFromElev = (1.0 - (2.0 * abs(((self.elevation - self.elevationMin) / self.elevationRange) - .5))**1)
-        self.view = self.lookAt(self.eye, target=[0,self.centerModFromFov*self.centerModFromElev, 0])
         self.distance = distance or self.distance
         self.distance = min(max(self.distance, self.distanceMin), self.distanceMax)
         z = self.distance * sin(self.elevation) * sin(self.azimuth)
         x = self.distance * sin(self.elevation) * cos(self.azimuth)
         y = self.distance * cos(self.elevation)
-        self.eye = [x, y, z]
-        self.target = target or self.target
-        self.view = self.lookAt(self.eye, self.target, up=self.up)
+        eye = [x, y, z]
+        self.centerModFromElev = (1.0 - (2.0 * abs(((self.elevation - self.elevationMin) / self.elevationRange) - .5))**1)
+        target = target or [0, self.centerModFromFov*self.centerModFromElev, 0]
+        self.view = self.lookAt(eye, target, up=self.up)
         return self.view
 
     def setProjection(self, fov=None, aspect=None, near=None, far=None):
@@ -177,11 +178,11 @@ class Camera():
         self.fov = fov or self.fov
         self.fov = min(max(self.fov, self.fovMin), self.fovMax)
         self.centerModFromFov = -0.6 * (self.fov - self.fovMin) / self.fovRange
-        self.view = self.lookAt(self.eye, target=[0,self.centerModFromFov*self.centerModFromElev, 0])
         self.aspect = aspect or self.aspect
         self.near = near or self.near
         self.far = far or self.far
         self.projection = perspective(self.fov, self.aspect, self.near, self.far)
+        self.view = self.lookAt(self.eye, target=[0,self.centerModFromFov*self.centerModFromElev, 0])
         return self.projection
 
     def zoomOn(self, objectWidth=sqrt(2.0), margin=0.02):
@@ -221,7 +222,15 @@ class Camera():
                      [0, 0, 0, 1]].reshape(4, 4, order='F')
         self.view = view
         self.InitializeAzElDi()
+        self.updateMatrices()
         return view
+
+    def updateMatrices(self):
+        """
+        Recompute view*model and projection*view*model
+        """
+        self.vm = self.model @ self.view
+        self.pvm = self.vm @ self.projection
 
 
 class GrayScottModel():
@@ -420,10 +429,8 @@ class ShadowRenderer():
     """
 
     def __init__(self,
-                 model,
                  grayScottModel,
                  camera):
-        self.model = model
         self.grayScottModel = grayScottModel
         self.camera = camera
 
@@ -444,9 +451,7 @@ class ShadowRenderer():
         self.program['pingpong'] = self.grayScottModel.pingpong
         self.program["reagent"] = 1
         self.program["scalingFactor"] = 30. * (self.grayScottModel.w/512)
-        self.program["u_model"] = self.model
-        self.program["u_view"] = self.camera.view
-        self.program['u_projection'] = self.projection
+        self.program['u_pvm'] = self.camera.pvm
 
     def draw(self, drawingType='triangles'):
         self.program.draw(drawingType, self.grayScottModel.faces)
@@ -457,7 +462,7 @@ class MainRenderer():
     colormapDictionnary = {
         '&': 'Boston',
         'é': 'malmo_r',
-        '"': 'uppsala_r',
+        '"': 'papetee_r',
         '\'': 'oslo',
         '(': 'Lochinver_r',
         '§': 'Rejkjavik_r',
@@ -470,7 +475,7 @@ class MainRenderer():
     colormapDictionnaryShifted = {
         '1': 'Boston_r',
         '2': 'malmo',
-        '3': 'uppsala',
+        '3': 'papetee',
         '4': 'oslo_r',
         '5': 'Lochinver',
         '6': 'Rejkjavik',
@@ -490,12 +495,10 @@ class MainRenderer():
     REAGENTS = ('U', 'V')
 
     def __init__(self,
-                 model,
                  grayScottModel,
                  camera,
                  shadowRenderer,
                  cmap='irkoutsk'):
-        self.model = model
         self.grayScottModel = grayScottModel
         self.camera = camera
         self.cmapName = cmap
@@ -542,21 +545,20 @@ class MainRenderer():
         # --------------------------------------
         self.program = Program(render_3D_vertex, render_3D_fragment)
         self.program.bind(self.grayScottModel.vertices)
-        self.program["texture"]                 = self.grayScottModel.program["texture"]
-        self.program["texture"].interpolation = gl.GL_LINEAR
-        self.program["texture"].wrapping = gl.GL_REPEAT
-        self.program["scalingFactor"]           = 30. * (self.grayScottModel.w / 512)
-        self.program["dx"]                      = 1. / self.grayScottModel.w
-        self.program["dy"]                      = 1. / self.grayScottModel.h
-        self.program['pingpong']                = self.grayScottModel.program['pingpong']
-        self.program["reagent"]                 = self.reagent
-        self.program["u_view"]                  = self.camera.view
-        self.program["u_model"]                 = self.model
-        self.program["shadowMap"]               = self.shadowRenderer.shadowTexture
+        self.program["texture"]                = self.grayScottModel.program["texture"]
+        self.program["texture"].interpolation  = gl.GL_LINEAR
+        self.program["texture"].wrapping       = gl.GL_REPEAT
+        self.program["scalingFactor"]          = 30. * (self.grayScottModel.w / 512)
+        self.program["dx"]                     = 1. / self.grayScottModel.w
+        self.program["dy"]                     = 1. / self.grayScottModel.h
+        self.program['pingpong']               = self.grayScottModel.program['pingpong']
+        self.program["reagent"]                = self.reagent
+        self.program["u_vm"]                   = self.camera.vm
+        self.program["u_pvm"]                  = self.camera.pvm
+        self.program["shadowMap"]              = self.shadowRenderer.shadowTexture
         self.program["shadowMap"].interpolation = gl.GL_LINEAR
-        self.program["shadowMap"].wrapping      = gl.GL_CLAMP_TO_EDGE
-        self.program["u_Shadowmap_projection"] = self.shadowRenderer.camera.projection
-        self.program["u_Shadowmap_view"]       = self.shadowRenderer.camera.view
+        self.program["shadowMap"].wrapping     = gl.GL_CLAMP_TO_EDGE
+        self.program["u_shadowmap_pvm"]        = self.shadowRenderer.camera.pvm
         self.program["u_Tolerance_constant"]   = 5e-03
         self.program["vsf_gate"]               = 2.5e-05
         self.program["ambient"]                = self.ambient
@@ -596,24 +598,6 @@ class MainRenderer():
     def draw(self, drawingType='triangles'):
         self.program.draw(drawingType, self.grayScottModel.faces)
 
-    def setColorMap(self, event=None, name=''):
-        """
-        Set the colormap used to render the concentration
-        """
-        if name != '':
-            self.cmapName = name
-            self.program["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
-            print(' Using colormap %s.' % name, end="\r")
-
-    def switchReagent(self, event=None):
-        """
-        Toggles between representing U or V concentrations.
-        """
-        self.reagent = 1 - self.reagent
-        self.program["reagent"] = self.reagent
-        self.shadowRenderer.program["reagent"] = self.reagent
-        print(' Displaying %s reagent concentration.' % MainRenderer.REAGENTS[self.reagent], end="\r")
-
     def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
         """
         Moves the camera according to inputs. Compute view Matrix.
@@ -621,18 +605,19 @@ class MainRenderer():
         azimuth = self.camera.azimuth + dAzimuth/self.camera.sensitivity
         elevation = self.camera.elevation + dElevation/self.camera.sensitivity
         distance = self.camera.distance + dDistance
-        # self.view = self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
-        # self.program["u_view"] = self.view
-        self.program["u_view"] = self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
-        self.adjustShadowMapFrustum()
+        self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
+        self.program["u_vm"]                  = self.camera.vm
+        self.program["u_pvm"]                 = self.camera.pvm
+        # self.adjustShadowMapFrustum()
 
     def zoomCamera(self, percentage=0.0):
         """
         Zoom with camera according to inputs. Computes projection Matrix.
         """
-        self.program["u_projection"] = self.camera.setProjection(fov=self.camera.fov*(1+percentage))
-        self.program["u_view"] = self.camera.view
-        self.adjustShadowMapFrustum()
+        self.camera.setProjection(fov=self.camera.fov*(1+percentage))
+        self.program["u_vm"]                  = self.camera.vm
+        self.program["u_pvm"]                 = self.camera.pvm
+        # self.adjustShadowMapFrustum()
 
     def adjustShadowMapFrustum(self):
         """
@@ -647,20 +632,27 @@ class MainRenderer():
         # to go wider than that.
         fieldWidth = min(fieldWidth, sqrt(2.0))
         self.shadowRenderer.camera.zoomOn(fieldWidth, margin=securityBuffer)
-        self.program["u_Shadowmap_projection"] = self.shadowRenderer.camera.projection
-        self.shadowRenderer.program["u_projection"] = self.shadowRenderer.camera.projection
+        self.shadowRenderer.program['u_pvm'] = self.shadowRenderer.camera.pvm
+        self.program["u_shadowmap_pvm"] = self.shadowRenderer.camera.pvm
+
+    def updateAspect(self, aspect):
+        """
+        Compute projection Matrix for new Wndow aspect.
+        """
+        self.camera.setProjection(aspect=aspect)
+        self.program["u_vm"]                  = self.camera.vm
+        self.program["u_pvm"]                 = self.camera.pvm
 
     def resetCamera(self, event=None):
         """
         Replaces the camera at its original position.
         """
-        # self.view = self.camera.setEye(self.camera.defaultEye)
-        self.view = self.camera.move(self.camera.defaultAzimuth,
+        self.camera.move(self.camera.defaultAzimuth,
                                      self.camera.defaultElevation,
                                      self.camera.defaultDistance)
-        self.projection = self.camera.setProjection(fov=self.camera.defaultFov)
-        self.program["u_view"] = self.view
-        self.program["u_projection"] = self.projection
+        self.camera.setProjection(fov=self.camera.defaultFov)
+        self.program["u_vm"]                  = self.camera.vm
+        self.program["u_pvm"]                 = self.camera.pvm
 
     def modifyLightCharacteristic(self, event, lightType=None, modification=None):
         """
@@ -709,11 +701,23 @@ class MainRenderer():
             self.program["lightBox"] = self.lightBox
             print(" LightBox %s              " % self.lightBox)
 
-    def updateAspect(self, aspect):
+    def setColorMap(self, event=None, name=''):
         """
-        Compute projection Matrix for new Wndow aspect.
+        Set the colormap used to render the concentration
         """
-        self.program['u_projection'] = self.camera.setProjection(aspect=aspect)
+        if name != '':
+            self.cmapName = name
+            self.program["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
+            print(' Using colormap %s.              ' % name, end="\r")
+
+    def switchReagent(self, event=None):
+        """
+        Toggles between representing U or V concentrations.
+        """
+        self.reagent = 1 - self.reagent
+        self.program["reagent"] = self.reagent
+        self.shadowRenderer.program["reagent"] = self.reagent
+        print(' Displaying %s reagent concentration.' % MainRenderer.REAGENTS[self.reagent], end="\r")
 
 
 class Canvas(app.Canvas):
@@ -735,24 +739,26 @@ class Canvas(app.Canvas):
                                              gridSize=modelSize,
                                              specie=specie)
 
+        # Build model
+        # --------------------------------------
+        model = np.eye(4, dtype=np.float32)
+
         # Build light camera for shadow view and projection
         # --------------------------------------
-        self.lightCamera = Camera(eye=[0, 2, 2],
+        self.lightCamera = Camera(model,
+                             eye=[0, 2, 2],
                              target=[0,0,0],
                              up=[0,1,0],
                              aspect=self.size[0] / float(self.size[1]))
 
-        # Build model
-        # --------------------------------------
-        self.model = np.eye(4, dtype=np.float32)
-
         # Build shadow renderer using the model, grayScottModel and lightCamera
         # --------------------------------------
-        self.shadowRenderer = ShadowRenderer(self.model, self.grayScottModel, self.lightCamera)
+        self.shadowRenderer = ShadowRenderer(self.grayScottModel, self.lightCamera)
 
         # Build main camera for view and projection
         # --------------------------------------
-        self.camera = Camera(eye=[0, 2, -2],
+        self.camera = Camera(model,
+                             eye=[0, 2, -2],
                              target=[0,0,0],
                              up=[0,1,0],
                              fov=24.0,
@@ -762,8 +768,7 @@ class Canvas(app.Canvas):
 
         # Build main renderer using the model, grayScottModel, shadowRenderer and camera
         # --------------------------------------
-        self.mainRenderer = MainRenderer(self.model,
-                                         self.grayScottModel,
+        self.mainRenderer = MainRenderer(self.grayScottModel,
                                          self.camera,
                                          self.shadowRenderer,
                                          cmap=cmap)
@@ -1038,7 +1043,7 @@ if __name__ == '__main__':
                         "--Colormap",
                         choices={**MainRenderer.colormapDictionnary,
                                  **MainRenderer.colormapDictionnaryShifted}.values(),
-                        default="antidetroit",
+                        default="papetee_r",
                         help="Colormap used")
 
     args = parser.parse_args()

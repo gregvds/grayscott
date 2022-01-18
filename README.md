@@ -56,6 +56,7 @@ Inspirations for the OpenGL shaders techniques and code used:
 1. [OpenGL Tutorials](https://www.opengl-tutorial.org)
 1. [Fabien Sanglard's website](https://fabiensanglard.net)
 1. [Vispy code and examples](https://github.com/vispy/vispy)
+1. [Fresnel factor computation](https://lettier.github.io/3d-game-shaders-for-beginners/fresnel-factor.html)
 
 Commands can be passed with key combos, but these were defined on my keyboard.
 Depending on your hardware and os settings, those could not respond as intended.
@@ -110,7 +111,19 @@ These are key combos commands for gs.py only:
 
 keys =, l, spacebar should get you back to something normal ;-).
 
-Keys combo for gs3D.py have still not settled down, but can be easily found and
-remapped one would want it: look for keyactionDictionnary in Canvas class.
+Keys combo for gs3D.py have still not settled down, but can be easily found by
+typing python3 gs3D.py -h in a shell.
+
+If some of these combos would not work for you,
+the keyactionDictionnary at the end of Canvas class can be easily adapted:
+- (',', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('ambient',))
+- defines a tuple with key ',' with modifier key 'Control' and maps it to call
+- modifyLightCharacteristic('ambient').
+- Just change key and/or modifier key to adapt.
+
+Some new colormaps were designed with a nice online tool:
+[CCCTool](https://ccctool.com)
+
+Have fun!
 
 Greg

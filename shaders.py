@@ -418,11 +418,9 @@ precision highp sampler2D;
 
 
 // Scene transformations
-uniform mat4 u_projection;
-uniform mat4 u_view;
-uniform mat4 u_model;
-uniform mat4 u_Shadowmap_projection;
-uniform mat4 u_Shadowmap_view;
+uniform mat4 u_vm;
+uniform mat4 u_pvm;
+uniform mat4 u_shadowmap_pvm;
 
 // Model parameters
 uniform sampler2D texture; // u:= r or b following pinpong
@@ -434,21 +432,19 @@ uniform lowp float dy;                // vertical distance between texels
 
 // Light model
 uniform vec3 u_light_position;
-uniform lowp vec4 u_color;
 
 // Original model data
 attribute vec3 position;
 attribute vec2 texcoord;
-attribute mediump vec3 normal;
-attribute lowp vec4 color;
+attribute vec3 normal;
+attribute vec4 color;
 
 // Data (to be interpolated) that is passed on to the fragment shader
 varying vec3 v_position;
 varying vec3 v_light_position;
-varying mediump vec3 v_normal;
-// varying lowp vec4 v_color;
+varying vec3 v_normal;
 varying vec2 v_texcoord;
-varying mediump vec4 v_Vertex_relative_to_light;
+varying vec4 v_Vertex_relative_to_light;
 
 void main()
 {
@@ -502,41 +498,35 @@ void main()
     // A new position vertex is build from the old vertex xy and the concentrations
     // rendered by the compute_fragment(2), hence the surface of the gridplane is
     // embossed or displaced
-// This changes for the plane is facing '+y'
-//    vec3 position2 = vec3(position.x, position.y, c);
-    vec3 position2 = vec3(position.x, c, position.z);
-    vec4 modelPosition2 = u_model * vec4(position2, 1.0);
-    vec4 viewModelPosition2 = u_view * modelPosition2;
+    vec4 position2 = vec4(position.x, c, position.z, 1.0);
 
     // Perform the model and view transformations on the vertex and pass this
     // location to the fragment shader.
-    v_position = vec3(viewModelPosition2);
+    v_position = vec3(u_vm * position2);
 
-    v_light_position = vec3(u_view * u_model * vec4(u_light_position.xyz, 1.0));
+    v_light_position = vec3(u_vm * vec4(u_light_position, 1.0));
 
     // Calculate this vertex's location from the light source. This is
     // used in the fragment shader to determine if fragments receive direct light.
-    v_Vertex_relative_to_light = u_Shadowmap_projection * u_Shadowmap_view * modelPosition2;
+    v_Vertex_relative_to_light = u_shadowmap_pvm * position2;
 
     // Here since position has been realtime modified, normals have to be computed again
-    vec3 normal2;
+    vec4 normal2;
     normal2.x = (hL - hR)/dx;
-// This changes for the plane is facing '+y'
-//    normal2.y = (hD - hU)/dy;
-//    normal2.z = 2.0;
     normal2.y = 2.0;
     normal2.z = (hD - hU)/dy;
+    normal2.w = 0.0;
     normal2 = normalize(normal2);
 
     // Perform the model and view transformations on the vertex's normal vector
     // and pass this normal vector to the fragment shader.
-    v_normal = vec3(u_view * u_model * vec4(normal2, 0.0));
+    v_normal = vec3(u_vm * normal2);
 
     // Pass the texcoord to the fragment shader.
     v_texcoord = texcoord;
 
     // Transform the location of the vertex for the rest of the graphics pipeline
-    gl_Position = u_projection * viewModelPosition2;
+    gl_Position = u_pvm * position2;
 }
 """
 
@@ -557,7 +547,6 @@ uniform mat4 u_view;
 uniform mat4 u_model;
 
 // Light model
-uniform lowp vec3 u_light_position;
 uniform vec3 u_light_intensity;
 uniform vec4 u_Ambient_color;
 uniform lowp float u_ambient_intensity;
@@ -870,17 +859,9 @@ void main()
     }
 
     //--------------------------------------------------------------------------
-    // don't really know on which part of the light sources should the attenuation play
-    // Maybe not on the ambient_color?
-    // gl_FragColor = ambient_color + visibility * attenuationFactor * (diffuse_color + specular_color);
-
     gl_FragColor = reflected_color +
                    ambient_color +
                    visibility * attenuationFactor * (diffuse_color + specular_color);
-
-//    gl_FragColor = lightBoxReflectionIntensity * reflected_color +
-//           (1.0 - lightBoxReflectionIntensity) * (ambient_color +
-//                visibility * attenuationFactor * (diffuse_color + specular_color));
 }
 """
 
@@ -897,9 +878,7 @@ precision highp sampler2D;
 
 
 // Scene transformations
-uniform mat4 u_model;
-uniform mat4 u_view;
-uniform mat4 u_projection;
+uniform mat4 u_pvm;
 
 // Model parameters
 uniform sampler2D texture; // u:= r or b following pinpong
@@ -927,7 +906,7 @@ int when_eq_int(int x, int y) {
 
 void main()
 {
-    // Here position.z is read from texture
+    // Here position.y is read from texture
     vec4 textureValues = texture2DLod(texture, texcoord, 0);
     float c = when_eq_int(pingpong, 0) * when_eq_int(reagent, 1) * textureValues.r +
               when_eq_int(pingpong, 0) * when_eq_int(reagent, 0) * textureValues.g +
@@ -935,12 +914,12 @@ void main()
               when_eq_int(pingpong, 1) * when_eq_int(reagent, 0) * textureValues.a;
 
     c = (1.0 - c)/scalingFactor;
-//    vec3 position2 = vec3(position.x, position.y, c);
     vec3 position2 = vec3(position.x, c, position.z);
 
-
     // Export of the gl_position to the fragment to render depth
-    w_position = u_projection * u_view * u_model * vec4(position2, 1.0);
+    // WIP toward less matrix multiplication inside the program...
+//    w_position = u_projection * u_view * u_model * vec4(position2, 1.0);
+    w_position = u_pvm * vec4(position2, 1.0);
     // Transform the location of the vertex for the rest of the graphics pipeline
     gl_Position = w_position;
 }
@@ -961,8 +940,6 @@ varying vec4 w_position;
 void main()
 {
     // We render a shadowmap, so we only need to compute depth.
-    // Currently this is a workaround to bypass my incapacity to have
-    // a Frambuffer(depth=...) accepting to be drawn in
     float depth = w_position.z / w_position.w;
     depth = depth * 0.5 + 0.5;
 
