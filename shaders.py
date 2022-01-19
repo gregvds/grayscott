@@ -841,7 +841,7 @@ void main()
 //        to_camera = normalize( to_camera );
 
         vec3 reflectedDirection = normalize(reflect(to_camera, vertex_normal));
-        reflected_color = lightBoxReflectionIntensity * textureCube(cubeMap, reflectedDirection);
+        reflected_color = lightBoxReflectionIntensity * textureCube(cubeMap, -reflectedDirection);
 
         fresnelFactor = 1.01 - clamp(dot(vertex_normal, to_camera), 0.0, 1.0);
         fresnelFactor = pow(fresnelFactor, u_fresnel_power);

@@ -62,6 +62,7 @@ from shaders import shadow_fragment
 
 # ? Use of this ?
 # gl.use_gl('gl+')
+# app.use_app('pyside6')
 
 ################################################################################
 
@@ -132,22 +133,6 @@ class Camera():
         elevation = atan2(dy, sqrt(dx**2 + dz**2))
         azimuth = atan2(dz, dx)
         return (azimuth, elevation, distance)
-
-    def setEye(self, eye):
-        """
-        Sets the coordinates of the camera, computes its view matrix and return it.
-        """
-        self.eye = eye
-        self.view = self.lookAt(self.eye, self.target, up=self.up)
-        return self.view
-
-    def setTarget(self, target):
-        """
-        Sets the target at which the camera is pointing, compute its view matrix and returns it.
-        """
-        self.target = target
-        self.view = self.lookAt(self.eye, self.target, up=self.up)
-        return self.view
 
     def move(self, azimuth=None, elevation=None, distance=None, target=None):
         """
@@ -281,6 +266,10 @@ class GrayScottModel():
         self.pingpong = 1
         self.specie = specie
         (self.h, self.w) = gridSize
+        # A reference to the instances that uses this GrayScottModel, just to
+        # be able to refresh it gl.GL_LINEAR texture parameters when a call to
+        # self.initializeGrid() occurs.
+        self.owner = []
 
         # Mouse interactions parameters
         # --------------------------------------
@@ -315,7 +304,7 @@ class GrayScottModel():
         # containing U and V concentrations twice
         # and are used through pingpong alternatively
         # each GPU computation/rendering cycle
-        self.gridReinitialized = False
+        # self.gridReinitialized = False
         self.initializeGrid()
 
         # Pearson's patterns related variables
@@ -338,21 +327,30 @@ class GrayScottModel():
         Initialize the concentrations of U and V of the model accross a grid
         with a seed patch in its center.
         """
-        print('Initialization of the grid.', end="\r")
         self.UV = np.zeros((self.h, self.w, 4), dtype=np.float32)
         self.UV[:, :, 0:2] = setup_grid(self.h, self.w)
         self.UV += np.random.uniform(-0.02, 0.1, (self.h, self.w, 4))
         self.UV[:, :, 2] = self.UV[:, :, 0]
         self.UV[:, :, 3] = self.UV[:, :, 1]
         if not hasattr(self, 'texture'):
-            self.texture = gloo.Texture2D(data=self.UV, format=gl.GL_RGBA, internalformat='rgba32f', interpolation='linear')
+            print(' Initialization of the grid.', end="\r")
+            self.texture = gloo.Texture2D(data=self.UV,
+                                          format=gl.GL_RGBA,
+                                          internalformat='rgba32f')
         else:
+            print(' Reinitialization of the grid.', end="\r")
             self.texture.set_data(self.UV)
 
         self.program["texture"] = self.texture
         self.program["texture"].interpolation = gl.GL_NEAREST
         self.program["texture"].wrapping = gl.GL_REPEAT
-        self.gridReinitialized = True
+        # inside, the texture is used with interpolation = gl.GL_NEAREST, but
+        # in the Renderer, it should be interpolation = gl.GL_LINEAR
+        for owner in self.owner:
+            if hasattr(owner, 'program'):
+                owner.program["texture"].interpolation = gl.GL_LINEAR
+
+
 
     def printPearsonPatternDescription(self):
         if self.canvas is not None:
@@ -438,6 +436,8 @@ class Renderer():
         self.reagent = 1
         self.camera.move()
         self.camera.setProjection()
+        # Add itself to the list of owners of this grayScottModel
+        self.grayScottModel.owner.append(self)
 
         # Build render program
         # --------------------------------------
@@ -497,8 +497,11 @@ class ShadowRenderer(Renderer):
                         shadow_fragment)
 
         self.shadowMapSize = shadowMapSize
-        self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4), dtype=np.float32) * .1
-        self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid, format=gl.GL_RGBA, internalformat='rgba32f')
+        self.shadowGrid = np.ones((self.shadowMapSize, self.shadowMapSize, 4),
+                                  dtype=np.float32) * .1
+        self.shadowTexture = gloo.texture.Texture2D(data=self.shadowGrid,
+                                                    format=gl.GL_RGBA,
+                                                    internalformat='rgba32f')
 
         # Complete shadowmap render program
         # --------------------------------------
@@ -647,16 +650,6 @@ class MainRenderer(Renderer):
         self.buffer = FrameBuffer(color=self.program["shadowMap"],
                                   depth=gloo.RenderBuffer((self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize), format='depth'))
 
-    def refreshTextureInterpolation(self):
-        """
-        As the GrayScottModel renderer uses a texture with interpolation set
-        at gl.GL_NEAREST, when it is reinitialized, the interpolation here is
-        lost and has to be reset to gl.GL_LINEAR.
-        """
-        if self.grayScottModel.gridReinitialized is True:
-            self.program["texture"].interpolation = gl.GL_LINEAR
-            self.grayScottModel.gridReinitialized = False
-
     def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
         """
         Moves the camera according to inputs. Compute view Matrix.
@@ -664,7 +657,7 @@ class MainRenderer(Renderer):
         super().moveCamera(dAzimuth, dElevation, dDistance)
         # WIP without this option still in developpment, this method could be
         # deleted...
-        # self.adjustShadowMapFrustum()
+        self.adjustShadowMapFrustum()
 
     def zoomCamera(self, percentage=0.0):
         """
@@ -673,7 +666,7 @@ class MainRenderer(Renderer):
         self.camera.setProjection(fov=self.camera.fov*(1+percentage))
         self.program["u_vm"]                  = self.camera.vm
         self.program["u_pvm"]                 = self.camera.pvm
-        # self.adjustShadowMapFrustum()
+        self.adjustShadowMapFrustum()
 
     def moveLight(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
         """
@@ -760,14 +753,14 @@ class MainRenderer(Renderer):
             print(' Shininess exponant: %3.0f' % self.shininess, end="\r")
         elif lightType == "u_fresnel_power" and modification == '+':
             self.program['u_fresnel_power'] = self.program['u_fresnel_power'] * sqrt(2.0)
-            print(" u_fresnel_power: %s             " % self.program['u_fresnel_power'])
+            print(" u_fresnel_power: %2.2f   " % self.program['u_fresnel_power'])
         elif lightType == "u_fresnel_power" and modification == '-':
             self.program['u_fresnel_power'] = self.program['u_fresnel_power'] / sqrt(2.0)
-            print(" u_fresnel_power: %s             " % self.program['u_fresnel_power'])
+            print(" u_fresnel_power: %2.2f   " % self.program['u_fresnel_power'])
         elif lightType == "lightbox":
             self.lightBox = not self.lightBox
             self.program["lightBox"] = self.lightBox
-            print(" LightBox %s              " % self.lightBox)
+            print(" LightBox: %s             " % self.lightBox)
 
     def setColorMap(self, event=None, name=''):
         """
@@ -903,7 +896,6 @@ class Canvas(app.Canvas):
 
         # exchange between rg and ba sets in texture
         self.grayScottModel.flipPingpong()
-        self.mainRenderer.refreshTextureInterpolation()
         self.update()
 
     def on_resize(self, event):
