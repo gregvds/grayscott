@@ -423,7 +423,7 @@ uniform mat4 u_pvm;
 uniform mat4 u_shadowmap_pvm;
 
 // Model parameters
-uniform sampler2D texture; // u:= r or b following pinpong
+uniform sampler2D texture;            // u:= r or b following pinpong
 uniform lowp int pingpong;
 uniform lowp int reagent;             // toggle render between reagent u and v
 uniform lowp float scalingFactor;
@@ -446,11 +446,10 @@ varying vec3 v_normal;
 varying vec2 v_texcoord;
 varying vec4 v_Vertex_relative_to_light;
 
+
 void main()
 {
-    // Here position.z is received from texture
-    // and adjacent position.z are extracted too from texture
-    vec2 p = texcoord;
+    // Here height and adjacent height are extracted from texture
     // read neightbor heights using an arbitrary small offset
     // Offset is the step of the 3D gridplane
     vec3 off = vec3(dx, dy, 0.0);
@@ -459,34 +458,33 @@ void main()
     float hR;
     float hD;
     float hU;
-
     if( pingpong == 0 ) {
         if(reagent == 1){
-            c = texture2DLod(texture, p, 0).r;                       // central value
-            hL = texture2DLod(texture, p - off.xz, 0).r;
-            hR = texture2DLod(texture, p + off.xz, 0).r;
-            hD = texture2DLod(texture, p - off.zy, 0).r;
-            hU = texture2DLod(texture, p + off.zy, 0).r;
+            c = texture2DLod(texture, texcoord, 0).r;                       // central value
+            hL = texture2DLod(texture, texcoord - off.xz, 0).r;
+            hR = texture2DLod(texture, texcoord + off.xz, 0).r;
+            hD = texture2DLod(texture, texcoord - off.zy, 0).r;
+            hU = texture2DLod(texture, texcoord + off.zy, 0).r;
         } else {
-            c = texture2DLod(texture, p, 0).g;                       // central value
-            hL = texture2DLod(texture, p - off.xz, 0).g;
-            hR = texture2DLod(texture, p + off.xz, 0).g;
-            hD = texture2DLod(texture, p - off.zy, 0).g;
-            hU = texture2DLod(texture, p + off.zy, 0).g;
+            c = texture2DLod(texture, texcoord, 0).g;                       // central value
+            hL = texture2DLod(texture, texcoord - off.xz, 0).g;
+            hR = texture2DLod(texture, texcoord + off.xz, 0).g;
+            hD = texture2DLod(texture, texcoord - off.zy, 0).g;
+            hU = texture2DLod(texture, texcoord + off.zy, 0).g;
         }
     } else {
         if(reagent == 1){
-            c = texture2DLod(texture, p, 0).b;                       // central value
-            hL = texture2DLod(texture, p - off.xz, 0).b;
-            hR = texture2DLod(texture, p + off.xz, 0).b;
-            hD = texture2DLod(texture, p - off.zy, 0).b;
-            hU = texture2DLod(texture, p + off.zy, 0).b;
+            c = texture2DLod(texture, texcoord, 0).b;                       // central value
+            hL = texture2DLod(texture, texcoord - off.xz, 0).b;
+            hR = texture2DLod(texture, texcoord + off.xz, 0).b;
+            hD = texture2DLod(texture, texcoord - off.zy, 0).b;
+            hU = texture2DLod(texture, texcoord + off.zy, 0).b;
         } else {
-            c = texture2DLod(texture, p, 0).a;                       // central value
-            hL = texture2DLod(texture, p - off.xz, 0).a;
-            hR = texture2DLod(texture, p + off.xz, 0).a;
-            hD = texture2DLod(texture, p - off.zy, 0).a;
-            hU = texture2DLod(texture, p + off.zy, 0).a;
+            c = texture2DLod(texture, texcoord, 0).a;                       // central value
+            hL = texture2DLod(texture, texcoord - off.xz, 0).a;
+            hR = texture2DLod(texture, texcoord + off.xz, 0).a;
+            hD = texture2DLod(texture, texcoord - off.zy, 0).a;
+            hU = texture2DLod(texture, texcoord + off.zy, 0).a;
         }
     }
     c = (1.0 - c)/scalingFactor;
@@ -495,15 +493,17 @@ void main()
     hD = (1.0 - hD)/scalingFactor;
     hU = (1.0 - hU)/scalingFactor;
 
-    // A new position vertex is build from the old vertex xy and the concentrations
+    // A new position vertex is build from the old vertex coordinates and the concentrations
     // rendered by the compute_fragment(2), hence the surface of the gridplane is
-    // embossed or displaced
+    // embossed / displaced
     vec4 position2 = vec4(position.x, c, position.z, 1.0);
 
     // Perform the model and view transformations on the vertex and pass this
     // location to the fragment shader.
     v_position = vec3(u_vm * position2);
 
+    // Perform the model and view transformations on the light vertex and pass this
+    // location to the fragment shader.
     v_light_position = vec3(u_vm * vec4(u_light_position, 1.0));
 
     // Calculate this vertex's location from the light source. This is
@@ -511,10 +511,11 @@ void main()
     v_Vertex_relative_to_light = u_shadowmap_pvm * position2;
 
     // Here since position has been realtime modified, normals have to be computed again
+    // Due to the fact the gridplane is facing +y, these are to be put so:
     vec4 normal2;
-    normal2.x = (hL - hR)/dx;
+    normal2.x = (hD - hU)/dy;
     normal2.y = 2.0;
-    normal2.z = (hD - hU)/dy;
+    normal2.z = (hL - hR)/dx;
     normal2.w = 0.0;
     normal2 = normalize(normal2);
 
@@ -543,15 +544,13 @@ precision highp sampler2D;
 uniform lowp int pingpong;
 uniform lowp int reagent;             // toggle render between reagent u and v
 
-uniform mat4 u_view;
-uniform mat4 u_model;
-
 // Light model
-uniform vec3 u_light_intensity;
 uniform vec4 u_Ambient_color;
-uniform lowp float u_ambient_intensity;
 uniform vec4 u_diffuse_color;
 uniform vec4 u_specular_color;
+uniform vec3 u_light_intensity;
+uniform vec3 u_light_position;
+uniform lowp float u_ambient_intensity;
 uniform lowp float u_Shininess;
 uniform lowp float c1;
 uniform lowp float c2;
@@ -559,9 +558,11 @@ uniform lowp float c3;
 uniform bool lightBox;
 uniform samplerCube cubeMap;
 uniform float u_fresnel_power;
+uniform vec3 u_camera_position;
 
 uniform sampler2D texture; // u:= r or b following pinpong
 uniform sampler1D cmap;          // colormap used to render reagent concentration
+
 uniform sampler2D shadowMap;
 uniform lowp float u_Tolerance_constant;
 uniform lowp float vsf_gate;
@@ -575,25 +576,10 @@ uniform lowp int shadow;
 // Data coming from the vertex shader
 varying vec3 v_position;
 varying vec3 v_light_position;
-varying mediump vec3 v_normal;
+varying vec3 v_normal;
 varying vec2 v_texcoord;
 varying mediump vec4 v_Vertex_relative_to_light;
 
-
-//-------------------------------------------------------------------------
-// Returns a random number based on a vec3 and an int.
-float random(vec3 seed, int i){
-    vec4 seed4 = vec4(seed, i);
-    float lowp dot_product = dot(seed4, vec4(12.9898,78.233,45.164,94.673));
-    return fract(sin(dot_product) * 43758.5453);
-}
-//-------------------------------------------------------------------------
-
-// Returns accurate MOD when arguments are approximate integers.
-float modI(float a,float b) {
-    float lowp m = a-floor((a+0.5)/b)*b;
-    return floor(m+0.5);
-}
 
 //-------------------------------------------------------------------------
 // attempt at optimizing simple comparisons (ifs) by replacing them with math
@@ -724,19 +710,21 @@ float vsf(void)
 
 void main()
 {
-    vec3 mediump to_light;
-    vec3 mediump vertex_normal;
-    vec3 mediump reflection;
-    vec3 mediump to_camera;
+    vec3 to_light;
+    vec3 vertex_normal;
+    vec3 reflection;
+    vec3 to_camera;
     float cos_angle = 0.0;
+
     vec4 ambient_color = vec4(0, 0, 0, 1);
     vec4 diffuse_color = vec4(0, 0, 0, 1);
     vec4 specular_color = vec4(0, 0, 0, 1);
     vec4 potential_specular_light = vec4(0, 0, 0, 1);
     vec4 reflected_color = vec4(0, 0, 0, 0);
+
     float light_distance;
-    float lowp attenuationFactor = 1.0;
-    float lowp visibility = 1.0;
+    float attenuationFactor = 1.0;
+    float visibility = 1.0;
 
     //--------------------------------------------------------------------------
     // Sampling of the model concentrations that give the surface color
@@ -747,7 +735,7 @@ void main()
         texValue.g * when_eq_int(reagent, 0) * when_eq_int(pingpong, 0) +
         texValue.b * when_eq_int(reagent, 1) * when_eq_int(pingpong, 1) +
         texValue.a * when_eq_int(reagent, 0) * when_eq_int(pingpong, 1);
-    vec4 lowp surface_color = texture1D(cmap, u);
+    vec4 surface_color = texture1D(cmap, u);
 
     //--------------------------------------------------------------------------
     // Base definition of the colors as modulation of surface color, partial colors and light intensity
@@ -783,7 +771,6 @@ void main()
     //--------------------------------------------------------------------------
     // Calculate a vector from the fragment location to the light source
     // This will be used for attenuation, diffuse and specular lighting computation
-
     to_light = v_light_position - v_position;
 
     // while computing this vector, let's compute its length and the attenuation
@@ -810,8 +797,13 @@ void main()
         //cos_angle = clamp(cos_angle, 0.0, 1.0);
 
         // Scale the color of this fragment based on its angle to the light.
-        diffuse_color = diffuse_color * clamp(cos_angle, 0.0, 1.0);
+        diffuse_color = vec4(vec3(diffuse_color) * clamp(cos_angle, 0.0, 1.0), diffuse_color.a);
     }
+
+    // Calculate a vector from the fragment location to the camera.
+    // The camera is at the origin, so negating the vertex location gives the vector
+    to_camera = -1.0 * v_position;
+    to_camera = normalize( to_camera );
 
     //--------------------------------------------------------------------------
     if (specular) {
@@ -821,8 +813,8 @@ void main()
 
         // Calculate a vector from the fragment location to the camera.
         // The camera is at the origin, so negating the vertex location gives the vector
-        to_camera = -1.0 * v_position;
-        to_camera = normalize( to_camera );
+//        to_camera = -1.0 * v_position;
+//        to_camera = normalize( to_camera );
 
         // Calculate the cosine of the angle between the reflection vector
         // and the vector going to the camera.
@@ -840,28 +832,25 @@ void main()
     }
 
     //--------------------------------------------------------------------------
-    float lightBoxReflectionIntensity = .25;
+    float lightBoxReflectionIntensity = 0.9;
     float fresnelFactor;
     if (lightBox) {
         // Calculate a vector from the fragment location to the camera.
         // The camera is at the origin, so negating the vertex location gives the vector
-        to_camera = -1.0 * v_position;
-        to_camera = normalize( to_camera );
+//        to_camera = -1.0 * v_position;
+//        to_camera = normalize( to_camera );
 
-//        reflected_color = vec4(vertex_normal.x, vertex_normal.y, vertex_normal.z, 1);
+        vec3 reflectedDirection = normalize(reflect(to_camera, vertex_normal));
+        reflected_color = lightBoxReflectionIntensity * textureCube(cubeMap, reflectedDirection);
 
-        vec3 reflectedDirection = normalize(reflect(v_position, vertex_normal));
-//        reflected_color = 1.0 * textureCube(cubeMap, reflectedDirection);
-
-        fresnelFactor = dot(to_camera, vertex_normal);
-        fresnelFactor = max(1.0 - fresnelFactor, 0.0);
+        fresnelFactor = 1.01 - clamp(dot(vertex_normal, to_camera), 0.0, 1.0);
         fresnelFactor = pow(fresnelFactor, u_fresnel_power);
 //        reflected_color = vec4(fresnelFactor, fresnelFactor, fresnelFactor, 1);
-
-        reflected_color = lightBoxReflectionIntensity * reflected_color * fresnelFactor;
+        reflected_color = fresnelFactor * reflected_color;
     }
 
     //--------------------------------------------------------------------------
+
     gl_FragColor = reflected_color +
                    ambient_color +
                    visibility * attenuationFactor * (diffuse_color + specular_color);

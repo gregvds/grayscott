@@ -39,7 +39,7 @@
 """
 
 ################################################################################
-from math import pi, sin, cos, tan, asin, sqrt, atan2
+from math import pi, sin, cos, asin, sqrt, atan2
 import argparse
 import textwrap
 
@@ -73,13 +73,14 @@ class Camera():
 
     def __init__(self,
                model,
-               eye=[1,1,-1],
-               target=[0,0,0],
-               up=[0,1,0],
+               eye,
+               target,
+               up,
                fov=60.0,
                aspect=1.0,
                near=1.0,
-               far=100.0):
+               far=100.0,
+               shadowCam=False):
         self.eye = eye
         self.target = target
         self.up = up
@@ -97,7 +98,6 @@ class Camera():
         self.elevationMax = pi/2.0*.99
         self.elevationRange = self.elevationMax - self.elevationMin
 
-
         (self.azimuth, self.elevation, self.distance) = self.InitializeAzElDi()
         # these parameters modulate the target y to better center the grid in
         # the view, according to fov and elevation. They are first computed by
@@ -112,10 +112,11 @@ class Camera():
 
         self.move()
         self.setProjection()
-
-        self.defaultEye = eye
-        self.defaultTarget = target
-        self.defaultFov = fov
+        if shadowCam is True:
+            self.zoomOn()
+        self.defaultEye = self.eye
+        self.defaultTarget = self.target
+        self.defaultFov = self.fov
         self.defaultAzimuth = self.azimuth
         self.defaultElevation = self.elevation
         self.defaultDistance = self.distance
@@ -161,8 +162,8 @@ class Camera():
         self.elevation = min(max(self.elevation, self.elevationMin), self.elevationMax)
         self.distance = distance or self.distance
         self.distance = min(max(self.distance, self.distanceMin), self.distanceMax)
-        z = self.distance * sin(self.elevation) * sin(self.azimuth)
-        x = self.distance * sin(self.elevation) * cos(self.azimuth)
+        x = self.distance * sin(self.elevation) * sin(self.azimuth)
+        z = self.distance * sin(self.elevation) * cos(self.azimuth)
         y = self.distance * cos(self.elevation)
         eye = [x, y, z]
         self.centerModFromElev = (1.0 - (2.0 * abs(((self.elevation - self.elevationMin) / self.elevationRange) - .5))**1)
@@ -343,7 +344,6 @@ class GrayScottModel():
         self.UV += np.random.uniform(-0.02, 0.1, (self.h, self.w, 4))
         self.UV[:, :, 2] = self.UV[:, :, 0]
         self.UV[:, :, 3] = self.UV[:, :, 1]
-        self.UV = np.rot90(self.UV, k=1)
         if not hasattr(self, 'texture'):
             self.texture = gloo.Texture2D(data=self.UV, format=gl.GL_RGBA, internalformat='rgba32f', interpolation='linear')
         else:
@@ -436,6 +436,8 @@ class Renderer():
         self.grayScottModel = grayScottModel
         self.camera = camera
         self.reagent = 1
+        self.camera.move()
+        self.camera.setProjection()
 
         # Build render program
         # --------------------------------------
@@ -454,9 +456,9 @@ class Renderer():
         """
         Moves the camera according to inputs. Compute view Matrix.
         """
-        azimuth = self.camera.azimuth + dAzimuth/self.camera.sensitivity
-        elevation = self.camera.elevation + dElevation/self.camera.sensitivity
-        distance = self.camera.distance + dDistance
+        azimuth = self.camera.azimuth - dAzimuth/self.camera.sensitivity
+        elevation = self.camera.elevation - dElevation/self.camera.sensitivity
+        distance = self.camera.distance - dDistance
         self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
         self.program["u_vm"]  = self.camera.vm
         self.program["u_pvm"] = self.camera.pvm
@@ -501,6 +503,7 @@ class ShadowRenderer(Renderer):
         # Complete shadowmap render program
         # --------------------------------------
         self.camera.zoomOn(objectWidth=sqrt(2.0), margin=0.02)
+        self.program["u_vm"] = self.camera.vm
         self.program['u_pvm'] = self.camera.pvm
         self.program["texture"] = self.grayScottModel.program["texture"]
         self.program["texture"].interpolation = gl.GL_LINEAR
@@ -570,14 +573,17 @@ class MainRenderer(Renderer):
         self.c1 = 1.0
         self.c2 = 0.5
         self.c3 = 0.02
-        self.ambientIntensity = 0.5
+        self.ambientIntensity = 0.3
         self.ambientColor = np.array((1., 1., 1., 1))
         self.diffuseColor = np.array((1., 1., .9, 1.))
         self.specularColor = np.array((1., 1., .95, 1.))
-        self.shininess = 91.0
+        self.shininess = 182.0
 
         # Build a lightbox for specular Environment
         # --------------------------------------
+        # These png come from a vispy example and were used with z axis up,
+        # so I had to fiddle around which png to what index and how many
+        # rot90 to apply to each to have them stitching together...
         self.lightBoxTexture = np.zeros((6, 1024, 1024, 3), dtype=np.float32)
         self.lightBoxTexture[0] = np.rot90(read_png(load_data_file("skybox/sky-right.png"))/255., 1) #RIGHT
         self.lightBoxTexture[1] = np.rot90(read_png(load_data_file("skybox/sky-left.png"))/255., 1) #LEFT
@@ -585,7 +591,6 @@ class MainRenderer(Renderer):
         self.lightBoxTexture[3] = np.rot90(read_png(load_data_file("skybox/sky-back.png"))/255., 1) #UP
         self.lightBoxTexture[4] = np.rot90(read_png(load_data_file("skybox/sky-up.png"))/255., 1) #BACK
         self.lightBoxTexture[5] = np.rot90(read_png(load_data_file("skybox/sky-down.png"))/255., 1) #FRONT
-        # self.lightBoxTexture = createLightBox()
 
         # Toggles to switch on and off different parts of lighting
         # --------------------------------------
@@ -603,7 +608,6 @@ class MainRenderer(Renderer):
         self.program["texture"].wrapping       = gl.GL_REPEAT
         self.program["dx"]                     = 1. / self.grayScottModel.w
         self.program["dy"]                     = 1. / self.grayScottModel.h
-        # self.program["u_vm"]                   = self.camera.vm
 
         self.program["shadowMap"]              = self.shadowRenderer.shadowTexture
         self.program["shadowMap"].interpolation = gl.GL_LINEAR
@@ -619,13 +623,16 @@ class MainRenderer(Renderer):
         self.program["shadow"]                 = self.shadow
         self.program["lightBox"]               = self.lightBox
         self.program["cubeMap"]                = gloo.TextureCube(self.lightBoxTexture, interpolation='linear')
-        self.program["u_fresnel_power"]        = 2.0
+        self.program["u_fresnel_power"]        = 2.5
         self.program["u_light_position"]       = [self.shadowRenderer.camera.eye[0],
                                                   self.shadowRenderer.camera.eye[1],
                                                   self.shadowRenderer.camera.eye[2]]
+        self.program["u_camera_position"]      = [self.camera.eye[0],
+                                                  self.camera.eye[1],
+                                                  self.camera.eye[2]]
         self.program["u_light_intensity"]      = self.lightIntensity
-        self.program["u_Ambient_color"]        = self.ambientColor
         self.program["u_ambient_intensity"]    = self.ambientIntensity
+        self.program["u_Ambient_color"]        = self.ambientColor
         self.program["u_diffuse_color"]        = self.diffuseColor
         self.program["u_specular_color"]       = self.specularColor
         self.program['u_Shininess']            = self.shininess
@@ -685,6 +692,7 @@ class MainRenderer(Renderer):
         WIP NOT PERFECT CURRENTLY...
         """
         self.shadowRenderer.resetCamera()
+        self.shadowRenderer.camera.zoomOn(objectWidth=sqrt(2.0), margin=0.02)
         self.program["u_shadowmap_pvm"] = self.shadowRenderer.camera.pvm
         self.program["u_light_position"] = [self.shadowRenderer.camera.eye[0],
                                             self.shadowRenderer.camera.eye[1],
@@ -785,7 +793,7 @@ class Canvas(app.Canvas):
                  size=(1024, 1024),
                  modelSize=(512,512),
                  specie='alpha_left',
-                 cmap='irkoutsk'):
+                 cmap='honolulu_r'):
         app.Canvas.__init__(self,
                             size=size,
                             title='3D Gray-Scott Reaction-Diffusion: - GregVDS',
@@ -808,7 +816,7 @@ class Canvas(app.Canvas):
                              eye=[0, 2, 2],
                              target=[0,0,0],
                              up=[0,1,0],
-                             aspect=self.size[0] / float(self.size[1]))
+                             shadowCam=True)
 
         # Build shadow renderer using the model, grayScottModel and lightCamera
         # --------------------------------------
@@ -910,7 +918,7 @@ class Canvas(app.Canvas):
 
     def on_mouse_wheel(self, event):
         # no Shift modifier key: moves the camera
-        self.mainRenderer.moveCamera(dDistance=(-event.delta[1])/3.0)
+        self.mainRenderer.moveCamera(dDistance=(event.delta[1])/3.0)
         # Shift modifier key: zoom in out
         self.mainRenderer.zoomCamera((event.delta[0])/3.0)
 
@@ -920,9 +928,9 @@ class Canvas(app.Canvas):
         if len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
             (x, y) = event.pos
             (sx, sy) = self.size
-            xpos = 1 - x/sx
+            xpos = x/sx
             ypos = 1 - y/sy
-            self.grayScottModel.interact([ypos, xpos], event.button)
+            self.grayScottModel.interact([xpos, ypos], event.button)
 
     def on_mouse_release(self, event):
         self.pressed = False
@@ -933,21 +941,20 @@ class Canvas(app.Canvas):
             if len(event.modifiers) == 0:
                 # no Shift modifier key: moves the camera
                 dazimuth = (event.pos[0] - self.mousePos[0]) * (2*pi) / self.size[0]
-                delevation = -1.0 * (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
+                delevation = (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
                 self.mousePos = event.pos
                 self.mainRenderer.moveCamera(dAzimuth=dazimuth, dElevation=delevation)
             elif len(event.modifiers) == 1 and event.modifiers[0] == 'Shift':
                 # Shift modifier: interact with V concentrations
                 (x, y) = event.pos
                 (sx, sy) = self.size
-                xpos = 1 - x/sx
+                xpos = x/sx
                 ypos = 1 - y/sy
-                # update brush coords here
-                self.grayScottModel.interact([ypos, xpos], event.button)
+                self.grayScottModel.interact([xpos, ypos], event.button)
             elif len(event.modifiers) == 1 and event.modifiers[0] == 'Control':
-                # Control Modifier: move the light
+                # Control Modifier: moves the light
                 dazimuth = (event.pos[0] - self.mousePos[0]) * (2*pi) / self.size[0]
-                delevation = -1.0 * (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
+                delevation = (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
                 self.mousePos = event.pos
                 self.mainRenderer.moveLight(dAzimuth=dazimuth, dElevation=delevation)
 
@@ -1113,7 +1120,7 @@ if __name__ == '__main__':
                         "--Colormap",
                         choices={**MainRenderer.colormapDictionnary,
                                  **MainRenderer.colormapDictionnaryShifted}.values(),
-                        default="papetee_r",
+                        default="honolulu_r",
                         help="Colormap used")
 
     args = parser.parse_args()
