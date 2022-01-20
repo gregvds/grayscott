@@ -444,6 +444,9 @@ class Renderer():
         self.program["scalingFactor"] = 30. * (self.grayScottModel.w / 512)
         self.program["u_vm"]          = self.camera.vm
         self.program["u_pvm"]         = self.camera.pvm
+        self.program["texture"]                = self.grayScottModel.program["texture"]
+        self.program["texture"].interpolation  = gl.GL_LINEAR
+        self.program["texture"].wrapping       = gl.GL_REPEAT
 
     def draw(self, drawingType='triangles'):
         self.program.draw(drawingType, self.grayScottModel.faces)
@@ -504,9 +507,6 @@ class ShadowRenderer(Renderer):
         self.camera.zoomOn(objectWidth=sqrt(2.0), margin=0.02)
         self.program["u_vm"] = self.camera.vm
         self.program['u_pvm'] = self.camera.pvm
-        self.program["texture"] = self.grayScottModel.program["texture"]
-        self.program["texture"].interpolation = gl.GL_LINEAR
-        self.program["texture"].wrapping = gl.GL_REPEAT
 
 
 class MainRenderer(Renderer):
@@ -539,36 +539,36 @@ class MainRenderer(Renderer):
         '9': 'irkoutsk',
         '0': 'vancouver'
     }
-    
+
     lightingDictionnary = {
         "ambient": {
-            "on": True,
-            "color": np.array((1., 1., 1., 1)),
-            "intensity": 0.3
+            "on": [True, "bool"],
+            "color": [[1., 1., 1., 1], "color"],
+            "intensity": [0.3, "float", 0.0, 1.0]
         },
         "diffuse": {
-            "on": True,
-            "color": np.array((1., 1., .9, 1.))
+            "on": [True, "bool"],
+            "color": [[1., 1., .9, 1.], "color"]
         },
         "specular": {
-            "on": True,
-            "color": np.array((1., 1., .95, 1.)),
-            "shininess": 182.0
+            "on": [True, "bool"],
+            "color": [[1., 1., .95, 1.], "color"],
+            "shininess": [182.0, "float", 1, 8192]
         },
-        "attenutation": {
-            "on": True,
-            "c1": 1.0,
-            "c2": 0.5,
-            "c3": 0.02,
+        "attenuation": {
+            "on": [True, "bool"],
+            "c1": [1.0, "float", 1.0, 2.0],
+            "c2": [0.5, "float", 0.0, 1.0],
+            "c3": [0.02, "float", 0.0, 1.0],
         },
         "shadow": {
-            "type": 2,
-            "tolerance": 5e-03,
-            "vsf_gate": 2.5e-05,
+            "type": [2, "int", 0, 3],
+            "tolerance": [5e-03, "float", 5e-04, 5e-2],
+            "vsfgate": [2.5e-05, "float", 5e-05, 5e-04],
         },
         "lightbox": {
-            "on": True,
-            "fresnelExponant": 2.5
+            "on": [True, "bool"],
+            "fresnelexponant": [2.5, "float", 0.1, 5.0]
         }
     }
 
@@ -594,21 +594,12 @@ class MainRenderer(Renderer):
         self.shadowRenderer = shadowRenderer
         self.cmapName = cmap
 
-        # light Parameters: direction, shininess exponant, attenuation parameters,
-        # ambientLight intensity, ambientColor, diffuseColor and specularColor
+        # light Parameters:
         # --------------------------------------
         self.lightCoordinates = [self.shadowRenderer.camera.eye[0],
                                  self.shadowRenderer.camera.eye[1],
                                  self.shadowRenderer.camera.eye[2]]
         self.lightIntensity = (1., 1., 1.)
-        self.attenuation_c1 = 1.0
-        self.attenuation_c2 = 0.5
-        self.attenuation_c3 = 0.02
-        self.ambientIntensity = 0.3
-        self.ambientColor = np.array((1., 1., 1., 1))
-        self.diffuseColor = np.array((1., 1., .9, 1.))
-        self.specularColor = np.array((1., 1., .95, 1.))
-        self.shininess = 182.0
 
         # Build a lightbox for specular Environment
         # --------------------------------------
@@ -623,20 +614,8 @@ class MainRenderer(Renderer):
         self.lightBoxTexture[4] = np.rot90(read_png(load_data_file("skybox/sky-up.png"))/255., 1) #BACK
         self.lightBoxTexture[5] = np.rot90(read_png(load_data_file("skybox/sky-down.png"))/255., 1) #FRONT
 
-        # Toggles to switch on and off different parts of lighting
-        # --------------------------------------
-        self.ambient     = True
-        self.attenuation = True
-        self.diffuse     = True
-        self.specular    = True
-        self.shadow      = 2
-        self.lightBox    = True
-
         # Complete render program
         # --------------------------------------
-        self.program["texture"]                = self.grayScottModel.program["texture"]
-        self.program["texture"].interpolation  = gl.GL_LINEAR
-        self.program["texture"].wrapping       = gl.GL_REPEAT
         self.program["dx"]                     = 1. / self.grayScottModel.w
         self.program["dy"]                     = 1. / self.grayScottModel.h
 
@@ -645,38 +624,26 @@ class MainRenderer(Renderer):
         self.program["shadowMap"].wrapping     = gl.GL_CLAMP_TO_EDGE
         self.program["u_shadowmap_pvm"]        = self.shadowRenderer.camera.pvm
 
-        self.program["u_Tolerance_constant"]   = 5e-03
-        self.program["vsf_gate"]               = 2.5e-05
-        self.program["ambient"]                = self.ambient
-        self.program["attenuation"]            = self.attenuation
-        self.program["diffuse"]                = self.diffuse
-        self.program["specular"]               = self.specular
-        self.program["shadow"]                 = self.shadow
-        self.program["lightBox"]               = self.lightBox
         self.program["cubeMap"]                = gloo.TextureCube(self.lightBoxTexture, interpolation='linear')
-        self.program["u_fresnel_power"]        = 2.5
         self.program["u_light_position"]       = [self.shadowRenderer.camera.eye[0],
                                                   self.shadowRenderer.camera.eye[1],
                                                   self.shadowRenderer.camera.eye[2]]
-        self.program["u_camera_position"]      = [self.camera.eye[0],
-                                                  self.camera.eye[1],
-                                                  self.camera.eye[2]]
         self.program["u_light_intensity"]      = self.lightIntensity
-        self.program["u_ambient_intensity"]    = self.ambientIntensity
-        self.program["u_ambient_color"]        = self.ambientColor
-        self.program["u_diffuse_color"]        = self.diffuseColor
-        self.program["u_specular_color"]       = self.specularColor
-        self.program['u_specular_shininess']            = self.shininess
-        self.program['attenuation_c1']                     = self.attenuation_c1
-        self.program['attenuation_c2']                     = self.attenuation_c2
-        self.program['attenuation_c3']                     = self.attenuation_c3
-
+        self.setLighting()
         self.setColorMap(name=self.cmapName)
 
         # Define a 'DepthBuffer' to render the shadowmap from the light
         # --------------------------------------
         self.buffer = FrameBuffer(color=self.program["shadowMap"],
                                   depth=gloo.RenderBuffer((self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize), format='depth'))
+
+    def setLighting(self):
+        """
+        Modifies lighting dictionnary and updates program Attributes
+        """
+        for first in self.lightingDictionnary.keys():
+            for second in self.lightingDictionnary[first].keys():
+                self.program["u_%s_%s"%(first, second)] = self.lightingDictionnary[first][second][0]
 
     def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
         """
@@ -749,46 +716,54 @@ class MainRenderer(Renderer):
         Some like ambient, diffuse, specular are simply toggles on/off,
         Others increase/decrease a value, such as the shininess exponant
         """
-        if lightType == 'ambient':
-            self.ambient = not self.ambient
-            self.program[lightType] = self.ambient
-            print(' Ambient light: %s        ' % self.ambient, end="\r")
-        elif lightType == 'diffuse':
-            self.diffuse = not self.diffuse
-            self.program[lightType] = self.diffuse
-            print(' Diffuse light: %s        ' % self.diffuse, end="\r")
-        elif lightType == 'specular':
-            self.specular = not self.specular
-            self.program[lightType] = self.specular
-            print(' Specular light: %s       ' % self.specular, end="\r")
+        if lightType in ('ambient', 'diffuse', 'specular', 'lightbox', 'attenuation'):
+            secondKey = 'on'
+            self.lightingDictionnary[lightType][secondKey][0] = \
+                not self.lightingDictionnary[lightType][secondKey][0]
+            self.program["u_%s_%s" % (lightType, secondKey)] = \
+                self.lightingDictionnary[lightType][secondKey][0]
+            print(' %s light: %s        ' % \
+                (lightType, self.lightingDictionnary[lightType][secondKey][0]), end="\r")
+
         elif lightType == 'shadow':
-            self.shadow = (self.shadow + 1) % len(MainRenderer.SHADOW_TYPE)
-            self.program[lightType] = self.shadow
-            print(' Shadows: %s              ' % self.SHADOW_TYPE[self.shadow], end="\r")
-        elif lightType == 'attenuation':
-            self.attenuation = not self.attenuation
-            self.program[lightType] = self.attenuation
-            print(' Attenuation: %s          ' % self.attenuation, end="\r")
-        elif lightType == 'shininess' and modification == '-':
-            self.shininess *= sqrt(2)
-            self.shininess = np.clip(self.shininess, 0.1, 8192)
-            self.program['u_specular_shininess'] = self.shininess
-            print(' Shininess exponant: %3.0f' % self.shininess, end="\r")
-        elif lightType == 'shininess' and modification == '+':
-            self.shininess /= sqrt(2)
-            self.shininess = np.clip(self.shininess, 0.1, 8192)
-            self.program['u_specular_shininess'] = self.shininess
-            print(' Shininess exponant: %3.0f' % self.shininess, end="\r")
-        elif lightType == "u_fresnel_power" and modification == '+':
-            self.program['u_fresnel_power'] = self.program['u_fresnel_power'] * sqrt(2.0)
-            print(" u_fresnel_power: %2.2f   " % self.program['u_fresnel_power'])
-        elif lightType == "u_fresnel_power" and modification == '-':
-            self.program['u_fresnel_power'] = self.program['u_fresnel_power'] / sqrt(2.0)
-            print(" u_fresnel_power: %2.2f   " % self.program['u_fresnel_power'])
-        elif lightType == "lightbox":
-            self.lightBox = not self.lightBox
-            self.program["lightBox"] = self.lightBox
-            print(" LightBox: %s             " % self.lightBox)
+            secondKey = 'type'
+            self.lightingDictionnary[lightType][secondKey][0] = \
+                (self.lightingDictionnary[lightType][secondKey][0] + 1) % \
+                len(MainRenderer.SHADOW_TYPE)
+            self.program["u_%s_%s" % (lightType, secondKey)] = \
+                self.lightingDictionnary[lightType][secondKey][0]
+            print(' Shadows: %s              ' % \
+                self.SHADOW_TYPE[self.lightingDictionnary[lightType][secondKey][0]], end="\r")
+
+        elif lightType == 'shininess':
+            mod = sqrt(2)
+            if modification == '+':
+                mod = 1.0/mod
+            first = 'specular'
+            self.lightingDictionnary[first][lightType][0] *= mod
+            self.lightingDictionnary[first][lightType][0] = np.clip(\
+                self.lightingDictionnary[first][lightType][0],
+                self.lightingDictionnary[first][lightType][2],
+                self.lightingDictionnary[first][lightType][3])
+            self.program["u_%s_%s" % (first, lightType)] = \
+                self.lightingDictionnary[first][lightType][0]
+            print(' Shininess exponant: %3.0f' % \
+                self.lightingDictionnary[first][lightType][0], end="\r")
+
+        elif lightType == 'fresnelexponant':
+            mod = 1.0/sqrt(2)
+            if modification == '+':
+                mod = 1.0/mod
+            first = 'lightbox'
+            self.lightingDictionnary[first][lightType][0] *= mod
+            self.lightingDictionnary[first][lightType][0] = np.clip(\
+                self.lightingDictionnary[first][lightType][0],
+                self.lightingDictionnary[first][lightType][2],
+                self.lightingDictionnary[first][lightType][3])
+            self.program["u_%s_%s" % (first, lightType)] = \
+                self.lightingDictionnary[first][lightType][0]
+            print(' Fresnel exponant: %3.0f' % \
+                self.lightingDictionnary[first][lightType][0], end="\r")
 
     def setColorMap(self, name=''):
         """

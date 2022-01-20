@@ -549,29 +549,27 @@ uniform vec4 u_ambient_color;
 uniform vec4 u_diffuse_color;
 uniform vec4 u_specular_color;
 uniform vec3 u_light_intensity;
-uniform vec3 u_light_position;
 uniform lowp float u_ambient_intensity;
 uniform lowp float u_specular_shininess;
-uniform lowp float attenuation_c1;
-uniform lowp float attenuation_c2;
-uniform lowp float attenuation_c3;
-uniform bool lightBox;
-uniform samplerCube cubeMap;
-uniform float u_fresnel_power;
-uniform vec3 u_camera_position;
+uniform lowp float u_attenuation_c1;
+uniform lowp float u_attenuation_c2;
+uniform lowp float u_attenuation_c3;
+uniform float u_lightbox_fresnelexponant;
 
 uniform sampler2D texture; // u:= r or b following pinpong
 uniform sampler1D cmap;          // colormap used to render reagent concentration
+uniform samplerCube cubeMap;
 
 uniform sampler2D shadowMap;
-uniform lowp float u_Tolerance_constant;
-uniform lowp float vsf_gate;
+uniform lowp float u_shadow_tolerance;
+uniform lowp float u_shadow_vsfgate;
 
-uniform bool ambient;
-uniform bool diffuse;
-uniform bool attenuation;
-uniform bool specular;
-uniform int shadow;
+uniform bool u_ambient_on;
+uniform bool u_diffuse_on;
+uniform bool u_attenuation_on;
+uniform bool u_specular_on;
+uniform int u_shadow_type;
+uniform bool u_lightbox_on;
 
 // Data coming from the vertex shader
 varying vec3 v_position;
@@ -645,7 +643,7 @@ bool in_shadow(void) {
   // distance to the light source was saved in the shadowmap, some
   // precision was lost. Therefore we need a small tolerance factor to
   // compensate for the lost precision.
-  return bool(when_gt(vertex_relative_to_light.z, shadowmap_distance + u_Tolerance_constant));
+  return bool(when_gt(vertex_relative_to_light.z, shadowmap_distance + u_shadow_tolerance));
 }
 
 //-------------------------------------------------------------------------
@@ -670,7 +668,7 @@ float pcf(void) {
   for (int i=0; i<4; i++) {
     visibility -= .2 *
         when_lt(texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[i]/spreading).r,
-                vertex_relative_to_light.z - u_Tolerance_constant );
+                vertex_relative_to_light.z - u_shadow_tolerance );
   }
   return visibility;
 }
@@ -695,7 +693,7 @@ float vsf(void)
         // The fragment is either in shadow or penumbra. We now use chebyshev's upperBound to check
         // How likely this pixel is to be lit (p_max)
         float variance = moments.y - (moments.x*moments.x);
-        variance = max(variance, vsf_gate);
+        variance = max(variance, u_shadow_vsfgate);
 
         float d = vertex_relative_to_light.z - moments.x;
         float p_max = variance / (variance + d*d);
@@ -740,29 +738,29 @@ void main()
     //--------------------------------------------------------------------------
     // Base definition of the colors as modulation of surface color, partial colors and light intensity
 
-    if (ambient) {
+    if (u_ambient_on) {
         ambient_color = vec4(u_ambient_intensity * vec3(surface_color), surface_color.a) * u_ambient_color;
     }
-    if (diffuse) {
+    if (u_diffuse_on) {
         diffuse_color = surface_color * vec4(u_light_intensity, 1) * u_diffuse_color;
     }
-    if (specular) {
+    if (u_specular_on) {
         potential_specular_light = vec4(u_light_intensity, 1) * u_specular_color;
     }
 
     //--------------------------------------------------------------------------
     // shadows computation following several algorithms
 
-    if (shadow == 1 && in_shadow()) {
+    if (u_shadow_type == 1 && in_shadow()) {
         // simple shadow mapping
         // This fragment only receives ambient light because it is in a shadow.
         gl_FragColor = ambient_color;
         return;
-    } else if (shadow == 2) {
+    } else if (u_shadow_type == 2) {
         // Percent shadow mapping through multiple sampling
         // proportion of full light for this fragment
         visibility = pcf();
-    } else if (shadow == 3) {
+    } else if (u_shadow_type == 3) {
         // variance shadow mapping with one sampling
         // proportion of full light for this fragment
         visibility = vsf();
@@ -775,10 +773,10 @@ void main()
 
     // while computing this vector, let's compute its length and the attenuation
     // due to it before normalizing it
-    if (attenuation)
+    if (u_attenuation_on)
     {
         light_distance = length(to_light);
-        attenuationFactor = 1.0/(attenuation_c1 + attenuation_c2 * light_distance + attenuation_c3 * light_distance * light_distance);
+        attenuationFactor = 1.0/(u_attenuation_c1 + u_attenuation_c2 * light_distance + u_attenuation_c3 * light_distance * light_distance);
     }
     to_light = normalize( to_light );
 
@@ -793,7 +791,7 @@ void main()
     cos_angle = dot(vertex_normal, to_light);
 
     //--------------------------------------------------------------------------
-    if (diffuse) {
+    if (u_diffuse_on) {
         //cos_angle = clamp(cos_angle, 0.0, 1.0);
 
         // Scale the color of this fragment based on its angle to the light.
@@ -806,15 +804,10 @@ void main()
     to_camera = normalize( to_camera );
 
     //--------------------------------------------------------------------------
-    if (specular) {
+    if (u_specular_on) {
         // Calculate the reflection vector
         reflection = 2.0 * cos_angle * vertex_normal - to_light;
         reflection = normalize( reflection );
-
-        // Calculate a vector from the fragment location to the camera.
-        // The camera is at the origin, so negating the vertex location gives the vector
-//        to_camera = -1.0 * v_position;
-//        to_camera = normalize( to_camera );
 
         // Calculate the cosine of the angle between the reflection vector
         // and the vector going to the camera.
@@ -834,18 +827,12 @@ void main()
     //--------------------------------------------------------------------------
     float lightBoxReflectionIntensity = 0.9;
     float fresnelFactor;
-    if (lightBox) {
-        // Calculate a vector from the fragment location to the camera.
-        // The camera is at the origin, so negating the vertex location gives the vector
-//        to_camera = -1.0 * v_position;
-//        to_camera = normalize( to_camera );
-
+    if (u_lightbox_on) {
         vec3 reflectedDirection = normalize(reflect(to_camera, vertex_normal));
         reflected_color = lightBoxReflectionIntensity * textureCube(cubeMap, -reflectedDirection);
 
         fresnelFactor = 1.01 - clamp(dot(vertex_normal, to_camera), 0.0, 1.0);
-        fresnelFactor = pow(fresnelFactor, u_fresnel_power);
-//        reflected_color = vec4(fresnelFactor, fresnelFactor, fresnelFactor, 1);
+        fresnelFactor = pow(fresnelFactor, u_lightbox_fresnelexponant);
         reflected_color = fresnelFactor * reflected_color;
     }
 

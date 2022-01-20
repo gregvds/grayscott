@@ -158,8 +158,8 @@ class Canvas(app.Canvas):
                 self.grayScottModel.draw()
 
             # Render the shadowmap into buffer
-            if self.mainRenderer.shadow > 0:
-                with self.mainRenderer.buffer:
+        if self.mainRenderer.lightingDictionnary['shadow']['type'][0] > 0:
+            with self.mainRenderer.buffer:
                     gloo.set_viewport(0, 0, self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize)
                     gloo.set_state(depth_test=True,
                                    polygon_offset=(1, 1),
@@ -325,8 +325,8 @@ class Canvas(app.Canvas):
         ('N', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('attenuation',)),
         ('L', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shininess', '-')),
         ('M', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shininess', '+')),
-        ('J', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('u_fresnel_power', '-')),
-        ('K', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('u_fresnel_power', '+')),
+        ('J', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('fresnelexponant', '-')),
+        ('K', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('fresnelexponant', '+')),
         ('I', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('lightbox',))
     }
     for key in MainRenderer.colormapDictionnary.keys():
