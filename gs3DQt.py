@@ -39,6 +39,19 @@
 """
 
 ################################################################################
+try:
+    from sip import setapi
+    setapi("QVariant", 2)
+    setapi("QString", 2)
+except ImportError:
+    pass
+
+
+# To switch between PyQt5 and PySide2 bindings just change the from import
+from PySide6 import QtCore, QtWidgets
+
+import sys
+
 from math import pi
 import argparse
 import textwrap
@@ -54,9 +67,10 @@ from gs3D_lib import (Camera, GrayScottModel, ShadowRenderer, MainRenderer)
 # gl.use_gl('gl+')
 # app.use_app('pyside6')
 
+# Provide automatic signal function selection for PyQt5/PySide2
+pyqtsignal = QtCore.pyqtSignal if hasattr(QtCore, 'pyqtSignal') else QtCore.Signal
+
 ################################################################################
-
-
 class Canvas(app.Canvas):
 
     def __init__(self,
@@ -128,53 +142,53 @@ class Canvas(app.Canvas):
                        line_width=0.75)
 
         self.activate_zoom()
-        print(self.native.parent)
-        self.show()
+        # self.show()
 
     ############################################################################
     #
 
     def on_draw(self, event):
-        # Render next model state into buffer
-        with self.grayScottModel.buffer:
-            gloo.set_viewport(0, 0, self.grayScottModel.h, self.grayScottModel.w)
-            gloo.set_state(depth_test=False,
-                           clear_color='black',
-                           polygon_offset=(0, 0))
-            self.grayScottModel.draw()
+        if self.visible:
+            # Render next model state into buffer
+            with self.grayScottModel.buffer:
+                gloo.set_viewport(0, 0, self.grayScottModel.h, self.grayScottModel.w)
+                gloo.set_state(depth_test=False,
+                               clear_color='black',
+                               polygon_offset=(0, 0))
+                self.grayScottModel.draw()
 
-        # Render the shadowmap into buffer
-        if self.mainRenderer.shadow > 0:
-            with self.mainRenderer.buffer:
-                gloo.set_viewport(0, 0, self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize)
+            # Render the shadowmap into buffer
+            if self.mainRenderer.shadow > 0:
+                with self.mainRenderer.buffer:
+                    gloo.set_viewport(0, 0, self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize)
+                    gloo.set_state(depth_test=True,
+                                   polygon_offset=(1, 1),
+                                   polygon_offset_fill=True)
+                    gloo.clear(color=True, depth=True)
+                    self.mainRenderer.shadowRenderer.draw()
+
+            # DEBUG
+            if self.displaySwitch == 0:
+                gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
+                gloo.set_state(blend=False, depth_test=True,
+                               clear_color=(0.30, 0.30, 0.35, 1.00),
+                               blend_func=('src_alpha', 'one_minus_src_alpha'),
+                               polygon_offset=(1, 1),
+                               polygon_offset_fill=True)
+                gloo.clear(color=True, depth=True)
+                self.mainRenderer.draw()
+            # To check the view from the lightCamera for shadowmap rendering
+            else:
+                gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
                 gloo.set_state(depth_test=True,
                                polygon_offset=(1, 1),
                                polygon_offset_fill=True)
                 gloo.clear(color=True, depth=True)
                 self.mainRenderer.shadowRenderer.draw()
 
-        # DEBUG
-        if self.displaySwitch == 0:
-            gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
-            gloo.set_state(blend=False, depth_test=True,
-                           clear_color=(0.30, 0.30, 0.35, 1.00),
-                           blend_func=('src_alpha', 'one_minus_src_alpha'),
-                           polygon_offset=(1, 1),
-                           polygon_offset_fill=True)
-            gloo.clear(color=True, depth=True)
-            self.mainRenderer.draw()
-        # To check the view from the lightCamera for shadowmap rendering
-        else:
-            gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
-            gloo.set_state(depth_test=True,
-                           polygon_offset=(1, 1),
-                           polygon_offset_fill=True)
-            gloo.clear(color=True, depth=True)
-            self.mainRenderer.shadowRenderer.draw()
-
-        # exchange between rg and ba sets in texture
-        self.grayScottModel.flipPingpong()
-        self.update()
+            # exchange between rg and ba sets in texture
+            self.grayScottModel.flipPingpong()
+            self.update()
 
     def on_resize(self, event):
         self.activate_zoom()
@@ -252,7 +266,7 @@ class Canvas(app.Canvas):
             # elif hasattr(self.shadowRenderer, func.__name__):
             #     func(self.shadowRenderer, event, *args)
             else:
-                print("Method %s does not seem to be found..." % str(fun))
+                print("Method %s does not seem to be found..." % str(func))
 
     ############################################################################
     # Debug/utilities functions
@@ -356,9 +370,120 @@ class Canvas(app.Canvas):
             commandDoc += command
         return commandDoc
 
+
 ################################################################################
-def fun(x):
-    c.title = c.title2 +' - FPS: %0.1f' % x
+class MainWindow(QtWidgets.QMainWindow):
+
+    def __init__(self):
+        QtWidgets.QMainWindow.__init__(self)
+
+        self.resize(1024, 1024)
+        self.setWindowTitle('... TEST Qt + gs3D ...')
+
+        self.canvas = Canvas()
+        self.canvas.create_native()
+        self.canvas.native.setParent(self)
+        print(self.canvas.native.parent)
+        self.canvas.measure_fps(0.1, self.show_fps)
+
+        splitter1 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        splitter1.addWidget(self.canvas.native)
+
+        self.setCentralWidget(splitter1)
+
+        self.createColorsDock()
+        self.createPearsonsPatternsDock()
+        self.createLightingDock()
+
+        self.initializeGui()
+        self.connectSignals()
+
+        # FPS message in statusbar:
+        self.status = self.statusBar()
+        self.status_label = QtWidgets.QLabel('...')
+        self.status.addWidget(self.status_label)
+
+    def createLightingDock(self):
+        self.lightingDock = QtWidgets.QDockWidget('Lighting', self)
+
+        lightingSwitches = ('ambient', 'diffuse', 'specular', 'lightBox')
+        rL = []
+        self.lightingSwitches = []
+        groupBox = QtWidgets.QGroupBox()
+        vbox = QtWidgets.QVBoxLayout()
+        for name in lightingSwitches:
+            lightSwith = QtWidgets.QCheckBox(name)
+            self.lightingSwitches.append(lightSwith)
+            vbox.addWidget(lightSwith)
+        vbox.addStretch(1)
+        groupBox.setLayout(vbox)
+
+        self.lightingDock.setWidget(groupBox)
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.lightingDock)
+
+        # TODO add Doc to menu for on/off visibility...
+        # LEBONMENU.addAction(self.lightingDock.toggleViewAction())
+
+    def createColorsDock(self):
+        self.colorDock = QtWidgets.QDockWidget('Colors', self)
+        self.colorsComboBox = QtWidgets.QComboBox(self.colorDock)
+
+        colors = []
+        for key in MainRenderer.colormapDictionnary.keys():
+            colors.append(MainRenderer.colormapDictionnary[key])
+        for key in MainRenderer.colormapDictionnaryShifted.keys():
+            colors.append(MainRenderer.colormapDictionnaryShifted[key])
+        colors.sort()
+        self.colorsComboBox.addItems(colors)
+
+        self.colorDock.setWidget(self.colorsComboBox)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.colorDock)
+
+        # TODO add Doc to menu for on/off visibility...
+        # LEBONMENU.addAction(self.colorDock.toggleViewAction())
+
+    def createPearsonsPatternsDock(self):
+        self.pearsonsPatternsDock = QtWidgets.QDockWidget('Pearson\'s patterns', self)
+        self.pearsonsPatternsComboBox = QtWidgets.QComboBox(self.pearsonsPatternsDock)
+
+        patterns = []
+        for key in GrayScottModel.speciesDictionnary.keys():
+            patterns.append(GrayScottModel.speciesDictionnary[key])
+        for key in GrayScottModel.speciesDictionnaryShifted.keys():
+            patterns.append(GrayScottModel.speciesDictionnaryShifted[key])
+        patterns.sort()
+        self.pearsonsPatternsComboBox.addItems(patterns)
+
+        self.pearsonsPatternsDock.setWidget(self.pearsonsPatternsComboBox)
+        self.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.pearsonsPatternsDock)
+
+        # TODO add Doc to menu for on/off visibility...
+        # LEBONMENU.addAction(self.colorDock.toggleViewAction())
+
+    def initializeGui(self):
+        self.colorsComboBox.setCurrentText(self.canvas.mainRenderer.cmapName)
+        self.pearsonsPatternsComboBox.setCurrentText(self.canvas.grayScottModel.specie)
+
+    def connectSignals(self):
+        self.colorsComboBox.textActivated[str].connect(self.canvas.mainRenderer.setColorMap)
+        self.colorsComboBox.textActivated[str].emit(self.colorsComboBox.currentText())
+
+        self.pearsonsPatternsComboBox.textActivated[str].connect(self.canvas.grayScottModel.setSpecie)
+        self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
+
+    def show_fps(self, fps):
+        msg = "FPS - %0.2f" % float(fps)
+        # NOTE: We can't use showMessage in PyQt5 because it causes
+        #       a draw event loop (show_fps for every drawing event,
+        #       showMessage causes a drawing event, and so on).
+        self.status_label.setText(msg)
+
+        self.canvas.visible = True
+
+
+################################################################################
+# def fun(x):
+#     c.title = c.title2 +' - FPS: %0.1f' % x
 
 
 if __name__ == '__main__':
@@ -395,9 +520,16 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    c = Canvas(modelSize=(args.Size, args.Size),
-               size=(args.Window, args.Window),
-               specie=args.Pattern,
-               cmap=args.Colormap)
-    c.measure_fps2(callback=fun)
-    app.run()
+    appQt = QtWidgets.QApplication(sys.argv)
+    win = MainWindow()
+    win.show()
+    appQt.exec()
+
+
+
+    # c = Canvas(modelSize=(args.Size, args.Size),
+    #            size=(args.Window, args.Window),
+    #            specie=args.Pattern,
+    #            cmap=args.Colormap)
+    # c.measure_fps2(callback=fun)
+    # app.run()

@@ -545,16 +545,16 @@ uniform lowp int pingpong;
 uniform lowp int reagent;             // toggle render between reagent u and v
 
 // Light model
-uniform vec4 u_Ambient_color;
+uniform vec4 u_ambient_color;
 uniform vec4 u_diffuse_color;
 uniform vec4 u_specular_color;
 uniform vec3 u_light_intensity;
 uniform vec3 u_light_position;
 uniform lowp float u_ambient_intensity;
-uniform lowp float u_Shininess;
-uniform lowp float c1;
-uniform lowp float c2;
-uniform lowp float c3;
+uniform lowp float u_specular_shininess;
+uniform lowp float attenuation_c1;
+uniform lowp float attenuation_c2;
+uniform lowp float attenuation_c3;
 uniform bool lightBox;
 uniform samplerCube cubeMap;
 uniform float u_fresnel_power;
@@ -571,7 +571,7 @@ uniform bool ambient;
 uniform bool diffuse;
 uniform bool attenuation;
 uniform bool specular;
-uniform lowp int shadow;
+uniform int shadow;
 
 // Data coming from the vertex shader
 varying vec3 v_position;
@@ -741,7 +741,7 @@ void main()
     // Base definition of the colors as modulation of surface color, partial colors and light intensity
 
     if (ambient) {
-        ambient_color = vec4(u_ambient_intensity * vec3(surface_color), surface_color.a) * u_Ambient_color;
+        ambient_color = vec4(u_ambient_intensity * vec3(surface_color), surface_color.a) * u_ambient_color;
     }
     if (diffuse) {
         diffuse_color = surface_color * vec4(u_light_intensity, 1) * u_diffuse_color;
@@ -778,7 +778,7 @@ void main()
     if (attenuation)
     {
         light_distance = length(to_light);
-        attenuationFactor = 1.0/(c1 + c2 * light_distance + c3 * light_distance * light_distance);
+        attenuationFactor = 1.0/(attenuation_c1 + attenuation_c2 * light_distance + attenuation_c3 * light_distance * light_distance);
     }
     to_light = normalize( to_light );
 
@@ -822,7 +822,7 @@ void main()
         // = 0 when vertices perpendicular
         cos_angle = dot(reflection, to_camera);
         cos_angle = clamp(cos_angle, 0.0, 1.0);
-        cos_angle = pow(cos_angle, u_Shininess);
+        cos_angle = pow(cos_angle, u_specular_shininess);
 
         // The specular color is from the light source, not the object
         if (cos_angle > 0.0) {
