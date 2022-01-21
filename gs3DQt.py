@@ -385,7 +385,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.canvas = Canvas()
         self.canvas.create_native()
         self.canvas.native.setParent(self)
-        print(self.canvas.native.parent)
         self.canvas.measure_fps(0.1, self.show_fps)
 
         splitter1 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
@@ -393,6 +392,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.setCentralWidget(splitter1)
 
+        self.createMenuBar()
         self.createModelDock()
         self.createLightingDock()
 
@@ -403,6 +403,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status = self.statusBar()
         self.status_label = QtWidgets.QLabel('...')
         self.status.addWidget(self.status_label)
+
+    def createMenuBar(self):
+        self.menuBar = QtWidgets.QMenuBar()
+        self.panelMenu = QtWidgets.QMenu("Panels")
+        self.menuBar.addMenu(self.panelMenu)
 
     def createLightingDock(self):
         self.lightingDock = QtWidgets.QDockWidget('Lighting settings', self)
@@ -458,6 +463,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.lightingDock.setWidget(groupBox)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.lightingDock)
+
+        self.panelMenu.addAction(self.lightingDock.toggleViewAction())
 
     def createModelDock(self):
         self.modelDock = QtWidgets.QDockWidget('Model settings', self)
@@ -531,8 +538,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.modelDock.setWidget(groupBox)
         self.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.modelDock)
 
-        # TODO add Doc to menu for on/off visibility...
-        # LEBONMENU.addAction(self.modelDock.toggleViewAction())
+        self.panelMenu.addAction(self.modelDock.toggleViewAction())
 
     def initializeGui(self):
         self.colorsComboBox.setCurrentText(self.canvas.mainRenderer.cmapName)
@@ -554,7 +560,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.moreCycles.clicked.connect(self.canvas.grayScottModel.increaseCycle)
 
     def show_fps(self, fps):
-        msg = "FPS - %0.2f" % float(fps)
+        msg = " FPS - %0.2f" % float(fps)
         # NOTE: We can't use showMessage in PyQt5 because it causes
         #       a draw event loop (show_fps for every drawing event,
         #       showMessage causes a drawing event, and so on).
