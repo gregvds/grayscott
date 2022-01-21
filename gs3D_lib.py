@@ -40,7 +40,7 @@
 
 ################################################################################
 from math import pi, sin, cos, asin, sqrt, atan2
-import textwrap
+import textwrap, sys, os
 
 
 import numpy as np
@@ -354,13 +354,7 @@ class GrayScottModel():
     def printPearsonPatternDescription(self):
         if self.canvas is not None:
             self.canvas.title2 = '3D Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
-        specie = GrayScottModel.species[self.specie]
-        print('Pearson\'s Pattern %s' % self.specie)
-        print(specie[4])
-        print('        dU  dV  f     k \n        %s %s %s %s' % (specie[0],
-                                                                 specie[1],
-                                                                 specie[2],
-                                                                 specie[3]))
+        print(self.getPearsonPatternDescription())
 
     def getPearsonPatternDescription(self, specie=None):
         specie = specie or self.specie
@@ -796,11 +790,15 @@ class Canvas(app.Canvas):
                  size=(1024, 1024),
                  modelSize=(512,512),
                  specie='alpha_left',
-                 cmap='honolulu_r'):
+                 cmap='honolulu_r',
+                 verbose=False):
         app.Canvas.__init__(self,
                             size=size,
-                            title='3D Gray-Scott Reaction-Diffusion: - GregVDS',
+                            title='3D Gray-Scott Reaction-Diffusion - GregVDS',
                             keys='interactive')
+
+        if not verbose:
+            sys.stdout = open(os.devnull, 'w')
 
         # Create the Gray-Scott model
         # --------------------------------------

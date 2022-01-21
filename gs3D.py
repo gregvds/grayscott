@@ -39,14 +39,10 @@
 """
 
 ################################################################################
-# from math import pi
 import argparse
 import textwrap
 
-# import numpy as np
-
 from vispy import app
-# from vispy.gloo import gl
 
 from gs3D_lib import (GrayScottModel, MainRenderer, Canvas)
 
@@ -90,13 +86,17 @@ if __name__ == '__main__':
                                  **MainRenderer.colormapDictionnaryShifted}.values(),
                         default="honolulu_r",
                         help="Colormap used")
-
+    parser.add_argument("-v",
+                        "--Verbose",
+                        action='store_true',
+                        help="outputs comment on changes")
     args = parser.parse_args()
 
     c = Canvas(modelSize=(args.Size, args.Size),
                size=(args.Window, args.Window),
                specie=args.Pattern,
-               cmap=args.Colormap)
+               cmap=args.Colormap,
+               verbose=args.Verbose)
     c.measure_fps2(callback=fun)
     c.show()
     app.run()
