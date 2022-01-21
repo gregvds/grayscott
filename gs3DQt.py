@@ -51,7 +51,7 @@ except ImportError:
 from PySide6 import QtCore, QtWidgets
 
 from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
-from PySide6.QtCore import Qt, QRectF
+from PySide6.QtCore import Qt, QRectF, Slot, Signal
 
 import sys
 
@@ -398,6 +398,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.createMenuBar()
         self.createModelDock()
         self.createLightingDock()
+        self.createPearsonPatternDetailDock()
 
         self.initializeGui()
         self.connectSignals()
@@ -421,13 +422,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         for lightType in MainRenderer.lightingDictionnary.keys():
             lightTypeBox = QtWidgets.QGroupBox(lightType, self.lightingDock)
-            # lightTypeLayout = QtWidgets.QVBoxLayout()
             lightTypeLayout = QtWidgets.QGridLayout()
             paramCount = 0
             for param in MainRenderer.lightingDictionnary[lightType].keys():
                 if MainRenderer.lightingDictionnary[lightType][param][1] == "bool":
                     lightTypeBox.setCheckable(True)
                     lightTypeBox.setChecked(MainRenderer.lightingDictionnary[lightType][param][0])
+
+                    lightTypeBox.clicked.connect(self.canvas.mainRenderer.toggleAmbientLight)
+                    # lightTypeBox.clicked.emit(self.title)
+
                 elif MainRenderer.lightingDictionnary[lightType][param][1] == "float":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
                     lightTypeDoubleSpinBox = QtWidgets.QDoubleSpinBox(lightTypeBox)
@@ -461,13 +465,10 @@ class MainWindow(QtWidgets.QMainWindow):
             topBox.addWidget(lightTypeBox)
 
         displayBox = QtWidgets.QGroupBox("Display", self.lightingDock)
-        # displayLayout = QtWidgets.QHBoxLayout(displayBox)
         displayLayout = QtWidgets.QGridLayout(displayBox)
         self.normalRadioButton = QtWidgets.QRadioButton('Normal', self.lightingDock)
         self.shadowRadioButton = QtWidgets.QRadioButton('Shadowmap', self.lightingDock)
         self.normalRadioButton.setChecked(True)
-        # displayLayout.addWidget(self.normalRadioButton)
-        # displayLayout.addWidget(self.shadowRadioButton)
         displayLayout.addWidget(self.normalRadioButton, 0, 0)
         displayLayout.addWidget(self.shadowRadioButton, 0, 1)
         self.resetCameraButton = QtWidgets.QPushButton("Reset camera", self.lightingDock)
@@ -475,8 +476,6 @@ class MainWindow(QtWidgets.QMainWindow):
         displayLayout.addWidget(self.resetCameraButton, 1, 0)
         displayLayout.addWidget(self.resetShadowButton, 1, 1)
         displayBox.setLayout(displayLayout)
-
-        #TODO Add GroupBox with HBoxLayout for rest camera and reset light
 
         topBox.addWidget(displayBox)
         topBox.addStretch(1)
@@ -562,15 +561,30 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.panelMenu.addAction(self.modelDock.toggleViewAction())
 
+    def createPearsonPatternDetailDock(self):
+        self.pPDetailsDock = QtWidgets.QDockWidget('Pearson\' pattern Details', self)
+        self.pPDetailsDock.setFloating(True)
+        box = QtWidgets.QGroupBox("", self.pPDetailsDock)
+        layout = QtWidgets.QVBoxLayout()
+
+        self.pPDetailsLabel = QtWidgets.QLabel()
+        layout.addWidget(self.pPDetailsLabel)
+        box.setLayout(layout)
+
+        self.pPDetailsDock.setWidget(box)
+        self.panelMenu.addAction(self.pPDetailsDock.toggleViewAction())
+
     def initializeGui(self):
         self.colorsComboBox.setCurrentText(self.canvas.mainRenderer.cmapName)
         self.pearsonsPatternsComboBox.setCurrentText(self.canvas.grayScottModel.specie)
+        self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
 
     def connectSignals(self):
         self.colorsComboBox.textActivated[str].connect(self.canvas.mainRenderer.setColorMap)
         self.colorsComboBox.textActivated[str].emit(self.colorsComboBox.currentText())
 
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.canvas.grayScottModel.setSpecie)
+        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setPearsonsPatternDetails)
         self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
 
         self.vReagentRadioButton.toggled.connect(self.canvas.mainRenderer.switchReagent)
@@ -582,6 +596,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.moreCycles.clicked.connect(self.canvas.grayScottModel.increaseCycle)
         self.resetCameraButton.clicked.connect(self.canvas.mainRenderer.resetCamera)
         self.resetShadowButton.clicked.connect(self.canvas.mainRenderer.resetLight)
+
+    def setPearsonsPatternDetails(self):
+        self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
 
     def show_fps(self, fps):
         msg = " FPS - %0.2f" % float(fps)
@@ -599,6 +616,13 @@ class RoundedButton(QtWidgets.QPushButton):
         self.outlineColor = outlineColor
         self.fillColor = fillColor
         self.setText(text)
+        self.colorDialog = QtWidgets.QColorDialog(fillColor, self)
+        self.clicked.connect(self.changeColor)
+
+    def changeColor(self):
+        color = self.colorDialog.getColor(self.fillColor)
+        if color.isValid():
+            self.fillColor = color
 
     def paintEvent(self, event):
         # Create the painter

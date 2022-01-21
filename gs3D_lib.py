@@ -362,6 +362,17 @@ class GrayScottModel():
                                                                  specie[2],
                                                                  specie[3]))
 
+    def getPearsonPatternDescription(self, specie=None):
+        specie = specie or self.specie
+        specieDetail = GrayScottModel.species[specie]
+        text = "%s\n" % specie
+        text += "%s\n\n" % specieDetail[4]
+        text += 'dU: %1.3f\n' % specieDetail[0]
+        text += 'dV: %1.3f\n' % specieDetail[1]
+        text += 'f : %1.3f\n' % specieDetail[2]
+        text += 'k : %1.3f\n' % specieDetail[3]
+        return text
+
     def setSpecie(self, specie=''):
         """
         Set the feed, kill and diffusion rates for the choosen pattern.
@@ -723,52 +734,43 @@ class MainRenderer(Renderer):
         """
         if lightType in ('ambient', 'diffuse', 'specular', 'lightbox', 'attenuation'):
             secondKey = 'on'
-            self.lightingDictionnary[lightType][secondKey][0] = \
-                not self.lightingDictionnary[lightType][secondKey][0]
-            self.program["u_%s_%s" % (lightType, secondKey)] = \
-                self.lightingDictionnary[lightType][secondKey][0]
-            print(' %s light: %s        ' % \
-                (lightType, self.lightingDictionnary[lightType][secondKey][0]), end="\r")
+            vals = self.lightingDictionnary[lightType][secondKey]
+            vals[0] = not vals[0]
+            self.program["u_%s_%s" % (lightType, secondKey)] = vals[0]
+            print(' %s light: %s        ' % (lightType, vals[0]), end="\r")
 
         elif lightType == 'shadow':
             secondKey = 'type'
-            self.lightingDictionnary[lightType][secondKey][0] = \
-                (self.lightingDictionnary[lightType][secondKey][0] + 1) % 4
-            print("shadowType = %s" % self.lightingDictionnary[lightType][secondKey][0])
-            self.program["u_%s_%s" % (lightType, secondKey)] = \
-                self.lightingDictionnary[lightType][secondKey][0]
-            print(' Shadows: %s              ' % \
-                self.SHADOW_TYPE[self.lightingDictionnary[lightType][secondKey][0]], end="\r")
+            vals = self.lightingDictionnary[lightType][secondKey]
+            vals[0] = (vals[0] + 1) % 4
+            print("shadowType = %s" % vals[0])
+            self.program["u_%s_%s" % (lightType, secondKey)] = vals[0]
+            print(' Shadows: %s              ' % self.SHADOW_TYPE[vals[0]], end="\r")
 
         elif lightType == 'shininess':
             mod = sqrt(2)
             if modification == '+':
                 mod = 1.0/mod
             first = 'specular'
-            self.lightingDictionnary[first][lightType][0] *= mod
-            self.lightingDictionnary[first][lightType][0] = np.clip(\
-                self.lightingDictionnary[first][lightType][0],
-                self.lightingDictionnary[first][lightType][2],
-                self.lightingDictionnary[first][lightType][3])
-            self.program["u_%s_%s" % (first, lightType)] = \
-                self.lightingDictionnary[first][lightType][0]
-            print(' Shininess exponant: %3.0f' % \
-                self.lightingDictionnary[first][lightType][0], end="\r")
+            vals = self.lightingDictionnary[first][lightType]
+            vals[0] *= mod
+            vals[0] = np.clip(vals[0], vals[2], vals[3])
+            self.program["u_%s_%s" % (first, lightType)] = vals[0]
+            print(' Shininess exponant: %3.0f' % vals[0], end="\r")
 
         elif lightType == 'fresnelexponant':
             mod = 1.0/sqrt(2)
             if modification == '+':
                 mod = 1.0/mod
             first = 'lightbox'
-            self.lightingDictionnary[first][lightType][0] *= mod
-            self.lightingDictionnary[first][lightType][0] = np.clip(\
-                self.lightingDictionnary[first][lightType][0],
-                self.lightingDictionnary[first][lightType][2],
-                self.lightingDictionnary[first][lightType][3])
-            self.program["u_%s_%s" % (first, lightType)] = \
-                self.lightingDictionnary[first][lightType][0]
-            print(' Fresnel exponant: %3.0f' % \
-                self.lightingDictionnary[first][lightType][0], end="\r")
+            vals = self.lightingDictionnary[first][lightType]
+            vals[0] *= mod
+            vals[0] = np.clip(vals[0], vals[2], vals[3])
+            self.program["u_%s_%s" % (first, lightType)] = vals[0]
+            print(' Fresnel exponant: %3.0f' % vals[0], end="\r")
+
+    def toggleAmbientLight(self):
+        self.modifyLightCharacteristic("ambient")
 
     def setColorMap(self, name=''):
         """
@@ -859,8 +861,6 @@ class Canvas(app.Canvas):
                        line_width=0.75)
 
         self.activate_zoom()
-        print(self.native.parent)
-        # self.show()
 
     ############################################################################
     #
