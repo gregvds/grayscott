@@ -50,6 +50,9 @@ except ImportError:
 # To switch between PyQt5 and PySide2 bindings just change the from import
 from PySide6 import QtCore, QtWidgets
 
+from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
+from PySide6.QtCore import Qt, QRectF
+
 import sys
 
 # from math import pi
@@ -444,17 +447,36 @@ class MainWindow(QtWidgets.QMainWindow):
                     lightTypeSpinBox.setValue(MainRenderer.lightingDictionnary[lightType][param][0])
                     lightTypeLayout.addWidget(lightTypeSpinBox, paramCount, 1)
                     paramCount += 1
+                elif MainRenderer.lightingDictionnary[lightType][param][1] == "color":
+                    lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
+                    color = QColor(MainRenderer.lightingDictionnary[lightType][param][0][0]*255,
+                                   MainRenderer.lightingDictionnary[lightType][param][0][1]*255,
+                                   MainRenderer.lightingDictionnary[lightType][param][0][2]*255)
+                    lightTypeLayout.addWidget(RoundedButton("",
+                                                            1,
+                                                            QColor(0,0,0),
+                                                            color), paramCount, 1)
+                    paramCount += 1
             lightTypeBox.setLayout(lightTypeLayout)
             topBox.addWidget(lightTypeBox)
 
         displayBox = QtWidgets.QGroupBox("Display", self.lightingDock)
-        displayLayout = QtWidgets.QHBoxLayout(displayBox)
+        # displayLayout = QtWidgets.QHBoxLayout(displayBox)
+        displayLayout = QtWidgets.QGridLayout(displayBox)
         self.normalRadioButton = QtWidgets.QRadioButton('Normal', self.lightingDock)
         self.shadowRadioButton = QtWidgets.QRadioButton('Shadowmap', self.lightingDock)
         self.normalRadioButton.setChecked(True)
-        displayLayout.addWidget(self.normalRadioButton)
-        displayLayout.addWidget(self.shadowRadioButton)
+        # displayLayout.addWidget(self.normalRadioButton)
+        # displayLayout.addWidget(self.shadowRadioButton)
+        displayLayout.addWidget(self.normalRadioButton, 0, 0)
+        displayLayout.addWidget(self.shadowRadioButton, 0, 1)
+        self.resetCameraButton = QtWidgets.QPushButton("Reset camera", self.lightingDock)
+        self.resetShadowButton = QtWidgets.QPushButton("Reset shadow", self.lightingDock)
+        displayLayout.addWidget(self.resetCameraButton, 1, 0)
+        displayLayout.addWidget(self.resetShadowButton, 1, 1)
         displayBox.setLayout(displayLayout)
+
+        #TODO Add GroupBox with HBoxLayout for rest camera and reset light
 
         topBox.addWidget(displayBox)
         topBox.addStretch(1)
@@ -558,6 +580,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resetButton.clicked.connect(self.canvas.grayScottModel.initializeGrid)
         self.lessCycles.clicked.connect(self.canvas.grayScottModel.decreaseCycle)
         self.moreCycles.clicked.connect(self.canvas.grayScottModel.increaseCycle)
+        self.resetCameraButton.clicked.connect(self.canvas.mainRenderer.resetCamera)
+        self.resetShadowButton.clicked.connect(self.canvas.mainRenderer.resetLight)
 
     def show_fps(self, fps):
         msg = " FPS - %0.2f" % float(fps)
@@ -568,6 +592,38 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.canvas.visible = True
 
+class RoundedButton(QtWidgets.QPushButton):
+    def __init__(self, text, bordersize, outlineColor, fillColor):
+        super(RoundedButton, self).__init__()
+        self.bordersize = bordersize
+        self.outlineColor = outlineColor
+        self.fillColor = fillColor
+        self.setText(text)
+
+    def paintEvent(self, event):
+        # Create the painter
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        # Create the path
+        path = QPainterPath()
+        # Set painter colors to given values.
+        pen = QPen(self.outlineColor, self.bordersize)
+        painter.setPen(pen)
+        brush = QBrush(self.fillColor)
+        painter.setBrush(brush)
+
+        rect = QRectF(event.rect())
+        # Slighly shrink dimensions to account for bordersize.
+        rect.adjust(self.bordersize/2, self.bordersize/2, -self.bordersize/2, -self.bordersize/2)
+
+        # Add the rect to path.
+        path.addRoundedRect(rect, 10, 10)
+        painter.setClipPath(path)
+
+        # Fill shape, draw the border and center the text.
+        painter.fillPath(path, painter.brush())
+        painter.strokePath(path, painter.pen())
+        painter.drawText(rect, Qt.AlignCenter, self.text())
 
 ################################################################################
 # def fun(x):

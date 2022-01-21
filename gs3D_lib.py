@@ -89,6 +89,7 @@ class Camera():
         self.aspect = aspect
         self.near = near
         self.far = far
+        self.shadowCam = shadowCam
 
         self.fovMin = 5.0
         self.fovMax = 120.0
@@ -113,7 +114,7 @@ class Camera():
 
         self.move()
         self.setProjection()
-        if shadowCam is True:
+        if self.shadowCam is True:
             self.zoomOn()
         self.defaultEye = self.eye
         self.defaultTarget = self.target
@@ -472,6 +473,8 @@ class Renderer():
                                      self.camera.defaultElevation,
                                      self.camera.defaultDistance)
         self.camera.setProjection(fov=self.camera.defaultFov)
+        if self.camera.shadowCam is True:
+            self.camera.zoomOn()
         self.program["u_vm"]  = self.camera.vm
         self.program["u_pvm"] = self.camera.pvm
 
