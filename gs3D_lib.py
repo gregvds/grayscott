@@ -376,6 +376,22 @@ class GrayScottModel():
             self.printPearsonPatternDescription()
             self.program["params"] = GrayScottModel.species[self.specie][0:4]
 
+    def setF(self, val):
+        """
+        set the feed value
+        """
+        vals = self.program["params"]
+        vals[2] = val
+        self.program["params"] = vals
+
+    def setK(self, val):
+        """
+        set the kill value
+        """
+        vals = self.program["params"]
+        vals[3] = val
+        self.program["params"] = vals
+
     def interact(self, brushCoords, brushType):
         """
         Modify local V concentrations.

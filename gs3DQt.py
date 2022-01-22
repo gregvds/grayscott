@@ -212,6 +212,24 @@ class MainWindow(QtWidgets.QMainWindow):
         patterns.sort()
         self.pearsonsPatternsComboBox.addItems(patterns)
         pearsonsLayout.addWidget(self.pearsonsPatternsComboBox)
+
+        fkBox = QtWidgets.QGroupBox(self.modelDock)
+        fkLayout = QtWidgets.QGridLayout()
+        self.feedDial = QtWidgets.QDial(self.modelDock)
+        self.feedDial.setMinimum(self.canvas.grayScottModel.fMin*1000)
+        self.feedDial.setMaximum(self.canvas.grayScottModel.fMax*1000)
+        self.feedDial.setValue(self.canvas.grayScottModel.program["params"][2]*1000)
+        self.feedDial.setSingleStep(1)
+        self.killDial = QtWidgets.QDial(self.modelDock)
+        self.killDial.setMinimum(self.canvas.grayScottModel.kMin*1000)
+        self.killDial.setMaximum(self.canvas.grayScottModel.kMax*1000)
+        self.killDial.setValue(self.canvas.grayScottModel.program["params"][3]*1000)
+        self.killDial.setSingleStep(1)
+        fkLayout.addWidget(self.feedDial)
+        fkLayout.addWidget(self.killDial)
+        fkBox.setLayout(fkLayout)
+        pearsonsLayout.addWidget(fkBox)
+
         pearsonsBox.setLayout(pearsonsLayout)
 
         reagentBox = QtWidgets.QGroupBox("Reagent displayed", self.modelDock)
@@ -243,10 +261,13 @@ class MainWindow(QtWidgets.QMainWindow):
         cyclesBox = QtWidgets.QGroupBox("Additional cycles/frame", self.modelDock)
         cyclesLayout = QtWidgets.QHBoxLayout()
         self.lessCycles = QtWidgets.QPushButton("-", self.modelDock)
-        self.cycles = QtWidgets.QSpinBox(self.modelDock)
-        self.cycles.setReadOnly(True)
-        self.cycles.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-        self.cycles.setValue(self.canvas.grayScottModel.cycle)
+        # self.cycles = QtWidgets.QSpinBox(self.modelDock)
+        # self.cycles.setReadOnly(True)
+        # self.cycles.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+        # self.cycles.setValue(self.canvas.grayScottModel.cycle)
+        self.cycles = QtWidgets.QLabel(self.modelDock)
+        self.cycles.setText(str(self.canvas.grayScottModel.cycle))
+        self.cycles.setAlignment(Qt.AlignCenter | Qt.AlignCenter)
         self.moreCycles = QtWidgets.QPushButton("+", self.modelDock)
         cyclesLayout.addWidget(self.lessCycles)
         cyclesLayout.addWidget(self.cycles)
@@ -293,23 +314,45 @@ class MainWindow(QtWidgets.QMainWindow):
         self.colorsComboBox.textActivated[str].emit(self.colorsComboBox.currentText())
 
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.canvas.grayScottModel.setSpecie)
+        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.setPearsonsPatternDetails)
         self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
+        # WIP Trying to display Pearson's pattern explanation without having to
+        # actually select it... Is there a .highlightedText() method of some kind?
+        self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setPearsonsPatternDetails)
+        self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
+
 
         self.vReagentRadioButton.toggled.connect(self.canvas.mainRenderer.switchReagent)
 
         self.normalRadioButton.toggled.connect(self.canvas.switchDisplay)
 
         self.resetButton.clicked.connect(self.canvas.grayScottModel.initializeGrid)
+
         self.lessCycles.clicked.connect(self.canvas.grayScottModel.decreaseCycle)
         self.lessCycles.clicked.connect(self.updateCycle)
         self.moreCycles.clicked.connect(self.canvas.grayScottModel.increaseCycle)
         self.moreCycles.clicked.connect(self.updateCycle)
+
         self.resetCameraButton.clicked.connect(self.canvas.mainRenderer.resetCamera)
         self.resetShadowButton.clicked.connect(self.canvas.mainRenderer.resetLight)
 
+        self.feedDial.valueChanged.connect(self.setF)
+        self.killDial.valueChanged.connect(self.setK)
+
+
     def setPearsonsPatternDetails(self):
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
+
+    def setFeedKillDials(self):
+        self.feedDial.setValue(self.canvas.grayScottModel.program["params"][2]*1000)
+        self.killDial.setValue(self.canvas.grayScottModel.program["params"][3]*1000)
+
+    def setF(self, val):
+        self.canvas.grayScottModel.setF(val/1000.0)
+
+    def setK(self, val):
+        self.canvas.grayScottModel.setK(val/1000.0)
 
     @Slot(str, str, bool)
     @Slot(str, str, int)
@@ -319,7 +362,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.canvas.mainRenderer.setLighting(lighting, param, val)
 
     def updateCycle(self):
-        self.cycles.setValue(self.canvas.grayScottModel.cycle)
+        # self.cycles.setValue(self.canvas.grayScottModel.cycle)
+        self.cycles.setText(str(self.canvas.grayScottModel.cycle))
 
     def show_fps(self, fps):
         msg = " FPS - %0.2f" % float(fps)
