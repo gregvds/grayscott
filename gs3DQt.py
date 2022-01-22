@@ -122,46 +122,57 @@ class MainWindow(QtWidgets.QMainWindow):
         topBox = QtWidgets.QVBoxLayout(groupBox)
 
         # TODO connect signals of all these auto-generated widgets...
-        self.slotsLambda = []
-        self.lightTypeBoxes = []
+        self.lightParameters = {}
         for lightType in MainRenderer.lightingDictionnary.keys():
-            lightTypeBox = QtWidgets.QGroupBox(lightType, self.lightingDock)
-            self.lightTypeBoxes.append(lightTypeBox)
-            lightTypeLayout = QtWidgets.QGridLayout()
+            self.lightParameters[lightType] = {}
+            parameters = self.lightParameters[lightType]
             paramCount = 0
+            lightTypeBox = QtWidgets.QGroupBox(lightType, self.lightingDock)
+            lightTypeLayout = QtWidgets.QGridLayout()
             for param in MainRenderer.lightingDictionnary[lightType].keys():
                 lightTypeParam = MainRenderer.lightingDictionnary[lightType][param]
                 if lightTypeParam[1] == "bool":
-                    self.lightTypeBoxes[-1].setCheckable(True)
-                    self.lightTypeBoxes[-1].setChecked(lightTypeParam[0])
-                    slotLambda = lambda: self.updateLighting(lightType)
-                    self.slotsLambda.append(slotLambda)
-                    self.lightTypeBoxes[-1].clicked.connect(self.slotsLambda[-1])
+                    parameters[param] = lightTypeBox
+                    parameters[param].setCheckable(True)
+                    parameters[param].setChecked(lightTypeParam[0])
+                    parameters[param].clicked.connect(lambda state=lightTypeBox.isChecked(), lightType=lightType, param=param, lightTypeBox=lightTypeBox: self.updateLighting(lightType, param, lightTypeBox.isChecked()))
 
                 elif lightTypeParam[1] == "float":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    lightTypeDoubleSpinBox = QtWidgets.QDoubleSpinBox(lightTypeBox)
-                    lightTypeDoubleSpinBox.setDecimals(5)
-                    lightTypeDoubleSpinBox.setMinimum(lightTypeParam[2])
-                    lightTypeDoubleSpinBox.setMaximum(lightTypeParam[3])
-                    lightTypeDoubleSpinBox.setValue(lightTypeParam[0])
-                    lightTypeDoubleSpinBox.setSingleStep((lightTypeParam[3] - lightTypeParam[2])/1000)
-                    lightTypeLayout.addWidget(lightTypeDoubleSpinBox, paramCount, 1)
+                    lightSpinBox = QtWidgets.QDoubleSpinBox(lightTypeBox)
+                    parameters[param] = lightSpinBox
+                    parameters[param].setDecimals(5)
+                    parameters[param].setMinimum(lightTypeParam[2])
+                    parameters[param].setMaximum(lightTypeParam[3])
+                    parameters[param].setValue(lightTypeParam[0])
+                    parameters[param].setSingleStep((lightTypeParam[3] - lightTypeParam[2])/1000)
+                    lightTypeLayout.addWidget(parameters[param], paramCount, 1)
+
+                    # slotLambda = lambda val, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value())
+                    parameters[param].valueChanged.connect(lambda val=lightSpinBox.value(), lightType=lightType, param=param, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value()))
+
                     paramCount += 1
                 elif lightTypeParam[1] == "int":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    lightTypeSpinBox = QtWidgets.QSpinBox(lightTypeBox)
-                    lightTypeSpinBox.setMinimum(lightTypeParam[2])
-                    lightTypeSpinBox.setMaximum(lightTypeParam[3])
-                    lightTypeSpinBox.setValue(lightTypeParam[0])
-                    lightTypeLayout.addWidget(lightTypeSpinBox, paramCount, 1)
+                    lightSpinBox = QtWidgets.QSpinBox(lightTypeBox)
+                    parameters[param] = lightSpinBox
+                    parameters[param].setMinimum(lightTypeParam[2])
+                    parameters[param].setMaximum(lightTypeParam[3])
+                    parameters[param].setValue(lightTypeParam[0])
+                    lightTypeLayout.addWidget(parameters[param], paramCount, 1)
+
+                    # slotLambda = lambda val, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value())
+                    parameters[param].valueChanged.connect(lambda val=lightSpinBox.value(), lightType=lightType, param=param, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value()))
+
                     paramCount += 1
                 elif lightTypeParam[1] == "color":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
                     color = QColor(lightTypeParam[0][0]*255,
                                    lightTypeParam[0][1]*255,
                                    lightTypeParam[0][2]*255)
-                    lightTypeLayout.addWidget(RoundedButton("", 1, QColor(0,0,0), color), paramCount, 1)
+                    parameters[param] = RoundedButton("", 1, QColor(0,0,0), color)
+                    lightTypeLayout.addWidget(parameters[param], paramCount, 1)
+
                     paramCount += 1
             lightTypeBox.setLayout(lightTypeLayout)
             topBox.addWidget(lightTypeBox)
@@ -304,9 +315,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def setPearsonsPatternDetails(self):
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
 
-    @Slot(str)
-    def updateLighting(self, lighting):
-        self.canvas.mainRenderer.modifyLightCharacteristic(lighting)
+    @Slot(str, str, bool)
+    @Slot(str, str, int)
+    @Slot(str, str, float)
+    def updateLighting(self, lighting, param, val):
+        # print((lighting, param, val))
+        self.canvas.mainRenderer.setLighting(lighting, param, val)
 
     def updateCycle(self):
         self.cycles.setValue(self.canvas.grayScottModel.cycle)

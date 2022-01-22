@@ -256,7 +256,7 @@ class GrayScottModel():
         'Z': 'zeta_right'
     }
 
-    species = import_pearsons_types()
+    (species, fMin, fMax, kMin, kMax) = import_pearsons_types()
 
     def __init__(self,
                  canvas=None,
@@ -628,12 +628,10 @@ class MainRenderer(Renderer):
         # --------------------------------------
         self.program["dx"]                     = 1. / self.grayScottModel.w
         self.program["dy"]                     = 1. / self.grayScottModel.h
-
         self.program["shadowMap"]              = self.shadowRenderer.shadowTexture
         self.program["shadowMap"].interpolation = gl.GL_LINEAR
         self.program["shadowMap"].wrapping     = gl.GL_CLAMP_TO_EDGE
         self.program["u_shadowmap_pvm"]        = self.shadowRenderer.camera.pvm
-
         self.program["cubeMap"]                = gloo.TextureCube(self.lightBoxTexture, interpolation='linear')
         self.program["u_light_position"]       = [self.shadowRenderer.camera.eye[0],
                                                   self.shadowRenderer.camera.eye[1],
@@ -647,10 +645,13 @@ class MainRenderer(Renderer):
         self.buffer = FrameBuffer(color=self.program["shadowMap"],
                                   depth=gloo.RenderBuffer((self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize), format='depth'))
 
-    def setLighting(self):
+    def setLighting(self, lightType=None, param=None, val=None):
         """
         Modifies lighting dictionnary and updates program Attributes
         """
+        if lightType is not None and param is not None and val is not None:
+            # Check if val is of proper type by comparison with second arg in dic
+            self.lightingDictionnary[lightType][param][0] = val
         for first in self.lightingDictionnary.keys():
             for second in self.lightingDictionnary[first].keys():
                 self.program["u_%s_%s"%(first, second)] = self.lightingDictionnary[first][second][0]

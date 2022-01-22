@@ -436,6 +436,10 @@ def plot_color_gradients(cmap_category, cmap_list):
 
 def import_pearsons_types():
     species = {}
+    fMin = 1.0
+    fMax = 0.0
+    kMin = 1.0
+    kMax = 0.0
     type = None
     for each in pearson.keys():
         type = pearson[each]
@@ -444,7 +448,11 @@ def import_pearsons_types():
                          type['factors']['f'],
                          type['factors']['k'],
                          type['description']]
-    return species
+        fMin = min(fMin, type['factors']['f'])
+        fMax = max(fMax, type['factors']['f'])
+        kMin = min(kMin, type['factors']['k'])
+        kMax = max(kMax, type['factors']['k'])
+    return (species, fMin, fMax, kMin, kMax)
 
 
 def setup_grid(rows, cols, blob_scale=0.1):
