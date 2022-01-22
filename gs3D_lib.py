@@ -652,6 +652,9 @@ class MainRenderer(Renderer):
         if lightType is not None and param is not None and val is not None:
             # Check if val is of proper type by comparison with second arg in dic
             self.lightingDictionnary[lightType][param][0] = val
+        elif lightType is not None and param == 'on' and val is None:
+            self.lightingDictionnary[lightType][param][0] = not \
+                self.lightingDictionnary[lightType][param][0]
         for first in self.lightingDictionnary.keys():
             for second in self.lightingDictionnary[first].keys():
                 self.program["u_%s_%s"%(first, second)] = self.lightingDictionnary[first][second][0]
@@ -663,6 +666,13 @@ class MainRenderer(Renderer):
         super().moveCamera(dAzimuth, dElevation, dDistance)
         # WIP without this option still in developpment, this method could be
         # deleted...
+        self.adjustShadowMapFrustum()
+
+    def resetCamera(self):
+        """
+        Replaces the camera at its original position.
+        """
+        super().resetCamera()
         self.adjustShadowMapFrustum()
 
     def zoomCamera(self, percentage=0.0):
@@ -1026,21 +1036,21 @@ class Canvas(app.Canvas):
     keyactionDictionnary = {
         ('=', ()): (switchDisplay, ()),
         (' ', ()): (GrayScottModel.initializeGrid, ()),
-        ('/', ('Shift',)): (MainRenderer.switchReagent, ()),
         ('P', ('Control',)): (GrayScottModel.increaseCycle, ()),
         ('O', ('Control',)): (GrayScottModel.decreaseCycle, ()),
+        ('/', ('Shift',)): (MainRenderer.switchReagent, ()),
         ('@', ()): (MainRenderer.resetCamera, ()),
         ('<', ()): (MainRenderer.resetLight, ()),
-        (',', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('ambient',)),
-        (';', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('diffuse',)),
-        (':', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('specular',)),
+        (',', ('Control',)): (MainRenderer.setLighting, ('ambient', 'on')),
+        (';', ('Control',)): (MainRenderer.setLighting, ('diffuse','on')),
+        (':', ('Control',)): (MainRenderer.setLighting, ('specular','on')),
         ('=', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shadow',)),
-        ('N', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('attenuation',)),
+        ('N', ('Control',)): (MainRenderer.setLighting, ('attenuation','on')),
         ('L', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shininess', '-')),
         ('M', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shininess', '+')),
         ('J', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('fresnelexponant', '-')),
         ('K', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('fresnelexponant', '+')),
-        ('I', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('lightbox',))
+        ('I', ('Control',)): (MainRenderer.setLighting, ('lightbox','on'))
     }
     for key in MainRenderer.colormapDictionnary.keys():
         keyactionDictionnary[(key, ())] = (MainRenderer.setColorMap, (MainRenderer.colormapDictionnary[key],))

@@ -121,7 +121,6 @@ class MainWindow(QtWidgets.QMainWindow):
         groupBox = QtWidgets.QGroupBox(self.lightingDock)
         topBox = QtWidgets.QVBoxLayout(groupBox)
 
-        # TODO connect signals of all these auto-generated widgets...
         self.lightParameters = {}
         for lightType in MainRenderer.lightingDictionnary.keys():
             self.lightParameters[lightType] = {}
@@ -147,8 +146,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     parameters[param].setValue(lightTypeParam[0])
                     parameters[param].setSingleStep((lightTypeParam[3] - lightTypeParam[2])/1000)
                     lightTypeLayout.addWidget(parameters[param], paramCount, 1)
-
-                    # slotLambda = lambda val, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value())
                     parameters[param].valueChanged.connect(lambda val=lightSpinBox.value(), lightType=lightType, param=param, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value()))
 
                     paramCount += 1
@@ -159,9 +156,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     parameters[param].setMinimum(lightTypeParam[2])
                     parameters[param].setMaximum(lightTypeParam[3])
                     parameters[param].setValue(lightTypeParam[0])
+                    parameters[param].setWrapping(True)
                     lightTypeLayout.addWidget(parameters[param], paramCount, 1)
-
-                    # slotLambda = lambda val, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value())
                     parameters[param].valueChanged.connect(lambda val=lightSpinBox.value(), lightType=lightType, param=param, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value()))
 
                     paramCount += 1
@@ -170,7 +166,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     color = QColor(lightTypeParam[0][0]*255,
                                    lightTypeParam[0][1]*255,
                                    lightTypeParam[0][2]*255)
-                    parameters[param] = RoundedButton("", 1, QColor(0,0,0), color)
+                    parameters[param] = RoundedButton(lightType, self, 1, QColor(0,0,0), color)
                     lightTypeLayout.addWidget(parameters[param], paramCount, 1)
 
                     paramCount += 1
@@ -336,12 +332,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 class RoundedButton(QtWidgets.QPushButton):
-    def __init__(self, text, bordersize, outlineColor, fillColor):
+    def __init__(self, text, parent, bordersize, outlineColor, fillColor):
         super(RoundedButton, self).__init__()
         self.bordersize = bordersize
         self.outlineColor = outlineColor
         self.fillColor = fillColor
-        self.setText(text)
+        self.lightType = text
+        self.parent = parent
         self.colorDialog = QtWidgets.QColorDialog(fillColor, self)
         self.clicked.connect(self.changeColor)
 
@@ -349,6 +346,8 @@ class RoundedButton(QtWidgets.QPushButton):
         color = self.colorDialog.getColor(self.fillColor)
         if color.isValid():
             self.fillColor = color
+            self.parent.canvas.mainRenderer.setLighting(self.lightType, 'color', color.getRgbF())
+            # print(color.getRgbF())
 
     def paintEvent(self, event):
         # Create the painter
