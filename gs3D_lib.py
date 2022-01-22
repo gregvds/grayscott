@@ -763,9 +763,6 @@ class MainRenderer(Renderer):
             self.program["u_%s_%s" % (first, lightType)] = vals[0]
             print(' Fresnel exponant: %3.0f' % vals[0], end="\r")
 
-    def toggleAmbientLight(self):
-        self.modifyLightCharacteristic("ambient")
-
     def setColorMap(self, name=''):
         """
         Set the colormap used to render the concentration

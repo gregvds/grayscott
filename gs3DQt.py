@@ -122,18 +122,21 @@ class MainWindow(QtWidgets.QMainWindow):
         topBox = QtWidgets.QVBoxLayout(groupBox)
 
         # TODO connect signals of all these auto-generated widgets...
+        self.slotsLambda = []
+        self.lightTypeBoxes = []
         for lightType in MainRenderer.lightingDictionnary.keys():
             lightTypeBox = QtWidgets.QGroupBox(lightType, self.lightingDock)
+            self.lightTypeBoxes.append(lightTypeBox)
             lightTypeLayout = QtWidgets.QGridLayout()
             paramCount = 0
             for param in MainRenderer.lightingDictionnary[lightType].keys():
                 lightTypeParam = MainRenderer.lightingDictionnary[lightType][param]
                 if lightTypeParam[1] == "bool":
-                    lightTypeBox.setCheckable(True)
-                    lightTypeBox.setChecked(lightTypeParam[0])
-
-                    lightTypeBox.clicked.connect(self.canvas.mainRenderer.toggleAmbientLight)
-                    # lightTypeBox.clicked.emit(self.title)
+                    self.lightTypeBoxes[-1].setCheckable(True)
+                    self.lightTypeBoxes[-1].setChecked(lightTypeParam[0])
+                    slotLambda = lambda: self.updateLighting(lightType)
+                    self.slotsLambda.append(slotLambda)
+                    self.lightTypeBoxes[-1].clicked.connect(self.slotsLambda[-1])
 
                 elif lightTypeParam[1] == "float":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
@@ -147,7 +150,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     paramCount += 1
                 elif lightTypeParam[1] == "int":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    lightTypeSpinBox = QtWidgets.QSpinBox()
+                    lightTypeSpinBox = QtWidgets.QSpinBox(lightTypeBox)
                     lightTypeSpinBox.setMinimum(lightTypeParam[2])
                     lightTypeSpinBox.setMaximum(lightTypeParam[3])
                     lightTypeSpinBox.setValue(lightTypeParam[0])
@@ -300,6 +303,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def setPearsonsPatternDetails(self):
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
+
+    @Slot(str)
+    def updateLighting(self, lighting):
+        self.canvas.mainRenderer.modifyLightCharacteristic(lighting)
 
     def updateCycle(self):
         self.cycles.setValue(self.canvas.grayScottModel.cycle)
