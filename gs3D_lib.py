@@ -357,6 +357,10 @@ class GrayScottModel():
         print(self.getPearsonPatternDescription())
 
     def getPearsonPatternDescription(self, specie=None):
+        """
+        Returns a text describing the current Pearson's pattern and associated
+        parameters.
+        """
         specie = specie or self.specie
         specieDetail = GrayScottModel.species[specie]
         text = "%s\n" % specie
@@ -566,6 +570,13 @@ class MainRenderer(Renderer):
         '0': 'vancouver'
     }
 
+    # This dictionnary holds all the lighting parameters. They are automatically
+    # stuffed into the program uniform named u_firstKey_secondKey.
+    # the value passed is the first of the list. Second member of the list is
+    # the type of the variable; this for Qt to be able to build the correct
+    # QWidgets for it. Further parameters are minimum and maximum when relevant
+    # WIP one could add a kind of modification function (+int, +float, *float) to
+    # use when modifying the value...
     lightingDictionnary = {
         "ambient": {
             "on": [True, "bool"],
@@ -677,11 +688,9 @@ class MainRenderer(Renderer):
 
     def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
         """
-        Moves the camera according to inputs. Compute view Matrix.
+        Moves the camera according to inputs.
         """
         super().moveCamera(dAzimuth, dElevation, dDistance)
-        # WIP without this option still in developpment, this method could be
-        # deleted...
         self.adjustShadowMapFrustum()
 
     def resetCamera(self):
@@ -703,7 +712,6 @@ class MainRenderer(Renderer):
     def moveLight(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
         """
         Moves the light, and the camera attached for shadowmap rendering
-        WIP NOT PERFECT CURRENTLY...
         """
         self.shadowRenderer.moveCamera(dAzimuth, dElevation, dDistance)
         self.program["u_shadowmap_pvm"] = self.shadowRenderer.camera.pvm
@@ -714,7 +722,6 @@ class MainRenderer(Renderer):
     def resetLight(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
         """
         Moves the light, and the camera attached for shadowmap rendering
-        WIP NOT PERFECT CURRENTLY...
         """
         self.shadowRenderer.resetCamera()
         self.shadowRenderer.camera.zoomOn(objectWidth=sqrt(2.0), margin=0.02)
@@ -752,6 +759,7 @@ class MainRenderer(Renderer):
         Modifies one of the light parameters.
         Some like ambient, diffuse, specular are simply toggles on/off,
         Others increase/decrease a value, such as the shininess exponant
+        WIP One day could be entirely replaced by setLighting...
         """
         if lightType in ('ambient', 'diffuse', 'specular', 'lightbox', 'attenuation'):
             secondKey = 'on'
@@ -1083,7 +1091,7 @@ class Canvas(app.Canvas):
     @staticmethod
     def getCommandsDocs():
         """
-        Calss static method to harvest all __doc__
+        Calls static method to harvest all __doc__
         from methods bound to keys, modifiers.
         Result to be used as description by the parser help.
         """

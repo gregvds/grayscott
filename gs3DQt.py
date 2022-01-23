@@ -89,7 +89,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.canvas = Canvas(size, modelSize, specie, cmap, verbose)
         self.canvas.create_native()
         self.canvas.native.setParent(self)
-        self.canvas.measure_fps(0.1, self.show_fps)
+        self.canvas.measure_fps(1.0, self.show_fps)
 
         splitter1 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         splitter1.addWidget(self.canvas.native)
@@ -101,7 +101,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.createLightingDock()
         self.createPearsonPatternDetailDock()
 
-        self.initializeGui()
         self.connectSignals()
 
         # FPS message in statusbar:
@@ -118,8 +117,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lightingDock = QtWidgets.QDockWidget('Lighting settings', self)
         self.lightingDock.setFloating(True)
 
-        groupBox = QtWidgets.QGroupBox(self.lightingDock)
-        topBox = QtWidgets.QVBoxLayout(groupBox)
+        topBox = QtWidgets.QGroupBox(self.lightingDock)
+        topLayout = QtWidgets.QVBoxLayout(topBox)
 
         self.lightParameters = {}
         for lightType in MainRenderer.lightingDictionnary.keys():
@@ -171,7 +170,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     paramCount += 1
             lightTypeBox.setLayout(lightTypeLayout)
-            topBox.addWidget(lightTypeBox)
+            topLayout.addWidget(lightTypeBox)
 
         displayBox = QtWidgets.QGroupBox("Display", self.lightingDock)
         displayLayout = QtWidgets.QGridLayout(displayBox)
@@ -186,20 +185,20 @@ class MainWindow(QtWidgets.QMainWindow):
         displayLayout.addWidget(self.resetShadowButton, 1, 1)
         displayBox.setLayout(displayLayout)
 
-        topBox.addWidget(displayBox)
-        topBox.addStretch(1)
-        groupBox.setLayout(topBox)
+        topLayout.addWidget(displayBox)
+        topLayout.addStretch(1)
+        topBox.setLayout(topLayout)
 
-        self.lightingDock.setWidget(groupBox)
-        # self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.lightingDock)
+        self.lightingDock.setWidget(topBox)
 
         self.panelMenu.addAction(self.lightingDock.toggleViewAction())
 
     def createModelDock(self):
         self.modelDock = QtWidgets.QDockWidget('Model settings', self)
         self.modelDock.setFloating(True)
-        groupBox = QtWidgets.QGroupBox(self.modelDock)
-        topBox = QtWidgets.QVBoxLayout(groupBox)
+
+        topBox = QtWidgets.QGroupBox(self.modelDock)
+        topLayout = QtWidgets.QVBoxLayout(topBox)
 
         pearsonsBox = QtWidgets.QGroupBox("Pearson' pattern", self.modelDock)
         pearsonsLayout = QtWidgets.QVBoxLayout()
@@ -211,25 +210,59 @@ class MainWindow(QtWidgets.QMainWindow):
             patterns.append(GrayScottModel.speciesDictionnaryShifted[key])
         patterns.sort()
         self.pearsonsPatternsComboBox.addItems(patterns)
+        self.pearsonsPatternsComboBox.setCurrentText(self.canvas.grayScottModel.specie)
         pearsonsLayout.addWidget(self.pearsonsPatternsComboBox)
 
         fkBox = QtWidgets.QGroupBox(self.modelDock)
-        fkLayout = QtWidgets.QGridLayout()
+        fkLayout = QtWidgets.QVBoxLayout()
+
+        fBox = QtWidgets.QGroupBox(self.modelDock)
+        fLayout = QtWidgets.QHBoxLayout()
+
+        flabelValueBox = QtWidgets.QGroupBox(self.modelDock)
+        flabelValueBox.setFlat(True)
+        flabelValueLayout = QtWidgets.QVBoxLayout()
+        fLabel = QtWidgets.QLabel("Feed")
+        self.fValue = QtWidgets.QLabel("")
+        self.fValue.setText(str(self.canvas.grayScottModel.program["params"][2]))
+        flabelValueLayout.addWidget(fLabel)
+        flabelValueLayout.addWidget(self.fValue)
+        flabelValueBox.setLayout(flabelValueLayout)
+        fLayout.addWidget(flabelValueBox)
         self.feedDial = QtWidgets.QDial(self.modelDock)
         self.feedDial.setMinimum(self.canvas.grayScottModel.fMin*1000)
         self.feedDial.setMaximum(self.canvas.grayScottModel.fMax*1000)
         self.feedDial.setValue(self.canvas.grayScottModel.program["params"][2]*1000)
         self.feedDial.setSingleStep(1)
+        fLayout.addWidget(self.feedDial)
+        fBox.setLayout(fLayout)
+
+        kBox = QtWidgets.QGroupBox(self.modelDock)
+        kLayout = QtWidgets.QHBoxLayout()
+        klabelValueBox = QtWidgets.QGroupBox(self.modelDock)
+        klabelValueBox.setFlat(True)
+        klabelValueLayout = QtWidgets.QVBoxLayout()
+        kLabel = QtWidgets.QLabel("Kill")
+        self.kValue = QtWidgets.QLabel("")
+        self.kValue.setText(str(self.canvas.grayScottModel.program["params"][3]))
+        klabelValueLayout.addWidget(kLabel)
+        klabelValueLayout.addWidget(self.kValue)
+        klabelValueBox.setLayout(klabelValueLayout)
+        kLayout.addWidget(klabelValueBox)
         self.killDial = QtWidgets.QDial(self.modelDock)
         self.killDial.setMinimum(self.canvas.grayScottModel.kMin*1000)
         self.killDial.setMaximum(self.canvas.grayScottModel.kMax*1000)
         self.killDial.setValue(self.canvas.grayScottModel.program["params"][3]*1000)
         self.killDial.setSingleStep(1)
-        fkLayout.addWidget(self.feedDial)
-        fkLayout.addWidget(self.killDial)
-        fkBox.setLayout(fkLayout)
-        pearsonsLayout.addWidget(fkBox)
+        kLayout.addWidget(self.killDial)
+        kBox.setLayout(kLayout)
 
+
+        fkLayout.addWidget(fBox)
+        fkLayout.addWidget(kBox)
+        fkBox.setLayout(fkLayout)
+
+        # pearsonsLayout.addWidget(fkBox)
         pearsonsBox.setLayout(pearsonsLayout)
 
         reagentBox = QtWidgets.QGroupBox("Reagent displayed", self.modelDock)
@@ -251,6 +284,7 @@ class MainWindow(QtWidgets.QMainWindow):
             colors.append(MainRenderer.colormapDictionnaryShifted[key])
         colors.sort()
         self.colorsComboBox.addItems(colors)
+        self.colorsComboBox.setCurrentText(self.canvas.mainRenderer.cmapName)
         colorMapLayout.addWidget(self.colorsComboBox)
         colorMapBox.setLayout(colorMapLayout)
 
@@ -261,12 +295,8 @@ class MainWindow(QtWidgets.QMainWindow):
         cyclesBox = QtWidgets.QGroupBox("Additional cycles/frame", self.modelDock)
         cyclesLayout = QtWidgets.QHBoxLayout()
         self.lessCycles = QtWidgets.QPushButton("-", self.modelDock)
-        # self.cycles = QtWidgets.QSpinBox(self.modelDock)
-        # self.cycles.setReadOnly(True)
-        # self.cycles.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-        # self.cycles.setValue(self.canvas.grayScottModel.cycle)
         self.cycles = QtWidgets.QLabel(self.modelDock)
-        self.cycles.setText(str(self.canvas.grayScottModel.cycle))
+        self.cycles.setText(str(2*self.canvas.grayScottModel.cycle))
         self.cycles.setAlignment(Qt.AlignCenter | Qt.AlignCenter)
         self.moreCycles = QtWidgets.QPushButton("+", self.modelDock)
         cyclesLayout.addWidget(self.lessCycles)
@@ -274,19 +304,17 @@ class MainWindow(QtWidgets.QMainWindow):
         cyclesLayout.addWidget(self.moreCycles)
         cyclesBox.setLayout(cyclesLayout)
         controlLayout.addWidget(cyclesBox)
-
         controlBox.setLayout(controlLayout)
 
-        topBox.addWidget(pearsonsBox)
-        topBox.addWidget(reagentBox)
-        topBox.addWidget(controlBox)
-        topBox.addWidget(colorMapBox)
-        topBox.addStretch(1)
+        topLayout.addWidget(pearsonsBox)
+        topLayout.addWidget(fkBox)
+        topLayout.addWidget(reagentBox)
+        topLayout.addWidget(controlBox)
+        topLayout.addWidget(colorMapBox)
+        topLayout.addStretch(1)
+        topBox.setLayout(topLayout)
 
-        groupBox.setLayout(topBox)
-
-        self.modelDock.setWidget(groupBox)
-        # self.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.modelDock)
+        self.modelDock.setWidget(topBox)
 
         self.panelMenu.addAction(self.modelDock.toggleViewAction())
 
@@ -294,20 +322,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pPDetailsDock = QtWidgets.QDockWidget('Pearson\' pattern Details', self)
         self.pPDetailsDock.setFloating(True)
 
-        box = QtWidgets.QGroupBox("", self.pPDetailsDock)
-        layout = QtWidgets.QVBoxLayout()
+        topBox = QtWidgets.QGroupBox("", self.pPDetailsDock)
+        topLayout = QtWidgets.QVBoxLayout(topBox)
         self.pPDetailsLabel = QtWidgets.QLabel()
-        layout.addWidget(self.pPDetailsLabel)
-        box.setLayout(layout)
+        self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
+        topLayout.addWidget(self.pPDetailsLabel)
+        topBox.setLayout(topLayout)
 
-        self.pPDetailsDock.setWidget(box)
+        self.pPDetailsDock.setWidget(topBox)
 
         self.panelMenu.addAction(self.pPDetailsDock.toggleViewAction())
-
-    def initializeGui(self):
-        self.colorsComboBox.setCurrentText(self.canvas.mainRenderer.cmapName)
-        self.pearsonsPatternsComboBox.setCurrentText(self.canvas.grayScottModel.specie)
-        self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
 
     def connectSignals(self):
         self.colorsComboBox.textActivated[str].connect(self.canvas.mainRenderer.setColorMap)
@@ -321,7 +345,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # actually select it... Is there a .highlightedText() method of some kind?
         self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setPearsonsPatternDetails)
         self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
-
 
         self.vReagentRadioButton.toggled.connect(self.canvas.mainRenderer.switchReagent)
 
@@ -340,7 +363,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.feedDial.valueChanged.connect(self.setF)
         self.killDial.valueChanged.connect(self.setK)
 
-
     def setPearsonsPatternDetails(self):
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
 
@@ -350,9 +372,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def setF(self, val):
         self.canvas.grayScottModel.setF(val/1000.0)
+        self.fValue.setText(str(val/1000.0))
 
     def setK(self, val):
         self.canvas.grayScottModel.setK(val/1000.0)
+        self.kValue.setText(str(val/1000.0))
 
     @Slot(str, str, bool)
     @Slot(str, str, int)
@@ -362,8 +386,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.canvas.mainRenderer.setLighting(lighting, param, val)
 
     def updateCycle(self):
-        # self.cycles.setValue(self.canvas.grayScottModel.cycle)
-        self.cycles.setText(str(self.canvas.grayScottModel.cycle))
+        self.cycles.setText(str(2*self.canvas.grayScottModel.cycle))
 
     def show_fps(self, fps):
         msg = " FPS - %0.2f" % float(fps)
@@ -391,7 +414,6 @@ class RoundedButton(QtWidgets.QPushButton):
         if color.isValid():
             self.fillColor = color
             self.parent.canvas.mainRenderer.setLighting(self.lightType, 'color', color.getRgbF())
-            # print(color.getRgbF())
 
     def paintEvent(self, event):
         # Create the painter
@@ -418,9 +440,8 @@ class RoundedButton(QtWidgets.QPushButton):
         painter.strokePath(path, painter.pen())
         painter.drawText(rect, Qt.AlignCenter, self.text())
 
+
 ################################################################################
-# def fun(x):
-#     c.title = c.title2 +' - FPS: %0.1f' % x
 
 
 if __name__ == '__main__':
