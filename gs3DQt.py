@@ -53,7 +53,7 @@ except ImportError:
 from PySide6 import QtCore, QtWidgets
 
 from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
-from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QSize
+from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QSize, QLocale
 from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
 import sys
@@ -161,6 +161,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     parameters[param].setMinimum(lightTypeParam[2])
                     parameters[param].setMaximum(lightTypeParam[3])
                     parameters[param].setValue(lightTypeParam[0])
+                    parameters[param].setLocale(QLocale.C)
                     parameters[param].setSingleStep((lightTypeParam[3] - lightTypeParam[2])/1000)
                     lightTypeLayout.addWidget(parameters[param], paramCount, 1)
                     parameters[param].valueChanged.connect(parameters[param].updateLighting)
