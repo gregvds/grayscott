@@ -53,7 +53,7 @@ except ImportError:
 from PySide6 import QtCore, QtWidgets
 
 from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
-from PySide6.QtCore import Qt, QRectF, QPointF, Slot
+from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QSize
 from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
 import sys
@@ -230,13 +230,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pearsonsPatternsComboBox.addItems(patterns)
         self.pearsonsPatternsComboBox.setCurrentText(self.canvas.grayScottModel.specie)
         pearsonsLayout.addWidget(self.pearsonsPatternsComboBox)
+        pearsonsBox.setLayout(pearsonsLayout)
 
         fkBox = QtWidgets.QGroupBox(self.modelDock)
         fkLayout = QtWidgets.QVBoxLayout()
 
         fBox = QtWidgets.QGroupBox(self.modelDock)
         fLayout = QtWidgets.QHBoxLayout()
-
         flabelValueBox = QtWidgets.QGroupBox(self.modelDock)
         flabelValueBox.setFlat(True)
         flabelValueLayout = QtWidgets.QVBoxLayout()
@@ -253,6 +253,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.feedDial.setValue(self.canvas.grayScottModel.program["params"][2]*1000)
         self.feedDial.setSingleStep(1)
         fLayout.addWidget(self.feedDial)
+        fLayout.setStretchFactor(self.feedDial, 2)
         fBox.setLayout(fLayout)
 
         kBox = QtWidgets.QGroupBox(self.modelDock)
@@ -273,6 +274,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.killDial.setValue(self.canvas.grayScottModel.program["params"][3]*1000)
         self.killDial.setSingleStep(1)
         kLayout.addWidget(self.killDial)
+        kLayout.setStretchFactor(self.killDial, 2)
         kBox.setLayout(kLayout)
 
         dUBox = QtWidgets.QGroupBox(self.modelDock)
@@ -293,6 +295,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dUDial.setValue(self.canvas.grayScottModel.program["params"][0]*100)
         self.dUDial.setSingleStep(1)
         dULayout.addWidget(self.dUDial)
+        dULayout.setStretchFactor(self.dUDial, 2)
         dUBox.setLayout(dULayout)
 
         dVBox = QtWidgets.QGroupBox(self.modelDock)
@@ -313,6 +316,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dVDial.setValue(self.canvas.grayScottModel.program["params"][1]*100)
         self.dVDial.setSingleStep(1)
         dVLayout.addWidget(self.dVDial)
+        dVLayout.setStretchFactor(self.dVDial, 2)
         dVBox.setLayout(dVLayout)
 
         fkLayout.addWidget(fBox)
@@ -320,9 +324,6 @@ class MainWindow(QtWidgets.QMainWindow):
         fkLayout.addWidget(dUBox)
         fkLayout.addWidget(dVBox)
         fkBox.setLayout(fkLayout)
-
-        # pearsonsLayout.addWidget(fkBox)
-        pearsonsBox.setLayout(pearsonsLayout)
 
         reagentBox = QtWidgets.QGroupBox("Reagent displayed", self.modelDock)
         reagentLayout = QtWidgets.QHBoxLayout(reagentBox)
@@ -391,12 +392,26 @@ class MainWindow(QtWidgets.QMainWindow):
         axisY.setTickInterval(0.02)
         axisY.setTickCount(7)
         axisY.setRange(0.0,0.12)
-        self.fkChart.resize(self.pPDetailsLabel.size().width(),self.pPDetailsLabel.size().width())
+
+        # WIP... Far from perfect. I would like to have a square Scatter plot,
+        # which width and height adapt to the width of the description, even when
+        # description is narrow. This should force the Chart to shrink, square...
+        self.fkChart.setMinimumHeight(self.pPDetailsLabel.size().width())
+        self.fkChart.setMaximumHeight(self.pPDetailsLabel.size().width())
+        p = self.fkChart.sizePolicy()
+        p.setHeightForWidth(True)
+        self.fkChart.setSizePolicy(p)
 
         self.fkChartView = QChartView(self.fkChart)
-        self.fkChartView.setRenderHint(QPainter.Antialiasing);
-        self.fkChartView.setFixedSize(self.pPDetailsLabel.size().width(),self.pPDetailsLabel.size().width())
+        self.fkChartView.setRenderHint(QPainter.Antialiasing)
+
         topLayout.addWidget(self.fkChartView)
+
+        # TODO, have the current selected pattern corresponding point plotted in
+        # another color.
+        # TODO Have all points not simple points but their greek symbols.
+        # TODO, have a clicked/selected point/symbol to switch the pattern used,
+        # adapt dials, values and description...
 
         topLayout.addWidget(self.pPDetailsLabel)
         topBox.setLayout(topLayout)
@@ -413,10 +428,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.setPearsonsPatternDetails)
         self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
-        # WIP Trying to display Pearson's pattern explanation without having to
-        # actually select it... Is there a .highlightedText() method of some kind?
         self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setPearsonsPatternDetails)
-        self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
+        self.pearsonsPatternsComboBox.textHighlighted[str].emit(self.pearsonsPatternsComboBox.currentText())
 
         self.vReagentRadioButton.toggled.connect(self.canvas.mainRenderer.switchReagent)
 
@@ -436,29 +449,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.killDial.valueChanged.connect(self.setK)
         self.dUDial.valueChanged.connect(self.setDU)
         self.dVDial.valueChanged.connect(self.setDV)
-    #     self.fkPoints.clicked.connect(self.setPearsonsPattern)
-    #
-    # def setPearsonsPattern(self, point):
-    #     specie = point.specie
-    #     self.canvas.grayScottModel.setSpecie(specie)
-    #     self.setPearsonsPatternDetails()
-    #     self.setFeedKillDials()
 
-    def setPearsonsPatternDetails(self):
-        # self.fkChart.resize(100,100)
-        # self.fkChartView.setFixedSize(100,100)
-        self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
-        # WIP... Does not currently work
+    @Slot()
+    @Slot(str)
+    def setPearsonsPatternDetails(self, type=None):
+        self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription(specie=type))
+        # WIP... Should add a red dot in chart, showing which pattern is
+        # highlighted/selected
         # if len(self.fkChart.series()) > 1:
         #     self.fkChart.removeSeries(self.fkCurrentPoint)
         # self.fkCurrentPoint = QScatterSeries()
         # self.fkCurrentPoint.setColor(QColor('red'))
         # self.fkCurrentPoint.append(self.canvas.grayScottModel.program["params"][3], self.canvas.grayScottModel.program["params"][2])
         # self.fkChart.addSeries(self.fkCurrentPoint)
-
-        # WIP Quite inelegantly done here...
-        # self.fkChart.resize(self.pPDetailsLabel.size().width(),self.pPDetailsLabel.size().width())
-        # self.fkChartView.setFixedSize(self.pPDetailsLabel.size().width(),self.pPDetailsLabel.size().width())
 
     def setFeedKillDials(self):
         self.feedDial.setValue(self.canvas.grayScottModel.program["params"][2]*1000)
@@ -577,6 +580,17 @@ class FkPoint(QPointF):
         super(FkPoint, self).__init__(xpos, ypos)
         self.name = name
         self.symbol = symbol
+
+
+class SquareLayout(QtWidgets.QLayout):
+    def __init__(self, parent):
+        super(SquareLayout, parent)
+
+    def totalHeightForWidth(self, w):
+        return w
+
+    def totalMinimumHeightForWidth(self, w):
+        return w
 
 
 ################################################################################
