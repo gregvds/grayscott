@@ -53,7 +53,8 @@ except ImportError:
 from PySide6 import QtCore, QtWidgets
 
 from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
-from PySide6.QtCore import Qt, QRectF, Slot, Signal
+from PySide6.QtCore import Qt, QRectF, QPointF, Slot
+from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
 import sys
 
@@ -69,6 +70,8 @@ from gs3D_lib import (GrayScottModel, MainRenderer, Canvas)
 
 # Provide automatic signal function selection for PyQt5/PySide2
 pyqtsignal = QtCore.pyqtSignal if hasattr(QtCore, 'pyqtSignal') else QtCore.Signal
+
+# import pyqtgraph as pg
 
 ################################################################################
 
@@ -120,12 +123,27 @@ class MainWindow(QtWidgets.QMainWindow):
         topBox = QtWidgets.QGroupBox(self.lightingDock)
         topLayout = QtWidgets.QVBoxLayout(topBox)
 
+        colorMapBox = QtWidgets.QGroupBox("Colormap used", self.modelDock)
+        colorMapLayout = QtWidgets.QVBoxLayout()
+        self.colorsComboBox = QtWidgets.QComboBox(self.modelDock)
+        colors = []
+        for key in MainRenderer.colormapDictionnary.keys():
+            colors.append(MainRenderer.colormapDictionnary[key])
+        for key in MainRenderer.colormapDictionnaryShifted.keys():
+            colors.append(MainRenderer.colormapDictionnaryShifted[key])
+        colors.sort()
+        self.colorsComboBox.addItems(colors)
+        self.colorsComboBox.setCurrentText(self.canvas.mainRenderer.cmapName)
+        colorMapLayout.addWidget(self.colorsComboBox)
+        colorMapBox.setLayout(colorMapLayout)
+        topLayout.addWidget(colorMapBox)
+
         self.lightParameters = {}
         for lightType in MainRenderer.lightingDictionnary.keys():
             self.lightParameters[lightType] = {}
             parameters = self.lightParameters[lightType]
             paramCount = 0
-            lightTypeBox = QtWidgets.QGroupBox(lightType, self.lightingDock)
+            lightTypeBox = LightTypeGroupBox(lightType, self, 'on')
             lightTypeLayout = QtWidgets.QGridLayout()
             for param in MainRenderer.lightingDictionnary[lightType].keys():
                 lightTypeParam = MainRenderer.lightingDictionnary[lightType][param]
@@ -133,11 +151,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     parameters[param] = lightTypeBox
                     parameters[param].setCheckable(True)
                     parameters[param].setChecked(lightTypeParam[0])
-                    parameters[param].clicked.connect(lambda state=lightTypeBox.isChecked(), lightType=lightType, param=param, lightTypeBox=lightTypeBox: self.updateLighting(lightType, param, lightTypeBox.isChecked()))
+                    # parameters[param].toggled.connect(parameters[param].updateLighting)
 
                 elif lightTypeParam[1] == "float":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    lightSpinBox = QtWidgets.QDoubleSpinBox(lightTypeBox)
+                    lightSpinBox = LightParamDoubleSpinBox(self, lightType, param)
                     parameters[param] = lightSpinBox
                     parameters[param].setDecimals(5)
                     parameters[param].setMinimum(lightTypeParam[2])
@@ -145,19 +163,19 @@ class MainWindow(QtWidgets.QMainWindow):
                     parameters[param].setValue(lightTypeParam[0])
                     parameters[param].setSingleStep((lightTypeParam[3] - lightTypeParam[2])/1000)
                     lightTypeLayout.addWidget(parameters[param], paramCount, 1)
-                    parameters[param].valueChanged.connect(lambda val=lightSpinBox.value(), lightType=lightType, param=param, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value()))
+                    parameters[param].valueChanged.connect(parameters[param].updateLighting)
 
                     paramCount += 1
                 elif lightTypeParam[1] == "int":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    lightSpinBox = QtWidgets.QSpinBox(lightTypeBox)
+                    lightSpinBox = LightParamSpinBox(self, lightType, param)
                     parameters[param] = lightSpinBox
                     parameters[param].setMinimum(lightTypeParam[2])
                     parameters[param].setMaximum(lightTypeParam[3])
                     parameters[param].setValue(lightTypeParam[0])
                     parameters[param].setWrapping(True)
                     lightTypeLayout.addWidget(parameters[param], paramCount, 1)
-                    parameters[param].valueChanged.connect(lambda val=lightSpinBox.value(), lightType=lightType, param=param, lightSpinBox=lightSpinBox: self.updateLighting(lightType, param, lightSpinBox.value()))
+                    parameters[param].valueChanged.connect(parameters[param].updateLighting)
 
                     paramCount += 1
                 elif lightTypeParam[1] == "color":
@@ -257,9 +275,50 @@ class MainWindow(QtWidgets.QMainWindow):
         kLayout.addWidget(self.killDial)
         kBox.setLayout(kLayout)
 
+        dUBox = QtWidgets.QGroupBox(self.modelDock)
+        dULayout = QtWidgets.QHBoxLayout()
+        dUlabelValueBox = QtWidgets.QGroupBox(self.modelDock)
+        dUlabelValueBox.setFlat(True)
+        dUlabelValueLayout = QtWidgets.QVBoxLayout()
+        dULabel = QtWidgets.QLabel("dU")
+        self.dUValue = QtWidgets.QLabel("")
+        self.dUValue.setText(str(self.canvas.grayScottModel.program["params"][0]))
+        dUlabelValueLayout.addWidget(dULabel)
+        dUlabelValueLayout.addWidget(self.dUValue)
+        dUlabelValueBox.setLayout(dUlabelValueLayout)
+        dULayout.addWidget(dUlabelValueBox)
+        self.dUDial = QtWidgets.QDial(self.modelDock)
+        self.dUDial.setMinimum(self.canvas.grayScottModel.dUMin*100)
+        self.dUDial.setMaximum(self.canvas.grayScottModel.dUMax*100)
+        self.dUDial.setValue(self.canvas.grayScottModel.program["params"][0]*100)
+        self.dUDial.setSingleStep(1)
+        dULayout.addWidget(self.dUDial)
+        dUBox.setLayout(dULayout)
+
+        dVBox = QtWidgets.QGroupBox(self.modelDock)
+        dVLayout = QtWidgets.QHBoxLayout()
+        dVlabelValueBox = QtWidgets.QGroupBox(self.modelDock)
+        dVlabelValueBox.setFlat(True)
+        dVlabelValueLayout = QtWidgets.QVBoxLayout()
+        dVLabel = QtWidgets.QLabel("dV")
+        self.dVValue = QtWidgets.QLabel("")
+        self.dVValue.setText(str(self.canvas.grayScottModel.program["params"][1]))
+        dVlabelValueLayout.addWidget(dVLabel)
+        dVlabelValueLayout.addWidget(self.dVValue)
+        dVlabelValueBox.setLayout(dVlabelValueLayout)
+        dVLayout.addWidget(dVlabelValueBox)
+        self.dVDial = QtWidgets.QDial(self.modelDock)
+        self.dVDial.setMinimum(self.canvas.grayScottModel.dVMin*100)
+        self.dVDial.setMaximum(self.canvas.grayScottModel.dVMax*100)
+        self.dVDial.setValue(self.canvas.grayScottModel.program["params"][1]*100)
+        self.dVDial.setSingleStep(1)
+        dVLayout.addWidget(self.dVDial)
+        dVBox.setLayout(dVLayout)
 
         fkLayout.addWidget(fBox)
         fkLayout.addWidget(kBox)
+        fkLayout.addWidget(dUBox)
+        fkLayout.addWidget(dVBox)
         fkBox.setLayout(fkLayout)
 
         # pearsonsLayout.addWidget(fkBox)
@@ -273,20 +332,6 @@ class MainWindow(QtWidgets.QMainWindow):
         reagentLayout.addWidget(self.uReagentRadioButton)
         reagentLayout.addWidget(self.vReagentRadioButton)
         reagentBox.setLayout(reagentLayout)
-
-        colorMapBox = QtWidgets.QGroupBox("Colormap used", self.modelDock)
-        colorMapLayout = QtWidgets.QVBoxLayout()
-        self.colorsComboBox = QtWidgets.QComboBox(self.modelDock)
-        colors = []
-        for key in MainRenderer.colormapDictionnary.keys():
-            colors.append(MainRenderer.colormapDictionnary[key])
-        for key in MainRenderer.colormapDictionnaryShifted.keys():
-            colors.append(MainRenderer.colormapDictionnaryShifted[key])
-        colors.sort()
-        self.colorsComboBox.addItems(colors)
-        self.colorsComboBox.setCurrentText(self.canvas.mainRenderer.cmapName)
-        colorMapLayout.addWidget(self.colorsComboBox)
-        colorMapBox.setLayout(colorMapLayout)
 
         controlBox = QtWidgets.QGroupBox("Controls", self.modelDock)
         controlLayout = QtWidgets.QVBoxLayout()
@@ -310,7 +355,6 @@ class MainWindow(QtWidgets.QMainWindow):
         topLayout.addWidget(fkBox)
         topLayout.addWidget(reagentBox)
         topLayout.addWidget(controlBox)
-        topLayout.addWidget(colorMapBox)
         topLayout.addStretch(1)
         topBox.setLayout(topLayout)
 
@@ -326,6 +370,34 @@ class MainWindow(QtWidgets.QMainWindow):
         topLayout = QtWidgets.QVBoxLayout(topBox)
         self.pPDetailsLabel = QtWidgets.QLabel()
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
+
+        self.fkChart = QChart()
+        self.fkPoints = QScatterSeries()
+        for specie in GrayScottModel.species.keys():
+            feed = GrayScottModel.species[specie][2]
+            kill = GrayScottModel.species[specie][3]
+            symbol = GrayScottModel.species[specie][5]
+            fkPoint = FkPoint(kill, feed, specie, symbol)
+            self.fkPoints.append(fkPoint)
+        self.fkChart.setBackgroundVisible(False)
+        self.fkChart.addSeries(self.fkPoints)
+        self.fkChart.legend().hide()
+        self.fkChart.createDefaultAxes()
+        axisX = self.fkChart.axes(orientation=Qt.Horizontal)[0]
+        axisX.setTickInterval(0.01)
+        axisX.setTickCount(6)
+        axisX.setRange(0.03,0.08)
+        axisY = self.fkChart.axes(orientation=Qt.Vertical)[0]
+        axisY.setTickInterval(0.02)
+        axisY.setTickCount(7)
+        axisY.setRange(0.0,0.12)
+        self.fkChart.resize(self.pPDetailsLabel.size().width(),self.pPDetailsLabel.size().width())
+
+        self.fkChartView = QChartView(self.fkChart)
+        self.fkChartView.setRenderHint(QPainter.Antialiasing);
+        self.fkChartView.setFixedSize(self.pPDetailsLabel.size().width(),self.pPDetailsLabel.size().width())
+        topLayout.addWidget(self.fkChartView)
+
         topLayout.addWidget(self.pPDetailsLabel)
         topBox.setLayout(topLayout)
 
@@ -362,28 +434,51 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.feedDial.valueChanged.connect(self.setF)
         self.killDial.valueChanged.connect(self.setK)
+        self.dUDial.valueChanged.connect(self.setDU)
+        self.dVDial.valueChanged.connect(self.setDV)
+    #     self.fkPoints.clicked.connect(self.setPearsonsPattern)
+    #
+    # def setPearsonsPattern(self, point):
+    #     specie = point.specie
+    #     self.canvas.grayScottModel.setSpecie(specie)
+    #     self.setPearsonsPatternDetails()
+    #     self.setFeedKillDials()
 
     def setPearsonsPatternDetails(self):
+        # self.fkChart.resize(100,100)
+        # self.fkChartView.setFixedSize(100,100)
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
+        # WIP... Does not currently work
+        # if len(self.fkChart.series()) > 1:
+        #     self.fkChart.removeSeries(self.fkCurrentPoint)
+        # self.fkCurrentPoint = QScatterSeries()
+        # self.fkCurrentPoint.setColor(QColor('red'))
+        # self.fkCurrentPoint.append(self.canvas.grayScottModel.program["params"][3], self.canvas.grayScottModel.program["params"][2])
+        # self.fkChart.addSeries(self.fkCurrentPoint)
+
+        # WIP Quite inelegantly done here...
+        # self.fkChart.resize(self.pPDetailsLabel.size().width(),self.pPDetailsLabel.size().width())
+        # self.fkChartView.setFixedSize(self.pPDetailsLabel.size().width(),self.pPDetailsLabel.size().width())
 
     def setFeedKillDials(self):
         self.feedDial.setValue(self.canvas.grayScottModel.program["params"][2]*1000)
         self.killDial.setValue(self.canvas.grayScottModel.program["params"][3]*1000)
 
     def setF(self, val):
-        self.canvas.grayScottModel.setF(val/1000.0)
+        self.canvas.grayScottModel.setParams(feed=val/1000.0)
         self.fValue.setText(str(val/1000.0))
 
     def setK(self, val):
-        self.canvas.grayScottModel.setK(val/1000.0)
+        self.canvas.grayScottModel.setParams(kill=val/1000.0)
         self.kValue.setText(str(val/1000.0))
 
-    @Slot(str, str, bool)
-    @Slot(str, str, int)
-    @Slot(str, str, float)
-    def updateLighting(self, lighting, param, val):
-        # print((lighting, param, val))
-        self.canvas.mainRenderer.setLighting(lighting, param, val)
+    def setDU(self, val):
+        self.canvas.grayScottModel.setParams(dU=val/100.0)
+        self.dUValue.setText(str(val/100.0))
+
+    def setDV(self, val):
+        self.canvas.grayScottModel.setParams(dV=val/100.0)
+        self.dVValue.setText(str(val/100.0))
 
     def updateCycle(self):
         self.cycles.setText(str(2*self.canvas.grayScottModel.cycle))
@@ -396,6 +491,42 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status_label.setText(msg)
 
         self.canvas.visible = True
+
+
+class LightTypeGroupBox(QtWidgets.QGroupBox):
+    def __init__(self, title, parent, param):
+        super(LightTypeGroupBox, self).__init__(title, parent)
+        self.param = param
+        self.parent = parent
+        self.toggled.connect(self.updateLighting)
+
+    @Slot(bool)
+    def updateLighting(self, state):
+        self.parent.canvas.mainRenderer.setLighting(self.title(), self.param, state)
+
+
+class LightParamDoubleSpinBox(QtWidgets.QDoubleSpinBox):
+    def __init__(self, parent, lightType, param):
+        super(LightParamDoubleSpinBox, self).__init__(parent)
+        self.lightType = lightType
+        self.param = param
+        self.parent = parent
+
+    @Slot(float)
+    def updateLighting(self, value):
+        self.parent.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
+
+
+class LightParamSpinBox(QtWidgets.QSpinBox):
+    def __init__(self, parent, lightType, param):
+        super(LightParamSpinBox, self).__init__(parent)
+        self.lightType = lightType
+        self.param = param
+        self.parent = parent
+
+    @Slot(int)
+    def updateLighting(self, value):
+        self.parent.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
 
 
 class RoundedButton(QtWidgets.QPushButton):
@@ -439,6 +570,13 @@ class RoundedButton(QtWidgets.QPushButton):
         painter.fillPath(path, painter.brush())
         painter.strokePath(path, painter.pen())
         painter.drawText(rect, Qt.AlignCenter, self.text())
+
+
+class FkPoint(QPointF):
+    def __init__(self, xpos, ypos, name, symbol):
+        super(FkPoint, self).__init__(xpos, ypos)
+        self.name = name
+        self.symbol = symbol
 
 
 ################################################################################

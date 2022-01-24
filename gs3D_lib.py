@@ -238,6 +238,8 @@ class GrayScottModel():
         'm': 'mu_left',
         'n': 'nu_left',
         'p': 'pi_left',
+        'r': 'rho_left',
+        's': 'sigma_left',
         't': 'theta_left',
         'x': 'xi_left',
         'z': 'zeta_left'
@@ -252,6 +254,8 @@ class GrayScottModel():
         'K': 'kappa_right',
         'L': 'lambda_right',
         'M': 'mu_right',
+        'R': 'rho_right',
+        'S': 'sigma_right',
         'T': 'theta_right',
         'Z': 'zeta_right'
     }
@@ -313,6 +317,10 @@ class GrayScottModel():
         # defines parameters for du, dv, f, k
         # and passes them to program
         self.setSpecie(specie=self.specie)
+        self.dUMin = 0.1
+        self.dUMax = 2.0
+        self.dVMin = 0.1
+        self.dVMax = 2.0
 
         # Define a FrameBuffer to update model state in texture
         # --------------------------------------
@@ -380,20 +388,15 @@ class GrayScottModel():
             self.printPearsonPatternDescription()
             self.program["params"] = GrayScottModel.species[self.specie][0:4]
 
-    def setF(self, val):
+    def setParams(self, feed=None, kill=None, dU=None, dV=None):
         """
-        set the feed value
-        """
-        vals = self.program["params"]
-        vals[2] = val
-        self.program["params"] = vals
-
-    def setK(self, val):
-        """
-        set the kill value
+        set one or more parameters of the model, feed, kill, dU and/or dV
         """
         vals = self.program["params"]
-        vals[3] = val
+        vals[0] = dU or vals[0]
+        vals[1] = dV or vals[1]
+        vals[2] = feed or vals[2]
+        vals[3] = kill or vals[3]
         self.program["params"] = vals
 
     def interact(self, brushCoords, brushType):
@@ -585,6 +588,7 @@ class MainRenderer(Renderer):
         },
         "diffuse": {
             "on": [True, "bool"],
+            "intensity": [1.0, "float", 0.0, 1.0],
             "color": [[1., 1., .9, 1.], "color"]
         },
         "specular": {
@@ -599,20 +603,23 @@ class MainRenderer(Renderer):
             "c3": [0.02, "float", 0.0, 1.0],
         },
         "shadow": {
-            "type": [2, "int", 0, 3],
-            "tolerance": [5e-03, "float", 5e-04, 5e-2],
-            "vsfgate": [2.5e-05, "float", 5e-05, 5e-04],
+            "on": [True, "bool"],
+            "type": [2, "int", 0, 2],
+            "hardtolerance": [5e-03, "float", 5e-04, 5e-2],
+            "pcftolerance": [5e-03, "float", 5e-04, 5e-2],
+            "pcfspreading": [1000.0, "float", 500.0, 3000.0],
+            "vsfgate": [2.5e-05, "float", 5e-05, 5e-01],
         },
         "lightbox": {
             "on": [True, "bool"],
+            "intensity": [0.9, "float", 0.0, 1.0],
             "fresnelexponant": [2.5, "float", 0.1, 5.0]
         }
     }
 
     createColormaps()
 
-    SHADOW_TYPE = ("None                     ",
-                   "Simple                   ",
+    SHADOW_TYPE = ("Simple                   ",
                    "Percent 4 samplings      ",
                    "Variance shadow mapping  ")
 
@@ -761,7 +768,7 @@ class MainRenderer(Renderer):
         Others increase/decrease a value, such as the shininess exponant
         WIP One day could be entirely replaced by setLighting...
         """
-        if lightType in ('ambient', 'diffuse', 'specular', 'lightbox', 'attenuation'):
+        if lightType in ('ambient', 'diffuse', 'specular', 'lightbox', 'attenuation', 'shadow'):
             secondKey = 'on'
             vals = self.lightingDictionnary[lightType][secondKey]
             vals[0] = not vals[0]
@@ -771,7 +778,7 @@ class MainRenderer(Renderer):
         elif lightType == 'shadow':
             secondKey = 'type'
             vals = self.lightingDictionnary[lightType][secondKey]
-            vals[0] = (vals[0] + 1) % 4
+            vals[0] = (vals[0] + 1) % 3
             print("shadowType = %s" % vals[0])
             self.program["u_%s_%s" % (lightType, secondKey)] = vals[0]
             print(' Shadows: %s              ' % self.SHADOW_TYPE[vals[0]], end="\r")
@@ -905,7 +912,7 @@ class Canvas(app.Canvas):
             self.grayScottModel.draw()
 
         # Render the shadowmap into buffer
-        if self.mainRenderer.lightingDictionnary['shadow']['type'][0] > 0:
+        if self.mainRenderer.lightingDictionnary['shadow']['on'][0] is True:
             with self.mainRenderer.buffer:
                 gloo.set_viewport(0, 0, self.shadowRenderer.shadowMapSize, self.shadowRenderer.shadowMapSize)
                 gloo.set_state(depth_test=True,

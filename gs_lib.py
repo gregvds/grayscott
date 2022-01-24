@@ -447,7 +447,8 @@ def import_pearsons_types():
                          type['factors']['Db'],
                          type['factors']['f'],
                          type['factors']['k'],
-                         type['description']]
+                         type['description'],
+                         type['symbol']]
         fMin = min(fMin, type['factors']['f'])
         fMax = max(fMax, type['factors']['f'])
         kMin = min(kMin, type['factors']['k'])

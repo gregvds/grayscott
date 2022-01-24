@@ -549,25 +549,30 @@ uniform vec4 u_ambient_color;
 uniform vec4 u_diffuse_color;
 uniform vec4 u_specular_color;
 uniform vec3 u_light_intensity;
-uniform lowp float u_ambient_intensity;
-uniform lowp float u_specular_shininess;
-uniform lowp float u_attenuation_c1;
-uniform lowp float u_attenuation_c2;
-uniform lowp float u_attenuation_c3;
+uniform float u_ambient_intensity;
+uniform float u_diffuse_intensity;
+uniform float u_specular_shininess;
+uniform float u_attenuation_c1;
+uniform float u_attenuation_c2;
+uniform float u_attenuation_c3;
 uniform float u_lightbox_fresnelexponant;
+uniform float u_lightbox_intensity;
 
 uniform sampler2D texture; // u:= r or b following pinpong
 uniform sampler1D cmap;          // colormap used to render reagent concentration
 uniform samplerCube cubeMap;
 
 uniform sampler2D shadowMap;
-uniform lowp float u_shadow_tolerance;
+uniform lowp float u_shadow_hardtolerance;
+uniform lowp float u_shadow_pcftolerance;
 uniform lowp float u_shadow_vsfgate;
+uniform lowp float u_shadow_pcfspreading;
 
 uniform bool u_ambient_on;
 uniform bool u_diffuse_on;
 uniform bool u_attenuation_on;
 uniform bool u_specular_on;
+uniform bool u_shadow_on;
 uniform int u_shadow_type;
 uniform bool u_lightbox_on;
 
@@ -643,7 +648,7 @@ bool in_shadow(void) {
   // distance to the light source was saved in the shadowmap, some
   // precision was lost. Therefore we need a small tolerance factor to
   // compensate for the lost precision.
-  return bool(when_gt(vertex_relative_to_light.z, shadowmap_distance + u_shadow_tolerance));
+  return bool(when_gt(vertex_relative_to_light.z, shadowmap_distance + u_shadow_hardtolerance));
 }
 
 //-------------------------------------------------------------------------
@@ -660,15 +665,15 @@ float pcf(void) {
    vec2( 0.34495938, 0.29387760 )
   );
   float lowp visibility = 1.0;
-  float lowp spreading = 1000;
+//  float lowp spreading = 1000;
 
   vec3 vertex_relative_to_light = scale_from_ndc(persp_divide(v_Vertex_relative_to_light));
 
   int lowp index;
   for (int i=0; i<4; i++) {
     visibility -= .2 *
-        when_lt(texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[i]/spreading).r,
-                vertex_relative_to_light.z - u_shadow_tolerance );
+        when_lt(texture2D(shadowMap, vertex_relative_to_light.xy + poissonDisk[i]/u_shadow_pcfspreading).r,
+                vertex_relative_to_light.z - u_shadow_pcftolerance );
   }
   return visibility;
 }
@@ -697,6 +702,7 @@ float vsf(void)
 
         float d = vertex_relative_to_light.z - moments.x;
         float p_max = variance / (variance + d*d);
+//        float p_max = 1.0 - ((variance + d*d) / variance);
 
         return p_max;
     }
@@ -742,7 +748,7 @@ void main()
         ambient_color = vec4(u_ambient_intensity * vec3(surface_color), surface_color.a) * u_ambient_color;
     }
     if (u_diffuse_on) {
-        diffuse_color = surface_color * vec4(u_light_intensity, 1) * u_diffuse_color;
+        diffuse_color = surface_color * u_diffuse_intensity * u_diffuse_color;
     }
     if (u_specular_on) {
         potential_specular_light = vec4(u_light_intensity, 1) * u_specular_color;
@@ -751,19 +757,21 @@ void main()
     //--------------------------------------------------------------------------
     // shadows computation following several algorithms
 
-    if (u_shadow_type == 1 && in_shadow()) {
-        // simple shadow mapping
-        // This fragment only receives ambient light because it is in a shadow.
-        gl_FragColor = ambient_color;
-        return;
-    } else if (u_shadow_type == 2) {
-        // Percent shadow mapping through multiple sampling
-        // proportion of full light for this fragment
-        visibility = pcf();
-    } else if (u_shadow_type == 3) {
-        // variance shadow mapping with one sampling
-        // proportion of full light for this fragment
-        visibility = vsf();
+    if (u_shadow_on) {
+        if (u_shadow_type == 0 && in_shadow()) {
+            // simple shadow mapping
+            // This fragment only receives ambient light because it is in a shadow.
+            gl_FragColor = ambient_color;
+            return;
+        } else if (u_shadow_type == 1) {
+            // Percent shadow mapping through multiple sampling
+            // proportion of full light for this fragment
+            visibility = pcf();
+        } else if (u_shadow_type == 2) {
+            // variance shadow mapping with one sampling
+            // proportion of full light for this fragment
+            visibility = vsf();
+        }
     }
 
     //--------------------------------------------------------------------------
@@ -825,11 +833,10 @@ void main()
     }
 
     //--------------------------------------------------------------------------
-    float lightBoxReflectionIntensity = 0.9;
     float fresnelFactor;
     if (u_lightbox_on) {
         vec3 reflectedDirection = normalize(reflect(to_camera, vertex_normal));
-        reflected_color = lightBoxReflectionIntensity * textureCube(cubeMap, -reflectedDirection);
+        reflected_color = u_lightbox_intensity * textureCube(cubeMap, -reflectedDirection);
 
         fresnelFactor = 1.01 - clamp(dot(vertex_normal, to_camera), 0.0, 1.0);
         fresnelFactor = pow(fresnelFactor, u_lightbox_fresnelexponant);
