@@ -317,10 +317,10 @@ class GrayScottModel():
         # defines parameters for du, dv, f, k
         # and passes them to program
         self.setSpecie(specie=self.specie)
-        self.dUMin = 0.1
-        self.dUMax = 2.0
-        self.dVMin = 0.1
-        self.dVMax = 2.0
+        self.dUMin = 0.2
+        self.dUMax = 1.3
+        self.dVMin = 0.2
+        self.dVMax = 1.3
 
         # Define a FrameBuffer to update model state in texture
         # --------------------------------------

@@ -101,6 +101,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.createMenuBar()
         self.createModelDock()
+        self.createDisplayDock()
         self.createLightingDock()
         self.createPearsonPatternDetailDock()
 
@@ -123,9 +124,67 @@ class MainWindow(QtWidgets.QMainWindow):
         topBox = QtWidgets.QGroupBox(self.lightingDock)
         topLayout = QtWidgets.QVBoxLayout(topBox)
 
-        colorMapBox = QtWidgets.QGroupBox("Colormap used", self.modelDock)
+        self.lightParameters = {}
+        for lightType in MainRenderer.lightingDictionnary.keys():
+            paramCount = 0
+            lightTypeBox = LightTypeGroupBox(lightType, self, 'on')
+            lightTypeLayout = QtWidgets.QGridLayout()
+            for param in MainRenderer.lightingDictionnary[lightType].keys():
+                lightTypeParam = MainRenderer.lightingDictionnary[lightType][param]
+                if lightTypeParam[1] == "bool":
+                    lightTypeBox.setCheckable(True)
+                    lightTypeBox.setChecked(lightTypeParam[0])
+                elif lightTypeParam[1] == "float":
+                    lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
+                    lightParamLabel = QtWidgets.QLabel(str(lightTypeParam[0]), lightTypeBox)
+                    lightTypeLayout.addWidget(lightParamLabel, paramCount, 1)
+                    paramCount += 1
+                    lightParamSlider = LightParamSlider(Qt.Horizontal, self, lightParamLabel, lightType, param)
+                    lightParamSlider.setMinimum(lightTypeParam[2])
+                    lightParamSlider.setMaximum(lightTypeParam[3])
+                    lightParamSlider.setValue(lightTypeParam[0])
+                    lightParamSlider.valueChanged.connect(lightParamSlider.updateLighting)
+                    lightTypeLayout.addWidget(lightParamSlider, paramCount, 0, 1, 2)
+                    paramCount += 1
+                elif lightTypeParam[1] == "int":
+                    lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
+                    lightSpinBox = LightParamSpinBox(self, lightType, param)
+                    lightSpinBox.setMinimum(lightTypeParam[2])
+                    lightSpinBox.setMaximum(lightTypeParam[3])
+                    lightSpinBox.setValue(lightTypeParam[0])
+                    lightSpinBox.setWrapping(True)
+                    lightSpinBox.valueChanged.connect(lightSpinBox.updateLighting)
+                    lightTypeLayout.addWidget(lightSpinBox, paramCount, 1)
+                    paramCount += 1
+                elif lightTypeParam[1] == "color":
+                    lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
+                    color = QColor(lightTypeParam[0][0]*255,
+                                   lightTypeParam[0][1]*255,
+                                   lightTypeParam[0][2]*255)
+                    colorButton = RoundedButton(lightType, self, 1, QColor(0,0,0), color)
+                    lightTypeLayout.addWidget(colorButton, paramCount, 1)
+
+                    paramCount += 1
+            lightTypeBox.setLayout(lightTypeLayout)
+            topLayout.addWidget(lightTypeBox)
+
+        topLayout.addStretch(1)
+        topBox.setLayout(topLayout)
+
+        self.lightingDock.setWidget(topBox)
+
+        self.panelMenu.addAction(self.lightingDock.toggleViewAction())
+
+    def createDisplayDock(self):
+        self.displayDock = QtWidgets.QDockWidget('Display settings', self)
+        self.displayDock.setFloating(True)
+
+        topBox = QtWidgets.QGroupBox(self.displayDock)
+        topLayout = QtWidgets.QVBoxLayout(topBox)
+
+        colorMapBox = QtWidgets.QGroupBox("Colormap", self.modelDock)
         colorMapLayout = QtWidgets.QVBoxLayout()
-        self.colorsComboBox = QtWidgets.QComboBox(self.modelDock)
+        self.colorsComboBox = QtWidgets.QComboBox(self.displayDock)
         colors = []
         for key in MainRenderer.colormapDictionnary.keys():
             colors.append(MainRenderer.colormapDictionnary[key])
@@ -138,79 +197,36 @@ class MainWindow(QtWidgets.QMainWindow):
         colorMapBox.setLayout(colorMapLayout)
         topLayout.addWidget(colorMapBox)
 
-        self.lightParameters = {}
-        for lightType in MainRenderer.lightingDictionnary.keys():
-            self.lightParameters[lightType] = {}
-            parameters = self.lightParameters[lightType]
-            paramCount = 0
-            lightTypeBox = LightTypeGroupBox(lightType, self, 'on')
-            lightTypeLayout = QtWidgets.QGridLayout()
-            for param in MainRenderer.lightingDictionnary[lightType].keys():
-                lightTypeParam = MainRenderer.lightingDictionnary[lightType][param]
-                if lightTypeParam[1] == "bool":
-                    parameters[param] = lightTypeBox
-                    parameters[param].setCheckable(True)
-                    parameters[param].setChecked(lightTypeParam[0])
-                    # parameters[param].toggled.connect(parameters[param].updateLighting)
+        reagentBox = QtWidgets.QGroupBox("Reagent", self.displayDock)
+        reagentLayout = QtWidgets.QHBoxLayout(reagentBox)
+        self.uReagentRadioButton = QtWidgets.QRadioButton('U', self.displayDock)
+        self.vReagentRadioButton = QtWidgets.QRadioButton('V', self.displayDock)
+        self.vReagentRadioButton.setChecked(True)
+        reagentLayout.addWidget(self.uReagentRadioButton)
+        reagentLayout.addWidget(self.vReagentRadioButton)
+        reagentBox.setLayout(reagentLayout)
+        topLayout.addWidget(reagentBox)
 
-                elif lightTypeParam[1] == "float":
-                    lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    lightSpinBox = LightParamDoubleSpinBox(self, lightType, param)
-                    parameters[param] = lightSpinBox
-                    parameters[param].setDecimals(5)
-                    parameters[param].setMinimum(lightTypeParam[2])
-                    parameters[param].setMaximum(lightTypeParam[3])
-                    parameters[param].setValue(lightTypeParam[0])
-                    parameters[param].setLocale(QLocale.C)
-                    parameters[param].setSingleStep((lightTypeParam[3] - lightTypeParam[2])/1000)
-                    lightTypeLayout.addWidget(parameters[param], paramCount, 1)
-                    parameters[param].valueChanged.connect(parameters[param].updateLighting)
-
-                    paramCount += 1
-                elif lightTypeParam[1] == "int":
-                    lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    lightSpinBox = LightParamSpinBox(self, lightType, param)
-                    parameters[param] = lightSpinBox
-                    parameters[param].setMinimum(lightTypeParam[2])
-                    parameters[param].setMaximum(lightTypeParam[3])
-                    parameters[param].setValue(lightTypeParam[0])
-                    parameters[param].setWrapping(True)
-                    lightTypeLayout.addWidget(parameters[param], paramCount, 1)
-                    parameters[param].valueChanged.connect(parameters[param].updateLighting)
-
-                    paramCount += 1
-                elif lightTypeParam[1] == "color":
-                    lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    color = QColor(lightTypeParam[0][0]*255,
-                                   lightTypeParam[0][1]*255,
-                                   lightTypeParam[0][2]*255)
-                    parameters[param] = RoundedButton(lightType, self, 1, QColor(0,0,0), color)
-                    lightTypeLayout.addWidget(parameters[param], paramCount, 1)
-
-                    paramCount += 1
-            lightTypeBox.setLayout(lightTypeLayout)
-            topLayout.addWidget(lightTypeBox)
-
-        displayBox = QtWidgets.QGroupBox("Display", self.lightingDock)
+        displayBox = QtWidgets.QGroupBox("Camera", self.displayDock)
         displayLayout = QtWidgets.QGridLayout(displayBox)
-        self.normalRadioButton = QtWidgets.QRadioButton('Normal', self.lightingDock)
-        self.shadowRadioButton = QtWidgets.QRadioButton('Shadowmap', self.lightingDock)
+        self.normalRadioButton = QtWidgets.QRadioButton('Normal', self.displayDock)
+        self.shadowRadioButton = QtWidgets.QRadioButton('Shadowmap', self.displayDock)
         self.normalRadioButton.setChecked(True)
         displayLayout.addWidget(self.normalRadioButton, 0, 0)
         displayLayout.addWidget(self.shadowRadioButton, 0, 1)
-        self.resetCameraButton = QtWidgets.QPushButton("Reset camera", self.lightingDock)
-        self.resetShadowButton = QtWidgets.QPushButton("Reset shadow", self.lightingDock)
+        self.resetCameraButton = QtWidgets.QPushButton("Reset camera", self.displayDock)
+        self.resetShadowButton = QtWidgets.QPushButton("Reset shadow", self.displayDock)
         displayLayout.addWidget(self.resetCameraButton, 1, 0)
         displayLayout.addWidget(self.resetShadowButton, 1, 1)
         displayBox.setLayout(displayLayout)
-
         topLayout.addWidget(displayBox)
+
         topLayout.addStretch(1)
         topBox.setLayout(topLayout)
 
-        self.lightingDock.setWidget(topBox)
+        self.displayDock.setWidget(topBox)
 
-        self.panelMenu.addAction(self.lightingDock.toggleViewAction())
+        self.panelMenu.addAction(self.displayDock.toggleViewAction())
 
     def createModelDock(self):
         self.modelDock = QtWidgets.QDockWidget('Model settings', self)
@@ -326,15 +342,6 @@ class MainWindow(QtWidgets.QMainWindow):
         fkLayout.addWidget(dVBox)
         fkBox.setLayout(fkLayout)
 
-        reagentBox = QtWidgets.QGroupBox("Reagent displayed", self.modelDock)
-        reagentLayout = QtWidgets.QHBoxLayout(reagentBox)
-        self.uReagentRadioButton = QtWidgets.QRadioButton('U', self.modelDock)
-        self.vReagentRadioButton = QtWidgets.QRadioButton('V', self.modelDock)
-        self.vReagentRadioButton.setChecked(True)
-        reagentLayout.addWidget(self.uReagentRadioButton)
-        reagentLayout.addWidget(self.vReagentRadioButton)
-        reagentBox.setLayout(reagentLayout)
-
         controlBox = QtWidgets.QGroupBox("Controls", self.modelDock)
         controlLayout = QtWidgets.QVBoxLayout()
         self.resetButton = QtWidgets.QPushButton("Reset", self.modelDock)
@@ -355,7 +362,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         topLayout.addWidget(pearsonsBox)
         topLayout.addWidget(fkBox)
-        topLayout.addWidget(reagentBox)
         topLayout.addWidget(controlBox)
         topLayout.addStretch(1)
         topBox.setLayout(topLayout)
@@ -507,6 +513,47 @@ class LightTypeGroupBox(QtWidgets.QGroupBox):
     @Slot(bool)
     def updateLighting(self, state):
         self.parent.canvas.mainRenderer.setLighting(self.title(), self.param, state)
+
+
+class LightParamSlider(QtWidgets.QSlider):
+    def __init__(self, orientation, parent, outputLabel, lightType, param):
+        super(LightParamSlider, self).__init__(orientation, parent)
+        super(LightParamSlider, self).setSingleStep(1)
+        self.lightType = lightType
+        self.param = param
+        self.parent = parent
+        self.outputLabel = outputLabel
+        self.outputLabel.setAlignment(Qt.AlignRight | Qt.AlignCenter)
+        self.outputFormat = "%3.2f"
+
+    def setMinimum(self, val):
+        self.vMin = val
+        super(LightParamSlider, self).setMinimum(0)
+
+    def setMaximum(self, val):
+        self.vMax = val
+        if self.vMax < 1.0:
+            self.outputFormat = "%1.4f"
+        elif self.vMax < 10.0:
+            self.outputFormat = "%1.2f"
+        else:
+            self.outputFormat = "%3.0f"
+        super(LightParamSlider, self).setMaximum(100)
+
+    def setValue(self, val):
+        self.outputLabel.setText(self.outputFormat % val)
+        value = int(100.0 * (val - self.vMin)/(self.vMax - self.vMin))
+        super(LightParamSlider, self).setValue(value)
+
+    def value(self):
+        value = super(LightParamSlider, self).value()
+        return ((float(value) / 100.0) * (self.vMax - self.vMin)) + self.vMin
+
+    @Slot(int)
+    def updateLighting(self, value):
+        value = self.value()
+        self.outputLabel.setText(self.outputFormat % value)
+        self.parent.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
 
 
 class LightParamDoubleSpinBox(QtWidgets.QDoubleSpinBox):
