@@ -197,6 +197,18 @@ class MainWindow(QtWidgets.QMainWindow):
         colorMapBox.setLayout(colorMapLayout)
         topLayout.addWidget(colorMapBox)
 
+        backgroundBox = QtWidgets.QGroupBox("Background", self.modelDock)
+        backgroundLayout = QtWidgets.QGridLayout()
+        backgroundLayout.addWidget(QtWidgets.QLabel("color", backgroundBox), 0, 0)
+        canvasColor = self.canvas.backgroundColor
+        color = QColor(canvasColor[0]*255,
+                       canvasColor[1]*255,
+                       canvasColor[2]*255)
+        colorButton = RoundedButton("background", self, 1, QColor(0,0,0), color)
+        backgroundLayout.addWidget(colorButton, 0, 1)
+        backgroundBox.setLayout(backgroundLayout)
+        topLayout.addWidget(backgroundBox)
+
         reagentBox = QtWidgets.QGroupBox("Reagent", self.displayDock)
         reagentLayout = QtWidgets.QHBoxLayout(reagentBox)
         self.uReagentRadioButton = QtWidgets.QRadioButton('U', self.displayDock)
@@ -463,12 +475,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription(specie=type))
         # WIP... Should add a red dot in chart, showing which pattern is
         # highlighted/selected
-        # if len(self.fkChart.series()) > 1:
-        #     self.fkChart.removeSeries(self.fkCurrentPoint)
-        # self.fkCurrentPoint = QScatterSeries()
-        # self.fkCurrentPoint.setColor(QColor('red'))
-        # self.fkCurrentPoint.append(self.canvas.grayScottModel.program["params"][3], self.canvas.grayScottModel.program["params"][2])
-        # self.fkChart.addSeries(self.fkCurrentPoint)
+        print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
+        if len(self.fkChart.series()) > 1:
+            self.fkChart.removeSeries(self.fkCurrentPoint)
+        self.fkCurrentPoint = QScatterSeries()
+        self.fkCurrentPoint.setColor(QColor('r'))
+        self.fkCurrentPoint.setMarkerSize(50)
+        self.fkCurrentPoint.append(self.canvas.grayScottModel.program["params"][3], self.canvas.grayScottModel.program["params"][2])
+        self.fkChart.addSeries(self.fkCurrentPoint)
+        self.fkChartView.setChart(self.fkChart)
+        print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
 
     def setFeedKillDials(self):
         self.feedDial.setValue(self.canvas.grayScottModel.program["params"][2]*1000)
@@ -595,7 +611,10 @@ class RoundedButton(QtWidgets.QPushButton):
         color = self.colorDialog.getColor(self.fillColor)
         if color.isValid():
             self.fillColor = color
-            self.parent.canvas.mainRenderer.setLighting(self.lightType, 'color', color.getRgbF())
+            if self.lightType == 'background':
+                self.parent.canvas.setBackgroundColor(color.getRgbF())
+            else:
+                self.parent.canvas.mainRenderer.setLighting(self.lightType, 'color', color.getRgbF())
 
     def paintEvent(self, event):
         # Create the painter

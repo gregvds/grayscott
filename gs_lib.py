@@ -220,7 +220,7 @@ linearSegmentedColormaps = {
         ],
         'nodes': [0.0, 0.4, 0.47, 0.5, 0.53, 0.6, 1.0]
     },
-    'Rejkjavik': {
+    'rejkjavik': {
         'colorList': [
             'rebeccapurple',
             'indigo',
@@ -306,7 +306,7 @@ linearSegmentedColormaps = {
 }
 
 stackedColormaps = {
-    'Boston': {
+    'boston': {
         'colorMapList': [
             'bone_r',
             'gray',

@@ -548,12 +548,12 @@ class MainRenderer(Renderer):
     """
 
     colormapDictionnary = {
-        '&': 'Boston',
+        '&': 'boston',
         'é': 'malmo_r',
         '"': 'papetee_r',
         '\'': 'oslo',
         '(': 'honolulu_r',
-        '§': 'Rejkjavik_r',
+        '§': 'rejkjavik_r',
         'è': 'antidetroit',
         '!': 'osmort',
         'ç': 'irkoutsk_r',
@@ -561,12 +561,12 @@ class MainRenderer(Renderer):
     }
 
     colormapDictionnaryShifted = {
-        '1': 'Boston_r',
+        '1': 'boston_r',
         '2': 'malmo',
         '3': 'papetee',
         '4': 'oslo_r',
         '5': 'honolulu',
-        '6': 'Rejkjavik',
+        '6': 'rejkjavik',
         '7': 'detroit',
         '8': 'tromso',
         '9': 'irkoutsk',
@@ -887,6 +887,7 @@ class Canvas(app.Canvas):
         self.pressed = False
 
         self.displaySwitch = 0
+        self.backgroundColor = (0.30, 0.30, 0.35, 1.00)
 
         # ? better computation ?
         # --------------------------------------
@@ -894,7 +895,7 @@ class Canvas(app.Canvas):
 
         # OpenGL initialization
         # --------------------------------------
-        gloo.set_state(clear_color=(0.30, 0.30, 0.35, 1.00), depth_test=True,
+        gloo.set_state(clear_color=self.backgroundColor, depth_test=True,
                        line_width=0.75)
 
         self.activate_zoom()
@@ -925,7 +926,7 @@ class Canvas(app.Canvas):
         if self.displaySwitch == 0:
             gloo.set_viewport(0, 0, self.physical_size[0], self.physical_size[1])
             gloo.set_state(blend=False, depth_test=True,
-                           clear_color=(0.30, 0.30, 0.35, 1.00),
+                           clear_color=self.backgroundColor,
                            blend_func=('src_alpha', 'one_minus_src_alpha'),
                            polygon_offset=(1, 1),
                            polygon_offset_fill=True)
@@ -1030,6 +1031,12 @@ class Canvas(app.Canvas):
         Toggles between mainRenderer display and shadowRenderer display.
         """
         self.displaySwitch = (self.displaySwitch + 1) % 2
+
+    def setBackgroundColor(self, color=None):
+        """
+        Set Canvas background color.
+        """
+        self.backgroundColor = color or self.backgroundColor
 
     def measure_fps2(self, window=1, callback=' %1.1f FPS                   '):
         """Measure the current FPS
