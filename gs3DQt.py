@@ -113,18 +113,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status.addWidget(self.status_label)
 
     def createMenuBar(self):
+        """
+        Creates menubar and menus.
+        """
         self.menuBar = QtWidgets.QMenuBar()
         self.panelMenu = QtWidgets.QMenu("Panels")
         self.menuBar.addMenu(self.panelMenu)
 
-    def createLightingDock(self):
+    def createLightingDock(self, visible=True):
+        """
+        Creates dock with lighting parameters of the 3D model.
+        These are read from MainRenderer lightingDictionnary and produce the
+        appropriate groupbox and widgets in it.
+        """
         self.lightingDock = QtWidgets.QDockWidget('Lighting settings', self)
         self.lightingDock.setFloating(True)
-
+        self.lightingDock.setVisible(visible)
         topBox = QtWidgets.QGroupBox(self.lightingDock)
         topLayout = QtWidgets.QVBoxLayout(topBox)
 
-        self.lightParameters = {}
+        # --------------------------------------
         for lightType in MainRenderer.lightingDictionnary.keys():
             paramCount = 0
             lightTypeBox = LightTypeGroupBox(lightType, self, 'on')
@@ -136,10 +144,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     lightTypeBox.setChecked(lightTypeParam[0])
                 elif lightTypeParam[1] == "float":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    lightParamLabel = QtWidgets.QLabel(str(lightTypeParam[0]), lightTypeBox)
-                    lightTypeLayout.addWidget(lightParamLabel, paramCount, 1)
+                    lightParamValueLabel = QtWidgets.QLabel(str(lightTypeParam[0]), lightTypeBox)
+                    lightTypeLayout.addWidget(lightParamValueLabel, paramCount, 1)
                     paramCount += 1
-                    lightParamSlider = LightParamSlider(Qt.Horizontal, self, lightParamLabel, lightType, param)
+                    lightParamSlider = LightParamSlider(Qt.Horizontal, self, lightParamValueLabel, lightType, param)
                     lightParamSlider.setMinimum(lightTypeParam[2])
                     lightParamSlider.setMaximum(lightTypeParam[3])
                     lightParamSlider.setValue(lightTypeParam[0])
@@ -163,25 +171,29 @@ class MainWindow(QtWidgets.QMainWindow):
                                    lightTypeParam[0][2]*255)
                     colorButton = RoundedButton(lightType, self, 1, QColor(0,0,0), color)
                     lightTypeLayout.addWidget(colorButton, paramCount, 1)
-
                     paramCount += 1
             lightTypeBox.setLayout(lightTypeLayout)
             topLayout.addWidget(lightTypeBox)
 
+        # --------------------------------------
         topLayout.addStretch(1)
         topBox.setLayout(topLayout)
-
         self.lightingDock.setWidget(topBox)
-
         self.panelMenu.addAction(self.lightingDock.toggleViewAction())
 
-    def createDisplayDock(self):
+    def createDisplayDock(self, visible=True):
+        """
+        Creates dock with Disply parameters of the 3D model.
+        Here are defined the colormap, background, choice of reagents and Camera
+        widgets.
+        """
         self.displayDock = QtWidgets.QDockWidget('Display settings', self)
         self.displayDock.setFloating(True)
-
+        self.displayDock.setVisible(visible)
         topBox = QtWidgets.QGroupBox(self.displayDock)
         topLayout = QtWidgets.QVBoxLayout(topBox)
 
+        # --------------------------------------
         colorMapBox = QtWidgets.QGroupBox("Colormap", self.modelDock)
         colorMapLayout = QtWidgets.QVBoxLayout()
         self.colorsComboBox = QtWidgets.QComboBox(self.displayDock)
@@ -197,6 +209,7 @@ class MainWindow(QtWidgets.QMainWindow):
         colorMapBox.setLayout(colorMapLayout)
         topLayout.addWidget(colorMapBox)
 
+        # --------------------------------------
         backgroundBox = QtWidgets.QGroupBox("Background", self.modelDock)
         backgroundLayout = QtWidgets.QGridLayout()
         backgroundLayout.addWidget(QtWidgets.QLabel("color", backgroundBox), 0, 0)
@@ -209,6 +222,7 @@ class MainWindow(QtWidgets.QMainWindow):
         backgroundBox.setLayout(backgroundLayout)
         topLayout.addWidget(backgroundBox)
 
+        # --------------------------------------
         reagentBox = QtWidgets.QGroupBox("Reagent", self.displayDock)
         reagentLayout = QtWidgets.QHBoxLayout(reagentBox)
         self.uReagentRadioButton = QtWidgets.QRadioButton('U', self.displayDock)
@@ -219,6 +233,7 @@ class MainWindow(QtWidgets.QMainWindow):
         reagentBox.setLayout(reagentLayout)
         topLayout.addWidget(reagentBox)
 
+        # --------------------------------------
         displayBox = QtWidgets.QGroupBox("Camera", self.displayDock)
         displayLayout = QtWidgets.QGridLayout(displayBox)
         self.normalRadioButton = QtWidgets.QRadioButton('Normal', self.displayDock)
@@ -233,20 +248,24 @@ class MainWindow(QtWidgets.QMainWindow):
         displayBox.setLayout(displayLayout)
         topLayout.addWidget(displayBox)
 
+        # --------------------------------------
         topLayout.addStretch(1)
         topBox.setLayout(topLayout)
-
         self.displayDock.setWidget(topBox)
-
         self.panelMenu.addAction(self.displayDock.toggleViewAction())
 
-    def createModelDock(self):
+    def createModelDock(self, visible=True):
+        """
+        Creates dock that holds parameters of the reaction-diffusion and Some
+        parameters of the cycling of it.
+        """
         self.modelDock = QtWidgets.QDockWidget('Model settings', self)
         self.modelDock.setFloating(True)
-
+        self.modelDock.setVisible(visible)
         topBox = QtWidgets.QGroupBox(self.modelDock)
         topLayout = QtWidgets.QVBoxLayout(topBox)
 
+        # --------------------------------------
         pearsonsBox = QtWidgets.QGroupBox("Pearson' pattern", self.modelDock)
         pearsonsLayout = QtWidgets.QVBoxLayout()
         self.pearsonsPatternsComboBox = QtWidgets.QComboBox(self.modelDock)
@@ -260,7 +279,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pearsonsPatternsComboBox.setCurrentText(self.canvas.grayScottModel.specie)
         pearsonsLayout.addWidget(self.pearsonsPatternsComboBox)
         pearsonsBox.setLayout(pearsonsLayout)
+        topLayout.addWidget(pearsonsBox)
 
+        # --------------------------------------
         fkBox = QtWidgets.QGroupBox(self.modelDock)
         fkLayout = QtWidgets.QVBoxLayout()
 
@@ -269,7 +290,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fLayout.addWidget(QtWidgets.QLabel("Feed", fBox), 0, 0)
         feedParamLabel = QtWidgets.QLabel("", fBox)
         fLayout.addWidget(feedParamLabel, 0, 1)
-        self.feedParamSlider = ParamSlider(Qt.Horizontal, self, feedParamLabel, "feed")
+        self.feedParamSlider = ParamSlider(Qt.Horizontal, self, feedParamLabel, "feed", 1000.0)
         self.feedParamSlider.setMinimum(self.canvas.grayScottModel.fMin)
         self.feedParamSlider.setMaximum(self.canvas.grayScottModel.fMax)
         self.feedParamSlider.setValue(self.canvas.grayScottModel.program["params"][2])
@@ -283,7 +304,7 @@ class MainWindow(QtWidgets.QMainWindow):
         kLayout.addWidget(QtWidgets.QLabel("kill", kBox), 0, 0)
         killParamLabel = QtWidgets.QLabel("", kBox)
         kLayout.addWidget(killParamLabel, 0, 1)
-        self.killParamSlider = ParamSlider(Qt.Horizontal, self, killParamLabel, "kill")
+        self.killParamSlider = ParamSlider(Qt.Horizontal, self, killParamLabel, "kill", 1000.0)
         self.killParamSlider.setMinimum(self.canvas.grayScottModel.kMin)
         self.killParamSlider.setMaximum(self.canvas.grayScottModel.kMax)
         self.killParamSlider.setValue(self.canvas.grayScottModel.program["params"][3])
@@ -297,7 +318,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dULayout.addWidget(QtWidgets.QLabel("dU", dUBox), 0, 0)
         dUParamLabel = QtWidgets.QLabel("", dUBox)
         dULayout.addWidget(dUParamLabel, 0, 1)
-        self.dUParamSlider = ParamSlider(Qt.Horizontal, self, dUParamLabel, "dU")
+        self.dUParamSlider = ParamSlider(Qt.Horizontal, self, dUParamLabel, "dU", 1000.0)
         self.dUParamSlider.setMinimum(self.canvas.grayScottModel.dUMin)
         self.dUParamSlider.setMaximum(self.canvas.grayScottModel.dUMax)
         self.dUParamSlider.setValue(self.canvas.grayScottModel.program["params"][0])
@@ -311,7 +332,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dVLayout.addWidget(QtWidgets.QLabel("dV", dVBox), 0, 0)
         dVParamLabel = QtWidgets.QLabel("", dVBox)
         dVLayout.addWidget(dVParamLabel, 0, 1)
-        self.dVParamSlider = ParamSlider(Qt.Horizontal, self, dVParamLabel, "dV")
+        self.dVParamSlider = ParamSlider(Qt.Horizontal, self, dVParamLabel, "dV", 1000.0)
         self.dVParamSlider.setMinimum(self.canvas.grayScottModel.dVMin)
         self.dVParamSlider.setMaximum(self.canvas.grayScottModel.dVMax)
         self.dVParamSlider.setValue(self.canvas.grayScottModel.program["params"][1])
@@ -325,7 +346,9 @@ class MainWindow(QtWidgets.QMainWindow):
         fkLayout.addWidget(dUBox)
         fkLayout.addWidget(dVBox)
         fkBox.setLayout(fkLayout)
+        topLayout.addWidget(fkBox)
 
+        # --------------------------------------
         controlBox = QtWidgets.QGroupBox("Controls", self.modelDock)
         controlLayout = QtWidgets.QVBoxLayout()
         self.resetButton = QtWidgets.QPushButton("Reset", self.modelDock)
@@ -343,28 +366,37 @@ class MainWindow(QtWidgets.QMainWindow):
         cyclesBox.setLayout(cyclesLayout)
         controlLayout.addWidget(cyclesBox)
         controlBox.setLayout(controlLayout)
-
-        topLayout.addWidget(pearsonsBox)
-        topLayout.addWidget(fkBox)
         topLayout.addWidget(controlBox)
+
+        # --------------------------------------
         topLayout.addStretch(1)
         topBox.setLayout(topLayout)
-
         self.modelDock.setWidget(topBox)
-
         self.panelMenu.addAction(self.modelDock.toggleViewAction())
 
-    def createPearsonPatternDetailDock(self):
+    def createPearsonPatternDetailDock(self, visible=True):
+        """
+        Creates dock that display a 'phase diagram' showing all the Pearson'
+        patterns aswell as a short description of the current used one below it.
+        WIP this should in the end highlight in the diagram the one used
+        WIP the diagram could also let one be picked, or any values pair(kill - feed)
+        where clicked
+        WIP diagram should plot greek letter and not plain circles
+        """
         self.pPDetailsDock = QtWidgets.QDockWidget('Pearson\' pattern Details', self)
         self.pPDetailsDock.setFloating(True)
-
+        self.pPDetailsDock.setVisible(visible)
         topBox = QtWidgets.QGroupBox("", self.pPDetailsDock)
         topLayout = QtWidgets.QVBoxLayout(topBox)
+
+        # --------------------------------------
         self.pPDetailsLabel = QtWidgets.QLabel()
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
 
+        # --------------------------------------
         self.fkChart = QChart()
         self.fkPoints = QScatterSeries()
+        self.fkPoints.setPointLabelsVisible(True)
         for specie in GrayScottModel.species.keys():
             feed = GrayScottModel.species[specie][2]
             kill = GrayScottModel.species[specie][3]
@@ -383,19 +415,24 @@ class MainWindow(QtWidgets.QMainWindow):
         axisY.setTickInterval(0.02)
         axisY.setTickCount(7)
         axisY.setRange(0.0,0.12)
-
         # WIP... Far from perfect. I would like to have a square Scatter plot,
         # which width and height adapt to the width of the description, even when
         # description is narrow. This should force the Chart to shrink, square...
-        self.fkChart.setMinimumHeight(self.pPDetailsLabel.size().width())
-        self.fkChart.setMaximumHeight(self.pPDetailsLabel.size().width())
+        # self.fkChart.setMinimumHeight(self.pPDetailsLabel.size().width())
+        # self.fkChart.setMaximumHeight(self.pPDetailsLabel.size().width())
+        # self.fkChart.setMinimumWidth(self.pPDetailsLabel.size().width())
+        # self.fkChart.setMaximumWidth(self.pPDetailsLabel.size().width())
+        # self.fkChart.setPlotArea(QRectF(25.0, 25.0, self.pPDetailsLabel.size().width()-50.0, self.pPDetailsLabel.size().width()-50.0))
         p = self.fkChart.sizePolicy()
         p.setHeightForWidth(True)
         self.fkChart.setSizePolicy(p)
-
+        # self.fkChart.setPlotArea(QRectF())
         self.fkChartView = QChartView(self.fkChart)
+        self.fkChartView.setMinimumHeight(self.pPDetailsLabel.size().width())
+        self.fkChartView.setMaximumHeight(self.pPDetailsLabel.size().width())
+        self.fkChartView.setMinimumWidth(self.pPDetailsLabel.size().width())
+        self.fkChartView.setMaximumWidth(self.pPDetailsLabel.size().width())
         self.fkChartView.setRenderHint(QPainter.Antialiasing)
-
         topLayout.addWidget(self.fkChartView)
 
         # TODO, have the current selected pattern corresponding point plotted in
@@ -404,14 +441,17 @@ class MainWindow(QtWidgets.QMainWindow):
         # TODO, have a clicked/selected point/symbol to switch the pattern used,
         # adapt dials, values and description...
 
+        # --------------------------------------
         topLayout.addWidget(self.pPDetailsLabel)
         topBox.setLayout(topLayout)
-
         self.pPDetailsDock.setWidget(topBox)
-
         self.panelMenu.addAction(self.pPDetailsDock.toggleViewAction())
 
     def connectSignals(self):
+        """
+        Connects signals that still need to be connected after creation of all
+        the docks.
+        """
         self.colorsComboBox.textActivated[str].connect(self.canvas.mainRenderer.setColorMap)
         self.colorsComboBox.textActivated[str].emit(self.colorsComboBox.currentText())
 
@@ -439,29 +479,49 @@ class MainWindow(QtWidgets.QMainWindow):
     @Slot()
     @Slot(str)
     def setPearsonsPatternDetails(self, type=None):
+        """
+        Updates the pattern description.
+        WIP should also update the highlighted circle in the phase diagram
+        """
+        self.fkChartView.hide()
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription(specie=type))
+        self.fkChartView.setMinimumHeight(self.pPDetailsLabel.size().width())
+        self.fkChartView.setMaximumHeight(self.pPDetailsLabel.size().width())
+        self.fkChartView.setMinimumWidth(self.pPDetailsLabel.size().width())
+        self.fkChartView.setMaximumWidth(self.pPDetailsLabel.size().width())
+        self.fkChartView.show()
         # WIP... Should add a red dot in chart, showing which pattern is
         # highlighted/selected
         # print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
-        if len(self.fkChart.series()) > 1:
-            self.fkChart.removeSeries(self.fkCurrentPoint)
-        self.fkCurrentPoint = QScatterSeries()
-        self.fkCurrentPoint.setColor(QColor('r'))
-        self.fkCurrentPoint.setMarkerSize(50)
-        self.fkCurrentPoint.append(self.canvas.grayScottModel.program["params"][3], self.canvas.grayScottModel.program["params"][2])
-        self.fkChart.addSeries(self.fkCurrentPoint)
-        self.fkChartView.setChart(self.fkChart)
+        # if len(self.fkChart.series()) > 1:
+        #     self.fkChart.removeSeries(self.fkCurrentPoint)
+        #     # print(self.fkChart.series()[0].points())
+        # self.fkCurrentPoint = QScatterSeries()
+        # self.fkCurrentPoint.setColor(QColor('r'))
+        # self.fkCurrentPoint.setMarkerSize(50)
+        # self.fkCurrentPoint.append(self.canvas.grayScottModel.program["params"][3], self.canvas.grayScottModel.program["params"][2])
+        # self.fkChart.addSeries(self.fkCurrentPoint)
+        # self.fkChartView.setChart(self.fkChart)
         # WHY ON EARTH does this second serie not appear in the Chart?!?!
         # print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
 
     def setFeedKillDials(self):
+        """
+        Set the values of model parameters slider after change in the model
+        """
         self.feedParamSlider.setValue(self.canvas.grayScottModel.program["params"][2])
         self.killParamSlider.setValue(self.canvas.grayScottModel.program["params"][3])
 
     def updateCycle(self):
+        """
+        Update number of supplementary render cycles per frame
+        """
         self.cycles.setText(str(2*self.canvas.grayScottModel.cycle))
 
     def show_fps(self, fps):
+        """
+        Shows FPS in status bar.
+        """
         msg = " FPS - %0.2f" % float(fps)
         # NOTE: We can't use showMessage in PyQt5 because it causes
         #       a draw event loop (show_fps for every drawing event,
@@ -472,6 +532,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 class LightTypeGroupBox(QtWidgets.QGroupBox):
+    """
+    Simple GroupBox that keep a reference of the parameter it concerns.
+    Its toggling toggles too the proper lighting parameter in the MainRenderer
+    of the model.
+    """
     def __init__(self, title, parent, param):
         super(LightTypeGroupBox, self).__init__(title, parent)
         self.param = param
@@ -484,11 +549,16 @@ class LightTypeGroupBox(QtWidgets.QGroupBox):
 
 
 class ParamSlider(QtWidgets.QSlider):
-    def __init__(self, orientation, parent, outputLabel, param):
+    """
+    Simple slider that handles floating values and has a slot to update the
+    corresponding parameter in the canvas grayScottModel.
+    """
+    def __init__(self, orientation, parent, outputLabel, param, resolution):
         super(ParamSlider, self).__init__(orientation, parent)
         super(ParamSlider, self).setSingleStep(1)
         self.param = param
         self.parent = parent
+        self.resolution = resolution
         self.outputLabel = outputLabel
         self.outputLabel.setAlignment(Qt.AlignRight | Qt.AlignCenter)
         self.outputFormat = "%1.3f"
@@ -499,16 +569,16 @@ class ParamSlider(QtWidgets.QSlider):
 
     def setMaximum(self, val):
         self.vMax = val
-        super(ParamSlider, self).setMaximum(1000)
+        super(ParamSlider, self).setMaximum(self.resolution)
 
     def setValue(self, val):
         self.outputLabel.setText(self.outputFormat % val)
-        value = int(1000.0 * (val - self.vMin)/(self.vMax - self.vMin))
+        value = int(self.resolution * (val - self.vMin)/(self.vMax - self.vMin))
         super(ParamSlider, self).setValue(value)
 
     def value(self):
         value = super(ParamSlider, self).value()
-        return ((float(value) / 1000.0) * (self.vMax - self.vMin)) + self.vMin
+        return ((float(value) / self.resolution) * (self.vMax - self.vMin)) + self.vMin
 
     @Slot(int)
     def updateParam(self, val):
@@ -590,6 +660,10 @@ class LightParamSpinBox(QtWidgets.QSpinBox):
 
 
 class RoundedButton(QtWidgets.QPushButton):
+    """
+    Button that represents a color and opens a QColorDialog on its click.
+    Updates the color of the canvas/mainRenderer according to lightType.
+    """
     def __init__(self, text, parent, bordersize, outlineColor, fillColor):
         super(RoundedButton, self).__init__()
         self.bordersize = bordersize
@@ -636,6 +710,9 @@ class RoundedButton(QtWidgets.QPushButton):
 
 
 class FkPoint(QPointF):
+    """
+    WIP a QpointF that knows its name and symbol to used as marker
+    """
     def __init__(self, xpos, ypos, name, symbol):
         super(FkPoint, self).__init__(xpos, ypos)
         self.name = name
@@ -643,6 +720,9 @@ class FkPoint(QPointF):
 
 
 class SquareLayout(QtWidgets.QLayout):
+    """
+    WIP layout to have a square proportions phase diagram
+    """
     def __init__(self, parent):
         super(SquareLayout, parent)
 
