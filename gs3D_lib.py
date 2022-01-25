@@ -588,8 +588,8 @@ class MainRenderer(Renderer):
         },
         "diffuse": {
             "on": [True, "bool"],
-            "intensity": [1.0, "float", 0.0, 1.0],
-            "color": [[1., 1., .9, 1.], "color"]
+            "color": [[1., 1., .9, 1.], "color"],
+            "intensity": [1.0, "float", 0.0, 1.0]
         },
         "specular": {
             "on": [True, "bool"],

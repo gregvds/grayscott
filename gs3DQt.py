@@ -265,87 +265,59 @@ class MainWindow(QtWidgets.QMainWindow):
         fkLayout = QtWidgets.QVBoxLayout()
 
         fBox = QtWidgets.QGroupBox(self.modelDock)
-        fLayout = QtWidgets.QHBoxLayout()
-        flabelValueBox = QtWidgets.QGroupBox(self.modelDock)
-        flabelValueBox.setFlat(True)
-        flabelValueLayout = QtWidgets.QVBoxLayout()
-        fLabel = QtWidgets.QLabel("Feed")
-        self.fValue = QtWidgets.QLabel("")
-        self.fValue.setText(str(self.canvas.grayScottModel.program["params"][2]))
-        flabelValueLayout.addWidget(fLabel)
-        flabelValueLayout.addWidget(self.fValue)
-        flabelValueBox.setLayout(flabelValueLayout)
-        fLayout.addWidget(flabelValueBox)
-        self.feedDial = QtWidgets.QDial(self.modelDock)
-        self.feedDial.setMinimum(self.canvas.grayScottModel.fMin*1000)
-        self.feedDial.setMaximum(self.canvas.grayScottModel.fMax*1000)
-        self.feedDial.setValue(self.canvas.grayScottModel.program["params"][2]*1000)
-        self.feedDial.setSingleStep(1)
-        fLayout.addWidget(self.feedDial)
-        fLayout.setStretchFactor(self.feedDial, 2)
+        fLayout = QtWidgets.QGridLayout()
+        fLayout.addWidget(QtWidgets.QLabel("Feed", fBox), 0, 0)
+        feedParamLabel = QtWidgets.QLabel("", fBox)
+        fLayout.addWidget(feedParamLabel, 0, 1)
+        self.feedParamSlider = ParamSlider(Qt.Horizontal, self, feedParamLabel, "feed")
+        self.feedParamSlider.setMinimum(self.canvas.grayScottModel.fMin)
+        self.feedParamSlider.setMaximum(self.canvas.grayScottModel.fMax)
+        self.feedParamSlider.setValue(self.canvas.grayScottModel.program["params"][2])
+        self.feedParamSlider.updateParam(0)
+        self.feedParamSlider.valueChanged.connect(self.feedParamSlider.updateParam)
+        fLayout.addWidget(self.feedParamSlider, 1, 0, 1, 2)
         fBox.setLayout(fLayout)
 
         kBox = QtWidgets.QGroupBox(self.modelDock)
-        kLayout = QtWidgets.QHBoxLayout()
-        klabelValueBox = QtWidgets.QGroupBox(self.modelDock)
-        klabelValueBox.setFlat(True)
-        klabelValueLayout = QtWidgets.QVBoxLayout()
-        kLabel = QtWidgets.QLabel("Kill")
-        self.kValue = QtWidgets.QLabel("")
-        self.kValue.setText(str(self.canvas.grayScottModel.program["params"][3]))
-        klabelValueLayout.addWidget(kLabel)
-        klabelValueLayout.addWidget(self.kValue)
-        klabelValueBox.setLayout(klabelValueLayout)
-        kLayout.addWidget(klabelValueBox)
-        self.killDial = QtWidgets.QDial(self.modelDock)
-        self.killDial.setMinimum(self.canvas.grayScottModel.kMin*1000)
-        self.killDial.setMaximum(self.canvas.grayScottModel.kMax*1000)
-        self.killDial.setValue(self.canvas.grayScottModel.program["params"][3]*1000)
-        self.killDial.setSingleStep(1)
-        kLayout.addWidget(self.killDial)
-        kLayout.setStretchFactor(self.killDial, 2)
+        kLayout = QtWidgets.QGridLayout()
+        kLayout.addWidget(QtWidgets.QLabel("kill", kBox), 0, 0)
+        killParamLabel = QtWidgets.QLabel("", kBox)
+        kLayout.addWidget(killParamLabel, 0, 1)
+        self.killParamSlider = ParamSlider(Qt.Horizontal, self, killParamLabel, "kill")
+        self.killParamSlider.setMinimum(self.canvas.grayScottModel.kMin)
+        self.killParamSlider.setMaximum(self.canvas.grayScottModel.kMax)
+        self.killParamSlider.setValue(self.canvas.grayScottModel.program["params"][3])
+        self.killParamSlider.updateParam(0)
+        self.killParamSlider.valueChanged.connect(self.killParamSlider.updateParam)
+        kLayout.addWidget(self.killParamSlider, 1, 0, 1, 2)
         kBox.setLayout(kLayout)
 
         dUBox = QtWidgets.QGroupBox(self.modelDock)
-        dULayout = QtWidgets.QHBoxLayout()
-        dUlabelValueBox = QtWidgets.QGroupBox(self.modelDock)
-        dUlabelValueBox.setFlat(True)
-        dUlabelValueLayout = QtWidgets.QVBoxLayout()
-        dULabel = QtWidgets.QLabel("dU")
-        self.dUValue = QtWidgets.QLabel("")
-        self.dUValue.setText(str(self.canvas.grayScottModel.program["params"][0]))
-        dUlabelValueLayout.addWidget(dULabel)
-        dUlabelValueLayout.addWidget(self.dUValue)
-        dUlabelValueBox.setLayout(dUlabelValueLayout)
-        dULayout.addWidget(dUlabelValueBox)
-        self.dUDial = QtWidgets.QDial(self.modelDock)
-        self.dUDial.setMinimum(self.canvas.grayScottModel.dUMin*100)
-        self.dUDial.setMaximum(self.canvas.grayScottModel.dUMax*100)
-        self.dUDial.setValue(self.canvas.grayScottModel.program["params"][0]*100)
-        self.dUDial.setSingleStep(1)
-        dULayout.addWidget(self.dUDial)
-        dULayout.setStretchFactor(self.dUDial, 2)
+        dULayout = QtWidgets.QGridLayout()
+        dULayout.addWidget(QtWidgets.QLabel("dU", dUBox), 0, 0)
+        dUParamLabel = QtWidgets.QLabel("", dUBox)
+        dULayout.addWidget(dUParamLabel, 0, 1)
+        self.dUParamSlider = ParamSlider(Qt.Horizontal, self, dUParamLabel, "dU")
+        self.dUParamSlider.setMinimum(self.canvas.grayScottModel.dUMin)
+        self.dUParamSlider.setMaximum(self.canvas.grayScottModel.dUMax)
+        self.dUParamSlider.setValue(self.canvas.grayScottModel.program["params"][0])
+        self.dUParamSlider.updateParam(0)
+        self.dUParamSlider.valueChanged.connect(self.dUParamSlider.updateParam)
+        dULayout.addWidget(self.dUParamSlider, 1, 0, 1, 2)
         dUBox.setLayout(dULayout)
 
         dVBox = QtWidgets.QGroupBox(self.modelDock)
-        dVLayout = QtWidgets.QHBoxLayout()
-        dVlabelValueBox = QtWidgets.QGroupBox(self.modelDock)
-        dVlabelValueBox.setFlat(True)
-        dVlabelValueLayout = QtWidgets.QVBoxLayout()
-        dVLabel = QtWidgets.QLabel("dV")
-        self.dVValue = QtWidgets.QLabel("")
-        self.dVValue.setText(str(self.canvas.grayScottModel.program["params"][1]))
-        dVlabelValueLayout.addWidget(dVLabel)
-        dVlabelValueLayout.addWidget(self.dVValue)
-        dVlabelValueBox.setLayout(dVlabelValueLayout)
-        dVLayout.addWidget(dVlabelValueBox)
-        self.dVDial = QtWidgets.QDial(self.modelDock)
-        self.dVDial.setMinimum(self.canvas.grayScottModel.dVMin*100)
-        self.dVDial.setMaximum(self.canvas.grayScottModel.dVMax*100)
-        self.dVDial.setValue(self.canvas.grayScottModel.program["params"][1]*100)
-        self.dVDial.setSingleStep(1)
-        dVLayout.addWidget(self.dVDial)
-        dVLayout.setStretchFactor(self.dVDial, 2)
+        dVLayout = QtWidgets.QGridLayout()
+        dVLayout.addWidget(QtWidgets.QLabel("dV", dVBox), 0, 0)
+        dVParamLabel = QtWidgets.QLabel("", dVBox)
+        dVLayout.addWidget(dVParamLabel, 0, 1)
+        self.dVParamSlider = ParamSlider(Qt.Horizontal, self, dVParamLabel, "dV")
+        self.dVParamSlider.setMinimum(self.canvas.grayScottModel.dVMin)
+        self.dVParamSlider.setMaximum(self.canvas.grayScottModel.dVMax)
+        self.dVParamSlider.setValue(self.canvas.grayScottModel.program["params"][1])
+        self.dVParamSlider.updateParam(0)
+        self.dVParamSlider.valueChanged.connect(self.dVParamSlider.updateParam)
+        dVLayout.addWidget(self.dVParamSlider, 1, 0, 1, 2)
         dVBox.setLayout(dVLayout)
 
         fkLayout.addWidget(fBox)
@@ -444,9 +416,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.colorsComboBox.textActivated[str].emit(self.colorsComboBox.currentText())
 
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.canvas.grayScottModel.setSpecie)
-        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.setPearsonsPatternDetails)
         self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
+        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
         self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setPearsonsPatternDetails)
         self.pearsonsPatternsComboBox.textHighlighted[str].emit(self.pearsonsPatternsComboBox.currentText())
 
@@ -464,18 +436,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resetCameraButton.clicked.connect(self.canvas.mainRenderer.resetCamera)
         self.resetShadowButton.clicked.connect(self.canvas.mainRenderer.resetLight)
 
-        self.feedDial.valueChanged.connect(self.setF)
-        self.killDial.valueChanged.connect(self.setK)
-        self.dUDial.valueChanged.connect(self.setDU)
-        self.dVDial.valueChanged.connect(self.setDV)
-
     @Slot()
     @Slot(str)
     def setPearsonsPatternDetails(self, type=None):
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription(specie=type))
         # WIP... Should add a red dot in chart, showing which pattern is
         # highlighted/selected
-        print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
+        # print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
         if len(self.fkChart.series()) > 1:
             self.fkChart.removeSeries(self.fkCurrentPoint)
         self.fkCurrentPoint = QScatterSeries()
@@ -484,27 +451,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fkCurrentPoint.append(self.canvas.grayScottModel.program["params"][3], self.canvas.grayScottModel.program["params"][2])
         self.fkChart.addSeries(self.fkCurrentPoint)
         self.fkChartView.setChart(self.fkChart)
-        print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
+        # WHY ON EARTH does this second serie not appear in the Chart?!?!
+        # print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
 
     def setFeedKillDials(self):
-        self.feedDial.setValue(self.canvas.grayScottModel.program["params"][2]*1000)
-        self.killDial.setValue(self.canvas.grayScottModel.program["params"][3]*1000)
-
-    def setF(self, val):
-        self.canvas.grayScottModel.setParams(feed=val/1000.0)
-        self.fValue.setText(str(val/1000.0))
-
-    def setK(self, val):
-        self.canvas.grayScottModel.setParams(kill=val/1000.0)
-        self.kValue.setText(str(val/1000.0))
-
-    def setDU(self, val):
-        self.canvas.grayScottModel.setParams(dU=val/100.0)
-        self.dUValue.setText(str(val/100.0))
-
-    def setDV(self, val):
-        self.canvas.grayScottModel.setParams(dV=val/100.0)
-        self.dVValue.setText(str(val/100.0))
+        self.feedParamSlider.setValue(self.canvas.grayScottModel.program["params"][2])
+        self.killParamSlider.setValue(self.canvas.grayScottModel.program["params"][3])
 
     def updateCycle(self):
         self.cycles.setText(str(2*self.canvas.grayScottModel.cycle))
@@ -529,6 +481,47 @@ class LightTypeGroupBox(QtWidgets.QGroupBox):
     @Slot(bool)
     def updateLighting(self, state):
         self.parent.canvas.mainRenderer.setLighting(self.title(), self.param, state)
+
+
+class ParamSlider(QtWidgets.QSlider):
+    def __init__(self, orientation, parent, outputLabel, param):
+        super(ParamSlider, self).__init__(orientation, parent)
+        super(ParamSlider, self).setSingleStep(1)
+        self.param = param
+        self.parent = parent
+        self.outputLabel = outputLabel
+        self.outputLabel.setAlignment(Qt.AlignRight | Qt.AlignCenter)
+        self.outputFormat = "%1.3f"
+
+    def setMinimum(self, val):
+        self.vMin = val
+        super(ParamSlider, self).setMinimum(0)
+
+    def setMaximum(self, val):
+        self.vMax = val
+        super(ParamSlider, self).setMaximum(1000)
+
+    def setValue(self, val):
+        self.outputLabel.setText(self.outputFormat % val)
+        value = int(1000.0 * (val - self.vMin)/(self.vMax - self.vMin))
+        super(ParamSlider, self).setValue(value)
+
+    def value(self):
+        value = super(ParamSlider, self).value()
+        return ((float(value) / 1000.0) * (self.vMax - self.vMin)) + self.vMin
+
+    @Slot(int)
+    def updateParam(self, val):
+        value = self.value()
+        self.outputLabel.setText(self.outputFormat % (value))
+        if self.param == "feed":
+            self.parent.canvas.grayScottModel.setParams(feed=value)
+        elif self.param == "kill":
+            self.parent.canvas.grayScottModel.setParams(kill=value)
+        elif self.param == "dU":
+            self.parent.canvas.grayScottModel.setParams(dU=value)
+        elif self.param == "dV":
+            self.parent.canvas.grayScottModel.setParams(dV=value)
 
 
 class LightParamSlider(QtWidgets.QSlider):
