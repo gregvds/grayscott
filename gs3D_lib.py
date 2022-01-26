@@ -295,7 +295,9 @@ class GrayScottModel():
         self.vertices = VertexBuffer(V)
         self.faces = IndexBuffer(F)
 
-        # Build program to compute Gray-Scott Model step
+        # Build program to compute Gray-Scott Model according the the isotropic
+        # parameter. if True, feed, kill, dU and dV will be the same through all
+        # the model, else they will be gridded and can be modulated in the grid.
         # --------------------------------------
         if self.isotropic is True:
             self.program = Program(compute_vertex, compute_fragment_isotropic, count=4)
@@ -399,7 +401,6 @@ class GrayScottModel():
             if self.isotropic is True:
                 self.program["params"] = self.baseParams
             else:
-                # WIP toward dFeed and dKill
                 self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
                 self.P[:, :] = self.baseParams
                 self.modulateFK()
@@ -416,7 +417,6 @@ class GrayScottModel():
             vals[3] = kill or vals[3]
             self.program["params"] = vals
         else:
-            # WIP toward dFeed and dKill
             self.dFeed = dFeed or self.dFeed
             self.dKill = dKill or self.dKill
             if feed is not None or kill is not None:
@@ -426,7 +426,7 @@ class GrayScottModel():
 
     def updateFK(self, feed=None, kill=None):
         """
-        # WIP toward dFeed and dKill
+        Updates feed and kill params in texture when not in isotropic mode.
         """
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
@@ -440,7 +440,7 @@ class GrayScottModel():
 
     def modulateFK(self):
         """
-        # WIP toward dFeed and dKill
+        Modulates feed and kill with dFeed and dKill when not in isotropic mode.
         """
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
@@ -454,8 +454,10 @@ class GrayScottModel():
         self.updateAnisotropicParams()
 
     def updateAnisotropicParams(self):
+        """
+        Updates the parameters of the model when not in isotropic mode.
+        """
         self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
-        print("In updateAnisotropicParams...")
         self.program["params"] = self.params
 
     def interact(self, brushCoords, brushType):
@@ -653,7 +655,7 @@ class MainRenderer(Renderer):
         "specular": {
             "on": [True, "bool"],
             "color": [[1., 1., .95, 1.], "color"],
-            "shininess": [182.0, "float", 1, 8192]
+            "shininess": [182.0, "float", 10.0, 8192.0]
         },
         "attenuation": {
             "on": [True, "bool"],
@@ -667,7 +669,7 @@ class MainRenderer(Renderer):
             "hardtolerance": [5e-03, "float", 5e-04, 5e-2],
             "pcftolerance": [5e-03, "float", 5e-04, 5e-2],
             "pcfspreading": [1000.0, "float", 500.0, 3000.0],
-            "vsfgate": [2.5e-05, "float", 5e-05, 5e-01],
+            "vsfgate": [2.5e-05, "float", 1e-05, 5e-01],
         },
         "lightbox": {
             "on": [True, "bool"],

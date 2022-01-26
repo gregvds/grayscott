@@ -56,7 +56,7 @@ from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
 from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QSize, QLocale
 from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
-import sys
+import sys, math
 
 # from math import pi
 import argparse
@@ -312,7 +312,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fLayout.addWidget(dFeedParamLabel, 2, 1)
         self.dFeedParamSlider = ParamSlider(Qt.Horizontal, self, dFeedParamLabel, "dFeed", 1000.0)
         self.dFeedParamSlider.setMinimum(0.0)
-        self.dFeedParamSlider.setMaximum(0.004)
+        self.dFeedParamSlider.setMaximum(0.008)
         self.dFeedParamSlider.setValue(0.0)
         self.dFeedParamSlider.updateParam(0)
         self.dFeedParamSlider.valueChanged.connect(self.dFeedParamSlider.updateParam)
@@ -336,7 +336,7 @@ class MainWindow(QtWidgets.QMainWindow):
         kLayout.addWidget(dKillParamLabel, 2, 1)
         self.dKillParamSlider = ParamSlider(Qt.Horizontal, self, dKillParamLabel, "dKill", 1000.0)
         self.dKillParamSlider.setMinimum(0.0)
-        self.dKillParamSlider.setMaximum(0.002)
+        self.dKillParamSlider.setMaximum(0.004)
         self.dKillParamSlider.setValue(0.0)
         self.dKillParamSlider.updateParam(0)
         self.dKillParamSlider.valueChanged.connect(self.dKillParamSlider.updateParam)
@@ -624,21 +624,31 @@ class LightParamSlider(QtWidgets.QSlider):
     def setMaximum(self, val):
         self.vMax = val
         if self.vMax < 1.0:
-            self.outputFormat = "%1.4f"
+            self.outputFormat = "%1.5f"
         elif self.vMax < 10.0:
             self.outputFormat = "%1.2f"
         else:
             self.outputFormat = "%3.0f"
-        super(LightParamSlider, self).setMaximum(100)
+        super(LightParamSlider, self).setMaximum(1000)
 
     def setValue(self, val):
         self.outputLabel.setText(self.outputFormat % val)
-        value = int(100.0 * (val - self.vMin)/(self.vMax - self.vMin))
-        super(LightParamSlider, self).setValue(value)
+        print("%s In setValue, val: %s" % (val, self.param))
+        value = (val - self.vMin)/(self.vMax - self.vMin)
+        print("%s In setValue, value: %s" % (value, self.param))
+        if (self.vMax + 1)/(self.vMin + 1) > 100:
+            print("%s In setValue, value before treatment: %s" % (value, self.param))
+            value = math.sqrt(math.sqrt(value))
+            print("%s In setValue, value after treatment: %s" % (value, self.param))
+        print("%s In setValue, value: %s" % (value, self.param))
+        super(LightParamSlider, self).setValue(int(1000 * value))
 
     def value(self):
-        value = super(LightParamSlider, self).value()
-        return ((float(value) / 100.0) * (self.vMax - self.vMin)) + self.vMin
+        val = super(LightParamSlider, self).value()
+        value= float(val)/1000.0
+        if (self.vMax + 1)/(self.vMin + 1) > 100:
+            value = value**4
+        return (value * (self.vMax - self.vMin)) + self.vMin
 
     @Slot(int)
     def updateLighting(self, value):
