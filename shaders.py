@@ -250,8 +250,6 @@ void main()
 ################################################################################
 # 3D shaders (used in gs3D.py)
 
-
-# This one is identical to the 2D vertex_shader
 compute_vertex = """
 precision highp float;
 precision highp vec2;
@@ -293,7 +291,6 @@ void main()
 }
 """
 
-# This one is identical to the 2D compute_fragment
 compute_fragment_2 = """
 precision highp float;
 precision highp vec2;
@@ -366,10 +363,125 @@ void main()
     float lv = l.g;
     float uvv = u * v * v;
 
-      float ru = params.r;
-      float rv = params.g;
-      float f = params.b;
-      float k = params.a;
+    float ru = params.r;
+    float rv = params.g;
+    float f = params.b;
+    float k = params.a;
+    // Gray-Scott equation diffusion+-reaction
+    // U + 2V -> V + 2V
+// For the moment let's put off the dd and dt vars as they are fixed = 1.0
+//    float dd = 1.0;
+//    float dt = 1.0;
+//    float du = ru * lu * dd - uvv + f * (1.0 - u);
+//    float dv = rv * lv * dd + uvv - (f + k) * v;
+//    u += du * dt;
+//    v += dv * dt;
+    float du = ru * lu - uvv + f * (1.0 - u);
+    float dv = rv * lv + uvv - (f + k) * v;
+    u += du;
+    v += dv;
+
+    // Manual mouse feed or kill
+    vec2 diff;
+    float dist;
+
+    // allow to force V concentrations locally
+    if (brush.x > 0.0) {
+        diff = (p - brush)/dx;
+        dist = dot(diff, diff);
+        if((brushtype == 1) && (dist < 3.0))
+            v = 0.5;
+        if((brushtype == 2) && (dist < 9.0))
+            v = 0.0;
+    }
+
+    vec4 color;
+    if( pingpong == 1 ) {
+        color = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), c);
+    } else {
+        color = vec4(c, clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0));
+    }
+    gl_FragColor = color;
+}
+"""
+
+compute_fragment_3 = """
+precision highp float;
+precision highp vec2;
+precision highp vec3;
+precision highp vec4;
+precision highp mat4;
+precision highp sampler2D;
+
+
+uniform int pingpong;
+uniform float dx;                // horizontal distance between texels
+uniform float dy;                // vertical distance between texels
+uniform sampler2D texture; // u:= r or b following pinpong
+uniform sampler2D params;  // rU,rV,f,k := r,g,b,a
+uniform vec2 brush;        // coordinates of mouse down
+uniform int brushtype;
+
+// Data coming from the vertex shader
+varying vec2 v_texcoord;
+varying vec2 v_texcoord_diag1;
+varying vec2 v_texcoord_diag2;
+varying vec2 v_texcoord_diag3;
+varying vec2 v_texcoord_diag4;
+varying vec2 v_texcoord_neibor1;
+varying vec2 v_texcoord_neibor2;
+varying vec2 v_texcoord_neibor3;
+varying vec2 v_texcoord_neibor4;
+
+//-------------------------------------------------------------------------
+
+void main()
+{
+    // Wheights for computing the diffusion Laplacian
+    float center = -1.0;                                       // -1 * other weights
+    float diag   =  1.0 / (sqrt(2.0) * 4.0 + 4.0);             // weight for diagonals
+    float neibor =  1.0 * sqrt(2.0) / (sqrt(2.0) * 4.0 + 4.0); // weight for neighbours
+
+    vec2 p = v_texcoord;                              // center coordinates
+    vec2 c;
+    vec2 l;
+
+    if( pingpong == 0 ) {
+        c = texture2D(texture, p).rg;                       // central value
+                                                            // Compute Laplacian
+        l = ( texture2D(texture, v_texcoord_diag1).rg
+            + texture2D(texture, v_texcoord_diag2).rg
+            + texture2D(texture, v_texcoord_diag3).rg
+            + texture2D(texture, v_texcoord_diag4).rg) * diag
+            + (texture2D(texture, v_texcoord_neibor1).rg
+            + texture2D(texture, v_texcoord_neibor2).rg
+            + texture2D(texture, v_texcoord_neibor3).rg
+            + texture2D(texture, v_texcoord_neibor4).rg) * neibor
+            + c * center;
+    } else {
+        c = texture2D(texture, p).ba;                       // central value
+                                                            // Compute Laplacian
+        l = ( texture2D(texture, v_texcoord_diag1).ba
+            + texture2D(texture, v_texcoord_diag2).ba
+            + texture2D(texture, v_texcoord_diag3).ba
+            + texture2D(texture, v_texcoord_diag4).ba) * diag
+            + (texture2D(texture, v_texcoord_neibor1).ba
+            + texture2D(texture, v_texcoord_neibor2).ba
+            + texture2D(texture, v_texcoord_neibor3).ba
+            + texture2D(texture, v_texcoord_neibor4).ba) * neibor
+            + c * center;
+    }
+    float u = c.r;                                    // compute some temporary
+    float v = c.g;                                    // values which might save
+    float lu = l.r;                                   // a few GPU cycles
+    float lv = l.g;
+    float uvv = u * v * v;
+
+    vec4 rurvfk = texture2D(params, p);
+    float ru = rurvfk.r;
+    float rv = rurvfk.g;
+    float f = rurvfk.b;
+    float k = rurvfk.a;
     // Gray-Scott equation diffusion+-reaction
     // U + 2V -> V + 2V
 // For the moment let's put off the dd and dt vars as they are fixed = 1.0

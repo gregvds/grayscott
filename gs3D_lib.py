@@ -54,7 +54,8 @@ from vispy.util.transforms import perspective
 from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid)
 
 from shaders import compute_vertex
-from shaders import compute_fragment_2 as compute_fragment
+from shaders import compute_fragment_2 as compute_fragment_isotropic
+from shaders import compute_fragment_3 as compute_fragment_anisotropic
 from shaders import render_3D_vertex
 from shaders import render_3D_fragment
 from shaders import shadow_vertex
@@ -265,11 +266,13 @@ class GrayScottModel():
     def __init__(self,
                  canvas=None,
                  gridSize=[512, 512],
-                 specie='lambda_left'):
+                 specie='lambda_left',
+                 isotropic=True):
         # Base parameters
         self.canvas = canvas
         self.pingpong = 1
         self.specie = specie
+        self.isotropic = isotropic
         (self.h, self.w) = gridSize
         # A reference to the instances that uses this GrayScottModel, just to
         # be able to refresh it gl.GL_LINEAR texture parameters when a call to
@@ -294,7 +297,10 @@ class GrayScottModel():
 
         # Build program to compute Gray-Scott Model step
         # --------------------------------------
-        self.program = Program(compute_vertex, compute_fragment, count=4)
+        if self.isotropic is True:
+            self.program = Program(compute_vertex, compute_fragment_isotropic, count=4)
+        else:
+            self.program = Program(compute_vertex, compute_fragment_anisotropic, count=4)
         self.program["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
         self.program["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
         self.program["dx"] = 1./self.w
@@ -316,6 +322,9 @@ class GrayScottModel():
         # --------------------------------------
         # defines parameters for du, dv, f, k
         # and passes them to program
+        self.dFeed = 0.0
+        self.dKill = 0.0
+        self.baseParams = []
         self.setSpecie(specie=self.specie)
         self.dUMin = 0.2
         self.dUMax = 1.3
@@ -386,18 +395,68 @@ class GrayScottModel():
         if specie != '':
             self.specie = specie
             self.printPearsonPatternDescription()
-            self.program["params"] = GrayScottModel.species[self.specie][0:4]
+            self.baseParams = GrayScottModel.species[self.specie][0:4]
+            if self.isotropic is True:
+                self.program["params"] = self.baseParams
+            else:
+                # WIP toward dFeed and dKill
+                self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
+                self.P[:, :] = self.baseParams
+                self.modulateFK()
 
-    def setParams(self, feed=None, kill=None, dU=None, dV=None):
+    def setParams(self, feed=None, kill=None, dU=None, dV=None, dFeed=None, dKill=None):
         """
         set one or more parameters of the model, feed, kill, dU and/or dV
         """
-        vals = self.program["params"]
-        vals[0] = dU or vals[0]
-        vals[1] = dV or vals[1]
-        vals[2] = feed or vals[2]
-        vals[3] = kill or vals[3]
-        self.program["params"] = vals
+        if self.isotropic is True:
+            vals = self.program["params"]
+            vals[0] = dU or vals[0]
+            vals[1] = dV or vals[1]
+            vals[2] = feed or vals[2]
+            vals[3] = kill or vals[3]
+            self.program["params"] = vals
+        else:
+            # WIP toward dFeed and dKill
+            self.dFeed = dFeed or self.dFeed
+            self.dKill = dKill or self.dKill
+            if feed is not None or kill is not None:
+                self.updateFK(feed, kill)
+            if dFeed is not None or dKill is not None:
+                self.modulateFK()
+
+    def updateFK(self, feed=None, kill=None):
+        """
+        # WIP toward dFeed and dKill
+        """
+        f = self.P[0, 0, 2]
+        k = self.P[0, 0, 3]
+        feed = feed or f
+        kill = kill or k
+        self.P[:, :, 2] -= f
+        self.P[:, :, 3] -= k
+        self.P[:, :, 2] = np.clip(self.P[:, :, 2] + feed, self.fMin, self.fMax)
+        self.P[:, :, 3] = np.clip(self.P[:, :, 3] + kill, self.kMin, self.kMax)
+        self.updateAnisotropicParams()
+
+    def modulateFK(self):
+        """
+        # WIP toward dFeed and dKill
+        """
+        f = self.P[0, 0, 2]
+        k = self.P[0, 0, 3]
+        rows, cols = self.h, self.w
+        sinsF = np.sin(np.linspace(0.0, 2*np.pi, cols))
+        sinsK = np.sin(np.linspace(0.0, 2*np.pi, rows))
+        for i in range(rows):
+            self.P[i, :, 2] = np.clip(f + self.dFeed*sinsF, self.fMin, self.fMax)
+        for i in range(cols):
+            self.P[:, i, 3] = np.clip(k + self.dKill*sinsK, self.kMin, self.kMax)
+        self.updateAnisotropicParams()
+
+    def updateAnisotropicParams(self):
+        self.params = gloo.texture.Texture2D(data=self.P, format=gl.GL_RGBA, internalformat='rgba32f')
+        print("In updateAnisotropicParams...")
+        self.program["params"] = self.params
 
     def interact(self, brushCoords, brushType):
         """
@@ -830,7 +889,8 @@ class Canvas(app.Canvas):
                  modelSize=(512,512),
                  specie='alpha_left',
                  cmap='honolulu_r',
-                 verbose=False):
+                 verbose=False,
+                 isotropic=True):
         app.Canvas.__init__(self,
                             size=size,
                             title='3D Gray-Scott Reaction-Diffusion - GregVDS',
@@ -844,7 +904,8 @@ class Canvas(app.Canvas):
         # this contains the 3D grid model, texture and program
         self.grayScottModel = GrayScottModel(canvas=self,
                                              gridSize=modelSize,
-                                             specie=specie)
+                                             specie=specie,
+                                             isotropic=isotropic)
 
         # Build model
         # --------------------------------------

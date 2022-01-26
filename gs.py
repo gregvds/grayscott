@@ -127,8 +127,8 @@ class Canvas(app.Canvas):
 
     # Colormaps related variables
     colormapDictionnary = {
-        '1': 'Boston_r',
-        '&': 'Boston',
+        '1': 'boston_r',
+        '&': 'boston',
         '2': 'malmo',
         'é': 'malmo_r',
         '3': 'uppsala',
@@ -137,8 +137,8 @@ class Canvas(app.Canvas):
         '\'': 'oslo',
         '5': 'Lochinver',
         '(': 'Lochinver_r',
-        '6': 'Rejkjavik',
-        '§': 'Rejkjavik_r',
+        '6': 'rejkjavik',
+        '§': 'rejkjavik_r',
         '7': 'detroit',
         'è': 'antidetroit',
         '8': 'tromso',
@@ -244,7 +244,7 @@ class Canvas(app.Canvas):
         self.ddLines        = gloo.Program(lines_vertex, lines_fragment)
         self.hsLines        = gloo.Program(lines_vertex, lines_fragment)
 
-        self.species              = import_pearsons_types()
+        self.species              = import_pearsons_types()[0]
         # definition of parameters for du, dv, f, k
         self.setSpecie(self.specie)
         # grid initialization, with central random patch

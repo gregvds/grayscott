@@ -89,7 +89,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(size[0], size[1])
         self.setWindowTitle('3D Gray-Scott Reaction-Diffusion - GregVDS')
 
-        self.canvas = Canvas(size, modelSize, specie, cmap, verbose)
+        self.canvas = Canvas(size, modelSize, specie, cmap, verbose, isotropic=False)
         self.canvas.create_native()
         self.canvas.native.setParent(self)
         self.canvas.measure_fps(1.0, self.show_fps)
@@ -100,12 +100,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(splitter1)
 
         self.createMenuBar()
+        self.createPearsonPatternDetailDock(visible=False)
         self.createModelDock()
         self.createDisplayDock()
-        self.createLightingDock()
-        self.createPearsonPatternDetailDock()
-
-        self.connectSignals()
+        self.createLightingDock(visible=False)
 
         # FPS message in statusbar:
         self.status = self.statusBar()
@@ -205,6 +203,8 @@ class MainWindow(QtWidgets.QMainWindow):
         colors.sort()
         self.colorsComboBox.addItems(colors)
         self.colorsComboBox.setCurrentText(self.canvas.mainRenderer.cmapName)
+        self.colorsComboBox.textActivated[str].connect(self.canvas.mainRenderer.setColorMap)
+        self.colorsComboBox.textActivated[str].emit(self.colorsComboBox.currentText())
         colorMapLayout.addWidget(self.colorsComboBox)
         colorMapBox.setLayout(colorMapLayout)
         topLayout.addWidget(colorMapBox)
@@ -228,6 +228,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.uReagentRadioButton = QtWidgets.QRadioButton('U', self.displayDock)
         self.vReagentRadioButton = QtWidgets.QRadioButton('V', self.displayDock)
         self.vReagentRadioButton.setChecked(True)
+        self.vReagentRadioButton.toggled.connect(self.canvas.mainRenderer.switchReagent)
         reagentLayout.addWidget(self.uReagentRadioButton)
         reagentLayout.addWidget(self.vReagentRadioButton)
         reagentBox.setLayout(reagentLayout)
@@ -239,10 +240,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.normalRadioButton = QtWidgets.QRadioButton('Normal', self.displayDock)
         self.shadowRadioButton = QtWidgets.QRadioButton('Shadowmap', self.displayDock)
         self.normalRadioButton.setChecked(True)
+        self.normalRadioButton.toggled.connect(self.canvas.switchDisplay)
         displayLayout.addWidget(self.normalRadioButton, 0, 0)
         displayLayout.addWidget(self.shadowRadioButton, 0, 1)
         self.resetCameraButton = QtWidgets.QPushButton("Reset camera", self.displayDock)
+        self.resetCameraButton.clicked.connect(self.canvas.mainRenderer.resetCamera)
         self.resetShadowButton = QtWidgets.QPushButton("Reset shadow", self.displayDock)
+        self.resetShadowButton.clicked.connect(self.canvas.mainRenderer.resetLight)
         displayLayout.addWidget(self.resetCameraButton, 1, 0)
         displayLayout.addWidget(self.resetShadowButton, 1, 1)
         displayBox.setLayout(displayLayout)
@@ -277,6 +281,12 @@ class MainWindow(QtWidgets.QMainWindow):
         patterns.sort()
         self.pearsonsPatternsComboBox.addItems(patterns)
         self.pearsonsPatternsComboBox.setCurrentText(self.canvas.grayScottModel.specie)
+        self.pearsonsPatternsComboBox.textActivated[str].connect(self.canvas.grayScottModel.setSpecie)
+        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setPearsonsPatternDetails)
+        self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
+        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
+        self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setPearsonsPatternDetails)
+        self.pearsonsPatternsComboBox.textHighlighted[str].emit(self.pearsonsPatternsComboBox.currentText())
         pearsonsLayout.addWidget(self.pearsonsPatternsComboBox)
         pearsonsBox.setLayout(pearsonsLayout)
         topLayout.addWidget(pearsonsBox)
@@ -287,16 +297,26 @@ class MainWindow(QtWidgets.QMainWindow):
 
         fBox = QtWidgets.QGroupBox(self.modelDock)
         fLayout = QtWidgets.QGridLayout()
-        fLayout.addWidget(QtWidgets.QLabel("Feed", fBox), 0, 0)
+        fLayout.addWidget(QtWidgets.QLabel("feed", fBox), 0, 0)
         feedParamLabel = QtWidgets.QLabel("", fBox)
         fLayout.addWidget(feedParamLabel, 0, 1)
         self.feedParamSlider = ParamSlider(Qt.Horizontal, self, feedParamLabel, "feed", 1000.0)
         self.feedParamSlider.setMinimum(self.canvas.grayScottModel.fMin)
         self.feedParamSlider.setMaximum(self.canvas.grayScottModel.fMax)
-        self.feedParamSlider.setValue(self.canvas.grayScottModel.program["params"][2])
+        self.feedParamSlider.setValue(self.canvas.grayScottModel.baseParams[2])
         self.feedParamSlider.updateParam(0)
         self.feedParamSlider.valueChanged.connect(self.feedParamSlider.updateParam)
         fLayout.addWidget(self.feedParamSlider, 1, 0, 1, 2)
+        fLayout.addWidget(QtWidgets.QLabel("∂feed/∂x", fBox), 2, 0)
+        dFeedParamLabel = QtWidgets.QLabel("", fBox)
+        fLayout.addWidget(dFeedParamLabel, 2, 1)
+        self.dFeedParamSlider = ParamSlider(Qt.Horizontal, self, dFeedParamLabel, "dFeed", 1000.0)
+        self.dFeedParamSlider.setMinimum(0.0)
+        self.dFeedParamSlider.setMaximum(0.004)
+        self.dFeedParamSlider.setValue(0.0)
+        self.dFeedParamSlider.updateParam(0)
+        self.dFeedParamSlider.valueChanged.connect(self.dFeedParamSlider.updateParam)
+        fLayout.addWidget(self.dFeedParamSlider, 3, 0, 1, 2)
         fBox.setLayout(fLayout)
 
         kBox = QtWidgets.QGroupBox(self.modelDock)
@@ -307,10 +327,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.killParamSlider = ParamSlider(Qt.Horizontal, self, killParamLabel, "kill", 1000.0)
         self.killParamSlider.setMinimum(self.canvas.grayScottModel.kMin)
         self.killParamSlider.setMaximum(self.canvas.grayScottModel.kMax)
-        self.killParamSlider.setValue(self.canvas.grayScottModel.program["params"][3])
+        self.killParamSlider.setValue(self.canvas.grayScottModel.baseParams[3])
         self.killParamSlider.updateParam(0)
         self.killParamSlider.valueChanged.connect(self.killParamSlider.updateParam)
         kLayout.addWidget(self.killParamSlider, 1, 0, 1, 2)
+        kLayout.addWidget(QtWidgets.QLabel("∂kill/∂y", kBox), 2, 0)
+        dKillParamLabel = QtWidgets.QLabel("", kBox)
+        kLayout.addWidget(dKillParamLabel, 2, 1)
+        self.dKillParamSlider = ParamSlider(Qt.Horizontal, self, dKillParamLabel, "dKill", 1000.0)
+        self.dKillParamSlider.setMinimum(0.0)
+        self.dKillParamSlider.setMaximum(0.002)
+        self.dKillParamSlider.setValue(0.0)
+        self.dKillParamSlider.updateParam(0)
+        self.dKillParamSlider.valueChanged.connect(self.dKillParamSlider.updateParam)
+        kLayout.addWidget(self.dKillParamSlider, 3, 0, 1, 2)
         kBox.setLayout(kLayout)
 
         dUBox = QtWidgets.QGroupBox(self.modelDock)
@@ -321,7 +351,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dUParamSlider = ParamSlider(Qt.Horizontal, self, dUParamLabel, "dU", 1000.0)
         self.dUParamSlider.setMinimum(self.canvas.grayScottModel.dUMin)
         self.dUParamSlider.setMaximum(self.canvas.grayScottModel.dUMax)
-        self.dUParamSlider.setValue(self.canvas.grayScottModel.program["params"][0])
+        self.dUParamSlider.setValue(self.canvas.grayScottModel.baseParams[0])
         self.dUParamSlider.updateParam(0)
         self.dUParamSlider.valueChanged.connect(self.dUParamSlider.updateParam)
         dULayout.addWidget(self.dUParamSlider, 1, 0, 1, 2)
@@ -335,7 +365,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dVParamSlider = ParamSlider(Qt.Horizontal, self, dVParamLabel, "dV", 1000.0)
         self.dVParamSlider.setMinimum(self.canvas.grayScottModel.dVMin)
         self.dVParamSlider.setMaximum(self.canvas.grayScottModel.dVMax)
-        self.dVParamSlider.setValue(self.canvas.grayScottModel.program["params"][1])
+        self.dVParamSlider.setValue(self.canvas.grayScottModel.baseParams[1])
         self.dVParamSlider.updateParam(0)
         self.dVParamSlider.valueChanged.connect(self.dVParamSlider.updateParam)
         dVLayout.addWidget(self.dVParamSlider, 1, 0, 1, 2)
@@ -352,14 +382,19 @@ class MainWindow(QtWidgets.QMainWindow):
         controlBox = QtWidgets.QGroupBox("Controls", self.modelDock)
         controlLayout = QtWidgets.QVBoxLayout()
         self.resetButton = QtWidgets.QPushButton("Reset", self.modelDock)
+        self.resetButton.clicked.connect(self.canvas.grayScottModel.initializeGrid)
         controlLayout.addWidget(self.resetButton)
         cyclesBox = QtWidgets.QGroupBox("Additional cycles/frame", self.modelDock)
         cyclesLayout = QtWidgets.QHBoxLayout()
         self.lessCycles = QtWidgets.QPushButton("-", self.modelDock)
+        self.lessCycles.clicked.connect(self.canvas.grayScottModel.decreaseCycle)
+        self.lessCycles.clicked.connect(self.updateCycle)
         self.cycles = QtWidgets.QLabel(self.modelDock)
         self.cycles.setText(str(2*self.canvas.grayScottModel.cycle))
         self.cycles.setAlignment(Qt.AlignCenter | Qt.AlignCenter)
         self.moreCycles = QtWidgets.QPushButton("+", self.modelDock)
+        self.moreCycles.clicked.connect(self.canvas.grayScottModel.increaseCycle)
+        self.moreCycles.clicked.connect(self.updateCycle)
         cyclesLayout.addWidget(self.lessCycles)
         cyclesLayout.addWidget(self.cycles)
         cyclesLayout.addWidget(self.moreCycles)
@@ -447,35 +482,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pPDetailsDock.setWidget(topBox)
         self.panelMenu.addAction(self.pPDetailsDock.toggleViewAction())
 
-    def connectSignals(self):
-        """
-        Connects signals that still need to be connected after creation of all
-        the docks.
-        """
-        self.colorsComboBox.textActivated[str].connect(self.canvas.mainRenderer.setColorMap)
-        self.colorsComboBox.textActivated[str].emit(self.colorsComboBox.currentText())
-
-        self.pearsonsPatternsComboBox.textActivated[str].connect(self.canvas.grayScottModel.setSpecie)
-        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setPearsonsPatternDetails)
-        self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
-        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
-        self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setPearsonsPatternDetails)
-        self.pearsonsPatternsComboBox.textHighlighted[str].emit(self.pearsonsPatternsComboBox.currentText())
-
-        self.vReagentRadioButton.toggled.connect(self.canvas.mainRenderer.switchReagent)
-
-        self.normalRadioButton.toggled.connect(self.canvas.switchDisplay)
-
-        self.resetButton.clicked.connect(self.canvas.grayScottModel.initializeGrid)
-
-        self.lessCycles.clicked.connect(self.canvas.grayScottModel.decreaseCycle)
-        self.lessCycles.clicked.connect(self.updateCycle)
-        self.moreCycles.clicked.connect(self.canvas.grayScottModel.increaseCycle)
-        self.moreCycles.clicked.connect(self.updateCycle)
-
-        self.resetCameraButton.clicked.connect(self.canvas.mainRenderer.resetCamera)
-        self.resetShadowButton.clicked.connect(self.canvas.mainRenderer.resetLight)
-
     @Slot()
     @Slot(str)
     def setPearsonsPatternDetails(self, type=None):
@@ -493,14 +499,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # WIP... Should add a red dot in chart, showing which pattern is
         # highlighted/selected
         # print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
-        # if len(self.fkChart.series()) > 1:
-        #     self.fkChart.removeSeries(self.fkCurrentPoint)
-        #     # print(self.fkChart.series()[0].points())
-        # self.fkCurrentPoint = QScatterSeries()
-        # self.fkCurrentPoint.setColor(QColor('r'))
-        # self.fkCurrentPoint.setMarkerSize(50)
-        # self.fkCurrentPoint.append(self.canvas.grayScottModel.program["params"][3], self.canvas.grayScottModel.program["params"][2])
-        # self.fkChart.addSeries(self.fkCurrentPoint)
+        if len(self.fkChart.series()) > 1:
+            self.fkChart.removeSeries(self.fkCurrentPoint)
+            # print(self.fkChart.series()[0].points())
+        self.fkCurrentPoint = QScatterSeries()
+        self.fkCurrentPoint.setColor(QColor('r'))
+        self.fkCurrentPoint.setMarkerSize(50)
+        self.fkCurrentPoint.append(self.canvas.grayScottModel.baseParams[3], self.canvas.grayScottModel.baseParams[2])
+        self.fkChart.addSeries(self.fkCurrentPoint)
         # self.fkChartView.setChart(self.fkChart)
         # WHY ON EARTH does this second serie not appear in the Chart?!?!
         # print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
@@ -509,8 +515,8 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         Set the values of model parameters slider after change in the model
         """
-        self.feedParamSlider.setValue(self.canvas.grayScottModel.program["params"][2])
-        self.killParamSlider.setValue(self.canvas.grayScottModel.program["params"][3])
+        self.feedParamSlider.setValue(self.canvas.grayScottModel.baseParams[2])
+        self.killParamSlider.setValue(self.canvas.grayScottModel.baseParams[3])
 
     def updateCycle(self):
         """
@@ -569,6 +575,8 @@ class ParamSlider(QtWidgets.QSlider):
 
     def setMaximum(self, val):
         self.vMax = val
+        if self.vMax < 1e-2:
+            self.outputFormat = "%1.4f"
         super(ParamSlider, self).setMaximum(self.resolution)
 
     def setValue(self, val):
@@ -586,8 +594,12 @@ class ParamSlider(QtWidgets.QSlider):
         self.outputLabel.setText(self.outputFormat % (value))
         if self.param == "feed":
             self.parent.canvas.grayScottModel.setParams(feed=value)
+        elif self.param == "dFeed":
+            self.parent.canvas.grayScottModel.setParams(dFeed=value)
         elif self.param == "kill":
             self.parent.canvas.grayScottModel.setParams(kill=value)
+        elif self.param == "dKill":
+            self.parent.canvas.grayScottModel.setParams(dKill=value)
         elif self.param == "dU":
             self.parent.canvas.grayScottModel.setParams(dU=value)
         elif self.param == "dV":
