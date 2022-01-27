@@ -48,15 +48,15 @@ try:
 except ImportError:
     pass
 
-
 # To switch between PyQt5 and PySide2 bindings just change the from import
 from PySide6 import QtCore, QtWidgets
 
 from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
-from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QSize, QLocale, QSettings
+from PySide6.QtCore import Qt, QRectF, QPointF, Slot
 from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
-import sys, math
+import sys
+import math
 
 # from math import pi
 import argparse
@@ -70,8 +70,6 @@ from gs3D_lib import (GrayScottModel, MainRenderer, Canvas)
 
 # Provide automatic signal function selection for PyQt5/PySide2
 pyqtsignal = QtCore.pyqtSignal if hasattr(QtCore, 'pyqtSignal') else QtCore.Signal
-
-# import pyqtgraph as pg
 
 ################################################################################
 
@@ -100,9 +98,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(splitter1)
 
         self.createMenuBar()
-        self.createPearsonPatternDetailDock(visible=False)
+        self.createPearsonPatternDetailDock(visible=True)
         self.createModelDock()
-        self.createDisplayDock()
+        self.createDisplayDock(visible=False)
         self.createLightingDock(visible=False)
 
         # FPS message in statusbar:
@@ -429,41 +427,45 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
 
         # --------------------------------------
-        self.fkChart = QChart()
-        self.fkPoints = QScatterSeries()
-        self.fkPoints.setPointLabelsVisible(True)
-        for specie in GrayScottModel.species.keys():
-            feed = GrayScottModel.species[specie][2]
-            kill = GrayScottModel.species[specie][3]
-            symbol = GrayScottModel.species[specie][5]
-            fkPoint = FkPoint(kill, feed, specie, symbol)
-            self.fkPoints.append(fkPoint)
-        self.fkChart.setBackgroundVisible(False)
-        self.fkChart.addSeries(self.fkPoints)
-
-        # self.fkCurrentPoint = QScatterSeries()
-        # self.fkCurrentPoint.setColor(QColor('r'))
-        # self.fkCurrentPoint.setMarkerSize(50)
-        # self.fkCurrentPoint.append(self.canvas.grayScottModel.baseParams[3], self.canvas.grayScottModel.baseParams[2])
-        # self.fkChart.addSeries(self.fkCurrentPoint)
-
-        self.fkChart.legend().hide()
-        self.fkChart.createDefaultAxes()
-        axisX = self.fkChart.axes(orientation=Qt.Horizontal)[0]
-        axisX.setTickInterval(0.01)
-        axisX.setTickCount(6)
-        axisX.setRange(0.03,0.08)
-        axisX.setTitleText("Kill")
-        axisY = self.fkChart.axes(orientation=Qt.Vertical)[0]
-        axisY.setTickInterval(0.02)
-        axisY.setTickCount(7)
-        axisY.setRange(0.0,0.12)
-        axisY.setTitleText("Feed")
-        p = self.fkChart.sizePolicy()
-        p.setHeightForWidth(True)
-        self.fkChart.setSizePolicy(p)
-        self.fkChartView = QChartView(self.fkChart, topBox)
-        self.fkChartView.setRenderHint(QPainter.Antialiasing)
+        # self.fkChart = QChart()
+        # self.fkPoints = QScatterSeries()
+        # self.fkPointLabels = []
+        # for specie in GrayScottModel.species.keys():
+        #     feed = GrayScottModel.species[specie][2]
+        #     kill = GrayScottModel.species[specie][3]
+        #     symbol = GrayScottModel.species[specie][5]
+        #     fkPoint = FkPoint(kill, feed, specie, symbol)
+        #     self.fkPoints.append(fkPoint)
+        #     self.fkPointLabels.append(QtWidgets.QGraphicsSimpleTextItem())
+        #     self.fkPointLabels[-1].setText(symbol)
+        # self.fkChart.setBackgroundVisible(False)
+        # self.fkChart.addSeries(self.fkPoints)
+        # self.fkChart.legend().hide()
+        # self.fkChart.createDefaultAxes()
+        # axisX = self.fkChart.axes(orientation=Qt.Horizontal)[0]
+        # axisX.setTickInterval(0.01)
+        # axisX.setTickCount(6)
+        # axisX.setRange(0.03,0.08)
+        # axisX.setTitleText("Kill")
+        # axisY = self.fkChart.axes(orientation=Qt.Vertical)[0]
+        # axisY.setTickInterval(0.02)
+        # axisY.setTickCount(7)
+        # axisY.setRange(0.0,0.12)
+        # axisY.setTitleText("Feed")
+        # p = self.fkChart.sizePolicy()
+        # p.setHeightForWidth(True)
+        # self.fkChart.setSizePolicy(p)
+        # self.fkChartView = QChartView(self.fkChart, topBox)
+        # self.fkChartView.setRenderHint(QPainter.Antialiasing)
+        #
+        # for i in range(len(self.fkPointLabels)):
+        #     p = self.fkChart.mapToPosition(self.fkPoints.at(i))
+        #     self.fkPointLabels[i] = self.fkChartScene.addText(self.fkPointLabels[i].text())
+        #     self.fkPointLabels[i].setPos(p.x(), p.y())
+        #     print("Point x, y: %s, %s"% (p.x(), p.y()))
+        # topLayout.addWidget(self.fkChartView)
+        # --------------------------------------
+        self.fkChartView = View(topBox)
         topLayout.addWidget(self.fkChartView)
 
         # TODO, have the current selected pattern corresponding point plotted in
@@ -501,15 +503,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # WIP... Should add a red dot in chart, showing which pattern is
         # highlighted/selected
-        if len(self.fkChart.series()) > 1:
-            self.fkChart.removeSeries(self.fkCurrentPoint)
-        self.fkCurrentPoint = QScatterSeries()
-        self.fkCurrentPoint.setColor(QColor('r'))
-        self.fkCurrentPoint.setMarkerSize(50)
-        self.fkCurrentPoint.append(self.canvas.grayScottModel.baseParams[3], self.canvas.grayScottModel.baseParams[2])
-        self.fkChart.addSeries(self.fkCurrentPoint)
-        self.fkChart.update()
-        self.fkChartView.update()
+        # if len(self.fkChart.series()) > 1:
+        #     self.fkChart.removeSeries(self.fkCurrentPoint)
+        # self.fkCurrentPoint = QScatterSeries()
+        # self.fkCurrentPoint.setColor(QColor('r'))
+        # self.fkCurrentPoint.setMarkerSize(50)
+        # self.fkCurrentPoint.append(self.canvas.grayScottModel.baseParams[3], self.canvas.grayScottModel.baseParams[2])
+        # self.fkChart.addSeries(self.fkCurrentPoint)
+        # self.fkChart.update()
+        # self.fkChartView.update()
+        # self.fkChartScene.update()
         # WHY ON EARTH does this second serie not appear in the Chart?!?!
 
         self.pPDetailsDock.adjustSize()
@@ -739,18 +742,131 @@ class FkPoint(QPointF):
         self.symbol = symbol
 
 
-class SquareLayout(QtWidgets.QLayout):
-    """
-    WIP layout to have a square proportions phase diagram
-    """
-    def __init__(self, parent):
-        super(SquareLayout, parent)
+class View(QChartView):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setScene(QtWidgets.QGraphicsScene(self))
 
-    def totalHeightForWidth(self, w):
-        return w
+        self.setDragMode(QtWidgets.QGraphicsView.RubberBandDrag)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-    def totalMinimumHeightForWidth(self, w):
-        return w
+        # Chart
+        self.fkChart = QChart()
+        self.fkChart.setBackgroundVisible(False)
+        self.fkChart.legend().hide()
+
+        self.fkPoints = QScatterSeries()
+        self.fkPointLabels = []
+        for specie in GrayScottModel.species.keys():
+            feed = GrayScottModel.species[specie][2]
+            kill = GrayScottModel.species[specie][3]
+            symbol = GrayScottModel.species[specie][5]
+            fkPoint = FkPoint(kill, feed, specie, symbol)
+            self.fkPoints.append(fkPoint)
+            self.fkPointLabels.append(QtWidgets.QGraphicsSimpleTextItem())
+            self.fkPointLabels[-1].setText(symbol)
+        self.fkChart.addSeries(self.fkPoints)
+        self.fkChart.createDefaultAxes()
+
+        axisX = self.fkChart.axes(orientation=Qt.Horizontal)[0]
+        axisX.setTickInterval(0.01)
+        axisX.setTickCount(6)
+        axisX.setRange(0.03,0.08)
+        axisX.setTitleText("Kill")
+        axisY = self.fkChart.axes(orientation=Qt.Vertical)[0]
+        axisY.setTickInterval(0.02)
+        axisY.setTickCount(7)
+        axisY.setRange(0.0,0.12)
+        axisY.setTitleText("Feed")
+        p = self.fkChart.sizePolicy()
+        p.setHeightForWidth(True)
+        self.fkChart.setSizePolicy(p)
+
+        # self.series2 = QSplineSeries()
+        # self.series2.append(1.6, 1.4)
+        # self.series2.append(2.4, 3.5)
+        # self.series2.append(3.7, 2.5)
+        # self.series2.append(7, 4)
+        # self.series2.append(10, 2)
+        #
+        # self._chart.addSeries(self.series2)
+
+
+        # self.series.attachAxis(xaxis)
+        # self.series.attachAxis(y2axis)
+        #
+        # self.series2.attachAxis(xaxis)
+        # self.series2.attachAxis(yaxis)
+
+        self.fkChart.setAcceptHoverEvents(True)
+
+        self.setRenderHint(QPainter.Antialiasing)
+        self.scene().addItem(self.fkChart)
+
+        self._coordX = QtWidgets.QGraphicsSimpleTextItem(self.fkChart)
+        self._coordX.setPos(
+            self.fkChart.size().width() / 2 - 50, self.fkChart.size().height())
+        self._coordX.setText("X: ")
+        self._coordY = QtWidgets.QGraphicsSimpleTextItem(self.fkChart)
+        self._coordY.setPos(
+            self.fkChart.size().width() / 2 + 50, self.fkChart.size().height())
+        self._coordY.setText("Y: ")
+
+        # self._callouts = []
+        # self._tooltip = Callout(self.fkChart, self.fkPoints)
+
+        # self.series.clicked.connect(self.keep_callout)
+        # self.series.hovered.connect(self.tooltip)
+
+        # self.series2.clicked.connect(self.keep_callout)
+        # self.series2.hovered.connect(self.tooltip)
+
+        self.setMouseTracking(True)
+
+    def resizeEvent(self, event):
+        if self.scene():
+            self.scene().setSceneRect(QRectF(QPointF(0, 0), event.size()))
+            self.fkChart.resize(event.size())
+            self._coordX.setPos(
+                self.fkChart.size().width() / 2 - 50,
+                self.fkChart.size().height() - 20)
+            self._coordY.setPos(
+                self.fkChart.size().width() / 2 + 50,
+                self.fkChart.size().height() - 20)
+            # for callout in self._callouts:
+            #     callout.update_geometry()
+        QtWidgets.QGraphicsView.resizeEvent(self, event)
+
+    # def mouseMoveEvent(self, event):
+    #     pos = self._chart.mapToValue(event.pos())
+    #     x = pos.x()
+    #     y = pos.y()
+    #     self._coordX.setText(f"X: {x:.2f}")
+    #     self._coordY.setText(f"Y: {y:.2f}")
+    #     QtWidgets.QGraphicsView.mouseMoveEvent(self, event)
+    #
+    # def keep_callout(self):
+    #     series = self.sender()
+    #     self._callouts.append(self._tooltip)
+    #     self._tooltip = Callout(self._chart, series)
+    #
+    # def tooltip(self, point, state):
+    #     series = self.sender()
+    #     if self._tooltip == 0:
+    #         self._tooltip = Callout(self._chart, series)
+    #
+    #     if state:
+    #         x = point.x()
+    #         y = point.y()
+    #         self._tooltip.setSeries(series)
+    #         self._tooltip.set_text(f"X: {x:.2f} \nY: {y:.2f} ")
+    #         self._tooltip.set_anchor(point)
+    #         self._tooltip.setZValue(11)
+    #         self._tooltip.update_geometry()
+    #         self._tooltip.show()
+    #     else:
+    #         self._tooltip.hide()
 
 
 ################################################################################
