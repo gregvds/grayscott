@@ -53,7 +53,7 @@ except ImportError:
 from PySide6 import QtCore, QtWidgets
 
 from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
-from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QSize, QLocale
+from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QSize, QLocale, QSettings
 from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
 import sys, math
@@ -425,7 +425,7 @@ class MainWindow(QtWidgets.QMainWindow):
         topLayout = QtWidgets.QVBoxLayout(topBox)
 
         # --------------------------------------
-        self.pPDetailsLabel = QtWidgets.QLabel()
+        self.pPDetailsLabel = QtWidgets.QLabel(topBox)
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
 
         # --------------------------------------
@@ -440,33 +440,29 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fkPoints.append(fkPoint)
         self.fkChart.setBackgroundVisible(False)
         self.fkChart.addSeries(self.fkPoints)
+
+        # self.fkCurrentPoint = QScatterSeries()
+        # self.fkCurrentPoint.setColor(QColor('r'))
+        # self.fkCurrentPoint.setMarkerSize(50)
+        # self.fkCurrentPoint.append(self.canvas.grayScottModel.baseParams[3], self.canvas.grayScottModel.baseParams[2])
+        # self.fkChart.addSeries(self.fkCurrentPoint)
+
         self.fkChart.legend().hide()
         self.fkChart.createDefaultAxes()
         axisX = self.fkChart.axes(orientation=Qt.Horizontal)[0]
         axisX.setTickInterval(0.01)
         axisX.setTickCount(6)
         axisX.setRange(0.03,0.08)
+        axisX.setTitleText("Kill")
         axisY = self.fkChart.axes(orientation=Qt.Vertical)[0]
         axisY.setTickInterval(0.02)
         axisY.setTickCount(7)
         axisY.setRange(0.0,0.12)
-        # WIP... Far from perfect. I would like to have a square Scatter plot,
-        # which width and height adapt to the width of the description, even when
-        # description is narrow. This should force the Chart to shrink, square...
-        # self.fkChart.setMinimumHeight(self.pPDetailsLabel.size().width())
-        # self.fkChart.setMaximumHeight(self.pPDetailsLabel.size().width())
-        # self.fkChart.setMinimumWidth(self.pPDetailsLabel.size().width())
-        # self.fkChart.setMaximumWidth(self.pPDetailsLabel.size().width())
-        # self.fkChart.setPlotArea(QRectF(25.0, 25.0, self.pPDetailsLabel.size().width()-50.0, self.pPDetailsLabel.size().width()-50.0))
+        axisY.setTitleText("Feed")
         p = self.fkChart.sizePolicy()
         p.setHeightForWidth(True)
         self.fkChart.setSizePolicy(p)
-        # self.fkChart.setPlotArea(QRectF())
-        self.fkChartView = QChartView(self.fkChart)
-        self.fkChartView.setMinimumHeight(self.pPDetailsLabel.size().width())
-        self.fkChartView.setMaximumHeight(self.pPDetailsLabel.size().width())
-        self.fkChartView.setMinimumWidth(self.pPDetailsLabel.size().width())
-        self.fkChartView.setMaximumWidth(self.pPDetailsLabel.size().width())
+        self.fkChartView = QChartView(self.fkChart, topBox)
         self.fkChartView.setRenderHint(QPainter.Antialiasing)
         topLayout.addWidget(self.fkChartView)
 
@@ -489,27 +485,34 @@ class MainWindow(QtWidgets.QMainWindow):
         Updates the pattern description.
         WIP should also update the highlighted circle in the phase diagram
         """
+        # Hide chart so its dimension does not keep thos of the label
+        # as they where if they should shrink
         self.fkChartView.hide()
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription(specie=type))
+        self.pPDetailsLabel.adjustSize()
+        self.pPDetailsLabel.parent().adjustSize()
+        # Sets the dimensions of the chart folowing the label width
         self.fkChartView.setMinimumHeight(self.pPDetailsLabel.size().width())
         self.fkChartView.setMaximumHeight(self.pPDetailsLabel.size().width())
         self.fkChartView.setMinimumWidth(self.pPDetailsLabel.size().width())
         self.fkChartView.setMaximumWidth(self.pPDetailsLabel.size().width())
+        self.fkChartView.adjustSize()
         self.fkChartView.show()
+
         # WIP... Should add a red dot in chart, showing which pattern is
         # highlighted/selected
-        # print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
         if len(self.fkChart.series()) > 1:
             self.fkChart.removeSeries(self.fkCurrentPoint)
-            # print(self.fkChart.series()[0].points())
         self.fkCurrentPoint = QScatterSeries()
         self.fkCurrentPoint.setColor(QColor('r'))
         self.fkCurrentPoint.setMarkerSize(50)
         self.fkCurrentPoint.append(self.canvas.grayScottModel.baseParams[3], self.canvas.grayScottModel.baseParams[2])
         self.fkChart.addSeries(self.fkCurrentPoint)
-        # self.fkChartView.setChart(self.fkChart)
+        self.fkChart.update()
+        self.fkChartView.update()
         # WHY ON EARTH does this second serie not appear in the Chart?!?!
-        # print("in setPearsonsPatternDetails, chart.series: %s" % self.fkChart.series())
+
+        self.pPDetailsDock.adjustSize()
 
     def setFeedKillDials(self):
         """
@@ -633,19 +636,14 @@ class LightParamSlider(QtWidgets.QSlider):
 
     def setValue(self, val):
         self.outputLabel.setText(self.outputFormat % val)
-        print("%s In setValue, val: %s" % (val, self.param))
         value = (val - self.vMin)/(self.vMax - self.vMin)
-        print("%s In setValue, value: %s" % (value, self.param))
         if (self.vMax + 1)/(self.vMin + 1) > 100:
-            print("%s In setValue, value before treatment: %s" % (value, self.param))
             value = math.sqrt(math.sqrt(value))
-            print("%s In setValue, value after treatment: %s" % (value, self.param))
-        print("%s In setValue, value: %s" % (value, self.param))
         super(LightParamSlider, self).setValue(int(1000 * value))
 
     def value(self):
         val = super(LightParamSlider, self).value()
-        value= float(val)/1000.0
+        value = float(val)/1000.0
         if (self.vMax + 1)/(self.vMin + 1) > 100:
             value = value**4
         return (value * (self.vMax - self.vMin)) + self.vMin
