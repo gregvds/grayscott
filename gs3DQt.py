@@ -284,7 +284,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
         self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setPearsonsPatternDetails)
-        self.pearsonsPatternsComboBox.textHighlighted[str].emit(self.pearsonsPatternsComboBox.currentText())
+        # self.pearsonsPatternsComboBox.textHighlighted[str].emit(self.pearsonsPatternsComboBox.currentText())
         pearsonsLayout.addWidget(self.pearsonsPatternsComboBox)
         pearsonsBox.setLayout(pearsonsLayout)
         topLayout.addWidget(pearsonsBox)
@@ -430,9 +430,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fkChartView = View(topBox)
         topLayout.addWidget(self.fkChartView)
 
-        # TODO, have a clicked/selected point/symbol to switch the pattern used,
-        # adapt dials, values and description...
-
         # --------------------------------------
         topLayout.addWidget(self.pPDetailsLabel)
         topBox.setLayout(topLayout)
@@ -444,7 +441,6 @@ class MainWindow(QtWidgets.QMainWindow):
     def setPearsonsPatternDetails(self, type=None):
         """
         Updates the pattern description.
-        WIP should also update the highlighted circle in the phase diagram
         """
         # Hide chart so its dimension does not keep those of the label
         # as they where if they should shrink
@@ -688,6 +684,11 @@ class FkPoint(QPointF):
 
 
 class View(QChartView):
+    """
+    A QChartView subclass to splot a scatter chart with individual labels that
+    one can be highlighted.
+    # TODO, have a clicked/selected point/symbol to switch the pattern used,
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setScene(QtWidgets.QGraphicsScene(self))
@@ -702,7 +703,9 @@ class View(QChartView):
 
         # Points
         self.fkPoints = QScatterSeries()
-        self.fkPoints.setMarkerSize(1)
+        self.fkPoints.setMarkerSize(12)
+        self.fkPoints.setColor(QColor(255, 255, 255, 1))
+        self.fkPoints.setBorderColor(QColor(255, 255, 255, 0))
         self.fkPointList = []
         self.fkPointValues = []
         self.fkPointLabels = []
@@ -717,6 +720,7 @@ class View(QChartView):
         self.fkChart.addSeries(self.fkPoints)
         self.fkChart.createDefaultAxes()
 
+        # Axes
         axisX = self.fkChart.axes(orientation=Qt.Horizontal)[0]
         axisX.setTickInterval(0.01)
         axisX.setTickCount(6)
@@ -736,6 +740,9 @@ class View(QChartView):
 
         self.highlightedSpecie = ""
 
+        # self.fkPoints.clicked.connect(self.clickedPoint)
+        self.fkPoints.hovered.connect(self.hoveredPoint)
+
         self.setMouseTracking(True)
 
     def resizeEvent(self, event):
@@ -743,14 +750,6 @@ class View(QChartView):
             self.scene().setSceneRect(QRectF(QPointF(0, 0), event.size()))
             self.fkChart.resize(event.size())
         QtWidgets.QGraphicsView.resizeEvent(self, event)
-
-    # def mouseMoveEvent(self, event):
-    #     pos = self.fkChart.mapToValue(event.pos())
-    #     x = pos.x()
-    #     y = pos.y()
-    #     self._coordX.setText(f"X: {x:.3f}")
-    #     self._coordY.setText(f"Y: {y:.3f}")
-    #     QtWidgets.QGraphicsView.mouseMoveEvent(self, event)
 
     def paintEvent(self, event):
         self.drawCustomLabels(self.fkPoints, 14)
@@ -760,10 +759,13 @@ class View(QChartView):
         if points.count() == 0:
             return
         painter = QPainter(self.viewport())
+
+        # font size
         fm = painter.font()
         fm.setPointSize(pointSize)
         painter.setFont(fm)
 
+        # to be restored after highlited draw
         currentPen = painter.pen()
         currentBrush = painter.brush()
 
@@ -771,19 +773,35 @@ class View(QChartView):
             pointLabel = self.fkPointValues[i][2]
             specie = self.fkPointValues[i][3]
             position = points.at(i)
-            # position.setX(position.x())
-            # position.setY(position.y())
             if self.highlightedSpecie == specie:
                 pen = QPen(QColor(255, 0, 0))
                 brush = QBrush(QColor(255, 0, 0))
                 painter.setPen(pen)
                 painter.setBrush(brush)
-            painter.drawText(self.fkChart.mapToPosition(position, points), pointLabel)
+            painter.drawText(self.fkChart.mapToPosition(position, points)-QPointF(4.5,-4.5), pointLabel)
             painter.setPen(currentPen)
             painter.setBrush(currentBrush)
 
     def setHighlight(self, specie):
         self.highlightedSpecie = specie
+
+    # Currently this produces a segmentationfault...
+    # def clickedPoint(self, point):
+    #     specie = self.getSpecieOfPoint(point)
+    #     self.parent().parent().parent().pearsonsPatternsComboBox.setCurrentText(specie)
+    #     self.parent().parent().parent().pearsonsPatternsComboBox.textActivated(specie)
+
+    def hoveredPoint(self, point):
+        specie = self.getSpecieOfPoint(point)
+        self.setHighlight(specie)
+        # That's so ugly, surely there is a better way to find the method...
+        self.parent().parent().parent().setPearsonsPatternDetails(specie)
+
+    def getSpecieOfPoint(self, point):
+        pointIndex = None
+        if point in self.fkPointList:
+            pointIndex = self.fkPointList.index(point)
+        return self.fkPointValues[pointIndex][3]
 
 ################################################################################
 
