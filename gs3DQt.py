@@ -280,10 +280,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pearsonsPatternsComboBox.addItems(patterns)
         self.pearsonsPatternsComboBox.setCurrentText(self.canvas.grayScottModel.specie)
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.canvas.grayScottModel.setSpecie)
-        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setPearsonsPatternDetails)
+        self.pearsonsPatternsComboBox.textActivated[str].connect(self.setSelectedPearsonsPatternDetails)
         self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
-        self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setPearsonsPatternDetails)
+        self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setHighlightedPearsonsPatternDetails)
         # self.pearsonsPatternsComboBox.textHighlighted[str].emit(self.pearsonsPatternsComboBox.currentText())
         pearsonsLayout.addWidget(self.pearsonsPatternsComboBox)
         pearsonsBox.setLayout(pearsonsLayout)
@@ -304,6 +304,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.feedParamSlider.setValue(self.canvas.grayScottModel.baseParams[2])
         self.feedParamSlider.updateParam(0)
         self.feedParamSlider.valueChanged.connect(self.feedParamSlider.updateParam)
+        self.feedParamSlider.valueChanged.connect(self.setCurrentFKInChart)
         fLayout.addWidget(self.feedParamSlider, 1, 0, 1, 2)
         fLayout.addWidget(QtWidgets.QLabel("∂feed/∂x", fBox), 2, 0)
         dFeedParamLabel = QtWidgets.QLabel("", fBox)
@@ -314,6 +315,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dFeedParamSlider.setValue(0.0)
         self.dFeedParamSlider.updateParam(0)
         self.dFeedParamSlider.valueChanged.connect(self.dFeedParamSlider.updateParam)
+        self.dFeedParamSlider.valueChanged.connect(self.setDFeedInChart)
         fLayout.addWidget(self.dFeedParamSlider, 3, 0, 1, 2)
         fBox.setLayout(fLayout)
 
@@ -328,6 +330,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.killParamSlider.setValue(self.canvas.grayScottModel.baseParams[3])
         self.killParamSlider.updateParam(0)
         self.killParamSlider.valueChanged.connect(self.killParamSlider.updateParam)
+        self.killParamSlider.valueChanged.connect(self.setCurrentFKInChart)
         kLayout.addWidget(self.killParamSlider, 1, 0, 1, 2)
         kLayout.addWidget(QtWidgets.QLabel("∂kill/∂y", kBox), 2, 0)
         dKillParamLabel = QtWidgets.QLabel("", kBox)
@@ -338,6 +341,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dKillParamSlider.setValue(0.0)
         self.dKillParamSlider.updateParam(0)
         self.dKillParamSlider.valueChanged.connect(self.dKillParamSlider.updateParam)
+        self.dKillParamSlider.valueChanged.connect(self.setDKillInChart)
         kLayout.addWidget(self.dKillParamSlider, 3, 0, 1, 2)
         kBox.setLayout(kLayout)
 
@@ -438,18 +442,43 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @Slot()
     @Slot(str)
-    def setPearsonsPatternDetails(self, type=None):
+    def setSelectedPearsonsPatternDetails(self, type=None):
         """
-        Updates the pattern description.
+        Updates the pattern description and highlight the selected one.
         """
         # Hide chart so its dimension does not keep those of the label
         # as they where if they should shrink
+        self.hideChartAndUpdateDetails(type)
+        # Sets the dimensions of the chart folowing the label width
+        self.fkChartView.setSelect(type)
+        self.AdjustChartSizeAndShow()
+
+    @Slot()
+    @Slot(str)
+    def setHighlightedPearsonsPatternDetails(self, type=None):
+        """
+        Updates the pattern description and highlight the highlighted one.
+        """
+        # Hide chart so its dimension does not keep those of the label
+        # as they where if they should shrink
+        self.hideChartAndUpdateDetails(type)
+        # Sets the dimensions of the chart folowing the label width
+        self.fkChartView.setHighlight(type)
+        self.AdjustChartSizeAndShow()
+
+    def hideChartAndUpdateDetails(self, type=None):
+        """
+        Updates the pattern description part 1.
+        """
         self.fkChartView.hide()
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription(specie=type))
         self.pPDetailsLabel.adjustSize()
         self.pPDetailsLabel.parent().adjustSize()
-        # Sets the dimensions of the chart folowing the label width
-        self.fkChartView.setHighlight(type)
+
+    def AdjustChartSizeAndShow(self):
+        """
+        Updates the pattern description part 2.
+        """
         self.fkChartView.setMinimumHeight(self.pPDetailsLabel.size().width())
         self.fkChartView.setMaximumHeight(self.pPDetailsLabel.size().width())
         self.fkChartView.setMinimumWidth(self.pPDetailsLabel.size().width())
@@ -464,6 +493,24 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         self.feedParamSlider.setValue(self.canvas.grayScottModel.baseParams[2])
         self.killParamSlider.setValue(self.canvas.grayScottModel.baseParams[3])
+
+    @Slot(int)
+    def setCurrentFKInChart(self, val):
+        self.fkChartView.hide()
+        self.fkChartView.setCurrentFKPoint(self.killParamSlider.value(), self.feedParamSlider.value())
+        self.fkChartView.show()
+
+    @Slot(int)
+    def setDFeedInChart(self, val):
+        self.fkChartView.hide()
+        self.fkChartView.setDFeed(self.dFeedParamSlider.value())
+        self.fkChartView.show()
+
+    @Slot(int)
+    def setDKillInChart(self, val):
+        self.fkChartView.hide()
+        self.fkChartView.setDKill(self.dKillParamSlider.value())
+        self.fkChartView.show()
 
     def updateCycle(self):
         """
@@ -738,10 +785,14 @@ class View(QChartView):
         self.setRenderHint(QPainter.Antialiasing)
         self.scene().addItem(self.fkChart)
 
-        self.highlightedSpecie = ""
+        self.highlightedSpecie = None
+        self.selectedSpecie = None
+        self.currentFKPoint = None
+        self.dFeed = 0
+        self.dKill = 0
 
-        # self.fkPoints.clicked.connect(self.clickedPoint)
-        self.fkPoints.hovered.connect(self.hoveredPoint)
+        # self.fkPoints.clicked.connect(self.clickPoint)
+        self.fkPoints.hovered.connect(self.hoverPoint)
 
         self.setMouseTracking(True)
 
@@ -753,6 +804,7 @@ class View(QChartView):
 
     def paintEvent(self, event):
         self.drawCustomLabels(self.fkPoints, 14)
+        self.drawDFeedDKillBox(self.fkPoints)
         QtWidgets.QGraphicsView.paintEvent(self, event)
 
     def drawCustomLabels(self, points, pointSize):
@@ -765,7 +817,7 @@ class View(QChartView):
         fm.setPointSize(pointSize)
         painter.setFont(fm)
 
-        # to be restored after highlited draw
+        # to be restored after highlighted draw
         currentPen = painter.pen()
         currentBrush = painter.brush()
 
@@ -773,35 +825,84 @@ class View(QChartView):
             pointLabel = self.fkPointValues[i][2]
             specie = self.fkPointValues[i][3]
             position = points.at(i)
-            if self.highlightedSpecie == specie:
+            if self.selectedSpecie == specie:
                 pen = QPen(QColor(255, 0, 0))
                 brush = QBrush(QColor(255, 0, 0))
+                painter.setPen(pen)
+                painter.setBrush(brush)
+            elif self.highlightedSpecie == specie:
+                pen = QPen(QColor(247, 102, 62))
+                brush = QBrush(QColor(247, 102, 62))
                 painter.setPen(pen)
                 painter.setBrush(brush)
             painter.drawText(self.fkChart.mapToPosition(position, points)-QPointF(4.5,-4.5), pointLabel)
             painter.setPen(currentPen)
             painter.setBrush(currentBrush)
 
+    def drawDFeedDKillBox(self, points):
+        if self.dKill > 0 or self.dFeed > 0:
+            centerPoint = self.getPointOfSpecie(self.selectedSpecie)
+            if self.currentFKPoint is not None:
+                centerPoint = self.currentFKPoint
+            halves = QPointF(self.dKill, -self.dFeed)
+            topLeft = centerPoint - halves
+            topLeft = self.fkChart.mapToPosition(topLeft, points)
+            bottomRight = centerPoint + halves
+            bottomRight = self.fkChart.mapToPosition(bottomRight, points)
+            painter = QPainter(self.viewport())
+            # to be restored after highlighted draw
+            currentPen = painter.pen()
+            currentBrush = painter.brush()
+            pen = QPen(QColor(221, 158, 116))
+            brush = QBrush(QColor(255, 255, 255, 0))
+            painter.setPen(pen)
+            painter.setBrush(brush)
+            painter.drawRect(QRectF(topLeft, bottomRight))
+            painter.setPen(currentPen)
+            painter.setBrush(currentBrush)
+
+    def setSelect(self, specie):
+        self.selectedSpecie = specie
+        # Here erase fkFreePoint
+
     def setHighlight(self, specie):
         self.highlightedSpecie = specie
 
     # Currently this produces a segmentationfault...
-    # def clickedPoint(self, point):
+    # def clickPoint(self, point):
     #     specie = self.getSpecieOfPoint(point)
     #     self.parent().parent().parent().pearsonsPatternsComboBox.setCurrentText(specie)
     #     self.parent().parent().parent().pearsonsPatternsComboBox.textActivated(specie)
 
-    def hoveredPoint(self, point):
+    def setCurrentFKPoint(self, kill, feed):
+        self.currentFKPoint = QPointF(kill, feed)
+
+    def setDKill(self, value):
+        self.dKill = value
+
+    def setDFeed(self, value):
+        self.dFeed = value
+
+    def hoverPoint(self, point, state):
         specie = self.getSpecieOfPoint(point)
-        self.setHighlight(specie)
-        # That's so ugly, surely there is a better way to find the method...
-        self.parent().parent().parent().setPearsonsPatternDetails(specie)
+        if state:
+            # That's so ugly, surely there is a better way to find the method...
+            self.parent().parent().parent().setHighlightedPearsonsPatternDetails(specie)
+        else:
+            # That's so ugly, surely there is a better way to find the method...
+            self.parent().parent().parent().setSelectedPearsonsPatternDetails(self.selectedSpecie)
 
     def getSpecieOfPoint(self, point):
         pointIndex = None
         if point in self.fkPointList:
             pointIndex = self.fkPointList.index(point)
         return self.fkPointValues[pointIndex][3]
+
+    def getPointOfSpecie(self, specie):
+        for i in range(len(self.fkPointValues)):
+            if self.fkPointValues[i][3] == specie:
+                return self.fkPoints.at(i)
+
 
 ################################################################################
 

@@ -384,7 +384,8 @@ class GrayScottModel():
         """
         specie = specie or self.specie
         specieDetail = GrayScottModel.species[specie]
-        text = "%s\n" % specie
+        symbol = specieDetail[5]
+        text = "%s - %s\n" % (symbol, specie)
         text += "%s\n\n" % specieDetail[4]
         text += 'dU: %1.3f\n' % specieDetail[0]
         text += 'dV: %1.3f\n' % specieDetail[1]
