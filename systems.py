@@ -257,8 +257,8 @@ pearson = {
         'factors': {
             'Da': 1.0,
             'Db': 0.5,
-            'f': 0.018,
-            'k': 0.055
+            'f': 0.022,
+            'k': 0.059
         },
         'scaling': {
             "a": {
@@ -324,8 +324,8 @@ pearson = {
         'factors': {
             'Da': 1.0,
             'Db': 0.5,
-            'f': 0.022,
-            'k': 0.061
+            'f': 0.026,
+            'k': 0.059
         },
         'scaling': {
             "a": {
@@ -573,8 +573,8 @@ pearson = {
     },
     'lambda_right': {
         'description': """
-        Solitons that grow by mitosis (cell-division). After the space is filled, solitons rearrange
-        into hexagonal grids, sometimes with grain boundaries.
+        Solitons that grow by mitosis (cell-division). After the space is filled,
+        solitons rearrange into hexagonal grids, sometimes with grain boundaries.
         Eventually, all movement stops and the pattern is in a steady state.
 
         Type epsilon (ε) differs from this by having "overcrowding" and die-outs,
@@ -604,8 +604,8 @@ pearson = {
     },
     'lambda_left': {
         'description': """
-        Solitons that grow by mitosis (cell-division). After the space is filled, solitons rearrange
-        into hexagonal grids, sometimes with grain boundaries.
+        Solitons that grow by mitosis (cell-division). After the space is filled,
+        solitons rearrange into hexagonal grids, sometimes with grain boundaries.
         Eventually, all movement stops and the pattern is in a steady state.
 
         Type epsilon (ε) differs from this by having "overcrowding" and die-outs,
@@ -636,8 +636,8 @@ pearson = {
     'mu_right': {
         'description': """
         Stripes that grow from each end (worms), possibly also co-existing with inert
-        (non-mitotic) solitons. After the space is filled by the worms, they reorganise towards parallel
-        stripes and remain disconnected from one another.
+        (non-mitotic) solitons. After the space is filled by the worms, they reorganise
+        towards parallel stripes and remain disconnected from one another.
 
         Type eta (η) differs from this by having oscillation in the ∂u/∂t component,
             and many spots/solitons.
@@ -668,8 +668,8 @@ pearson = {
     'mu_left': {
         'description': """
         Stripes that grow from each end (worms), possibly also co-existing with inert
-        (non-mitotic) solitons. After the space is filled by the worms,
-        they reorganise towards parallel stripes and remain disconnected from one another.
+        (non-mitotic) solitons. After the space is filled by the worms, they reorganise
+        towards parallel stripes and remain disconnected from one another.
 
         Type eta (η) differs from this by having oscillation in the ∂u/∂t component,
             and many spots/solitons.
@@ -696,6 +696,36 @@ pearson = {
             },
         },
         'symbol': 'μ'
+    },
+    'nu_right': {
+        'description': """
+        Inert (non-mitotic) solitons. The number of solitons depends on the number and size
+        of blue areas in the starting pattern. All large blue areas shrink and/or split up into solitons.
+        The solitons then drift apart from each other to spread as uniformly as possible across the space,
+        but this takes a period of time proportional to eKw where w is the width of the domain in lu and K
+        is a constant, K≈20+1000F. In the following images (with F=0.046, k=0.067) each successive image
+        represents approximately twice as much elapsed time: """,
+        'file_stub': "nu(right)",
+        'cmap': {'a': "seismic", 'b': 'seismic'},
+        'factors': {
+            'Da': 1.0,
+            'Db': 0.5,
+            'f': 0.082,
+            'k': 0.063
+        },
+        'scaling': {
+            "a": {
+                'icl': 0.2888,
+                'im': 0.6444,
+                'icu': 1.0
+            },
+            "b": {
+                'icl': 0.0,
+                'im': 0.2116,
+                'icu': 0.4233
+            },
+        },
+        'symbol': 'ν'
     },
     'nu_left': {
         'description': """
@@ -726,6 +756,35 @@ pearson = {
             },
         },
         'symbol': 'ν'
+    },
+    'xi_right': {
+        'description': """
+        Large, sustained spirals similar to the Belousov-Zhabotinsky reaction in a Petri dish.
+        The seed of the spiral is an essential and sometimes rare feature, which must exist in suitable quantities
+        to produce a long-lived pattern. This means that if the domain is small, the spirals will die out;
+        in this case the pattern becomes uniform red state. If the domain is large enough, occasional
+        irregularities usually geerate new spiral seeds and thereby maintain the population of spiral seeds.""",
+        'file_stub': "xi(right)",
+        'cmap': {'a': "seismic", 'b': 'seismic'},
+        'factors': {
+            'Da': 1.0,
+            'Db': 0.5,
+            'f': 0.014,
+            'k': 0.047
+        },
+        'scaling': {
+            "a": {
+                'icl': 0.0,
+                'im': 0.5,
+                'icu': 1.0
+            },
+            "b": {
+                'icl': 0.0,
+                'im': 0.2116,
+                'icu': 0.4233
+            },
+        },
+        'symbol': 'ξ'
     },
     'xi_left': {
         'description': """
@@ -798,8 +857,8 @@ pearson = {
         grow (though in limited cases at certain parameter values a negaton can persist).
         This behaviour is just like type sigma (σ) with red and blue reversed.
         However, "worm tips" (lines that end without joining with another line)
-        sometimes persist or lengthen until they are constrained by the size of their containing bubble;
-        in type σ such tips always shrink.
+        sometimes persist or lengthen until they are constrained by the size of
+        their containing bubble; in type σ such tips always shrink.
 
         Type ρ patterns belong to Wolfram class 2-a.""",
         'file_stub': "rho(left)",
@@ -833,8 +892,8 @@ pearson = {
         grow (though in limited cases at certain parameter values a negaton can persist).
         This behaviour is just like type sigma (σ) with red and blue reversed.
         However, "worm tips" (lines that end without joining with another line)
-        sometimes persist or lengthen until they are constrained by the size of their containing bubble;
-        in type σ such tips always shrink.
+        sometimes persist or lengthen until they are constrained by the size of
+        their containing bubble; in type σ such tips always shrink.
 
         Type ρ patterns belong to Wolfram class 2-a.""",
         'file_stub': "rho(right)",

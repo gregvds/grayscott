@@ -255,9 +255,11 @@ class GrayScottModel():
         'K': 'kappa_right',
         'L': 'lambda_right',
         'M': 'mu_right',
+        'N': 'nu_right',
         'R': 'rho_right',
         'S': 'sigma_right',
         'T': 'theta_right',
+        'X': 'xi_right',
         'Z': 'zeta_right'
     }
 
