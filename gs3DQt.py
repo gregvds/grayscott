@@ -284,7 +284,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
         self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setHighlightedPearsonsPatternDetails)
-        # self.pearsonsPatternsComboBox.textHighlighted[str].emit(self.pearsonsPatternsComboBox.currentText())
         pearsonsLayout.addWidget(self.pearsonsPatternsComboBox)
         pearsonsBox.setLayout(pearsonsLayout)
         topLayout.addWidget(pearsonsBox)
@@ -807,7 +806,7 @@ class View(QChartView):
         self.dFeed = 0
         self.dKill = 0
 
-        # self.fkPoints.clicked.connect(self.clickPoint)
+        self.fkPoints.clicked.connect(self.clickPoint)
         self.fkPoints.hovered.connect(self.hoverPoint)
 
         self.setMouseTracking(True)
@@ -943,11 +942,12 @@ class View(QChartView):
         """
         self.highlightedSpecie = specie
 
-    # Currently chart clicking produces a segmentationfault...
-    # def clickPoint(self, point):
-    #     specie = self.getSpecieOfPoint(point)
-    #     self.parent().parent().parent().pearsonsPatternsComboBox.setCurrentText(specie)
-    #     self.parent().parent().parent().pearsonsPatternsComboBox.textActivated(specie)
+    def clickPoint(self, point):
+        specie = self.getSpecieOfPoint(point)
+        # self.setSelect(specie)
+        pPComboBox = self.parent().parent().parent().pearsonsPatternsComboBox
+        pPComboBox.setCurrentText(specie)
+        pPComboBox.textActivated[str].emit(pPComboBox.currentText())
 
     def setCurrentFKPoint(self, kill, feed):
         """
