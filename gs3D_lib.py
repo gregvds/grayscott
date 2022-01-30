@@ -660,7 +660,8 @@ class MainRenderer(Renderer):
         'è': 'antidetroit',
         '!': 'osmort',
         'ç': 'irkoutsk_r',
-        'à': 'vancouver_r'
+        'à': 'vancouver_r',
+        'q': 'helsinki'
     }
 
     colormapDictionnaryShifted = {
@@ -673,7 +674,8 @@ class MainRenderer(Renderer):
         '7': 'detroit',
         '8': 'tromso',
         '9': 'irkoutsk',
-        '0': 'vancouver'
+        '0': 'vancouver',
+        'Q': 'helsinki_r'
     }
 
     # This dictionnary holds all the lighting parameters. They are automatically
