@@ -99,7 +99,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.createMenuBar()
         self.createPearsonPatternDetailDock(visible=True)
-        self.createModelDock()
+        self.createModelDock(visible=True)
         self.createDisplayDock(visible=False)
         self.createLightingDock(visible=False)
 
@@ -318,6 +318,9 @@ class MainWindow(QtWidgets.QMainWindow):
         fLayout.addWidget(self.dFeedParamSlider, 3, 0, 1, 2)
         fBox.setLayout(fLayout)
 
+        self.killAutomationCheckBox = QtWidgets.QCheckBox("Link kill to feed", self.modelDock)
+        self.killAutomationCheckBox.stateChanged.connect(self.linkKillToFeed)
+
         kBox = QtWidgets.QGroupBox(self.modelDock)
         kLayout = QtWidgets.QGridLayout()
         kLayout.addWidget(QtWidgets.QLabel("kill", kBox), 0, 0)
@@ -358,6 +361,9 @@ class MainWindow(QtWidgets.QMainWindow):
         dULayout.addWidget(self.dUParamSlider, 1, 0, 1, 2)
         dUBox.setLayout(dULayout)
 
+        self.dVAutomationCheckBox = QtWidgets.QCheckBox("Link dV to dU", self.modelDock)
+        self.dVAutomationCheckBox.stateChanged.connect(self.linkDVToDU)
+
         dVBox = QtWidgets.QGroupBox(self.modelDock)
         dVLayout = QtWidgets.QGridLayout()
         dVLayout.addWidget(QtWidgets.QLabel("dV", dVBox), 0, 0)
@@ -373,8 +379,10 @@ class MainWindow(QtWidgets.QMainWindow):
         dVBox.setLayout(dVLayout)
 
         fkLayout.addWidget(fBox)
+        fkLayout.addWidget(self.killAutomationCheckBox)
         fkLayout.addWidget(kBox)
         fkLayout.addWidget(dUBox)
+        fkLayout.addWidget(self.dVAutomationCheckBox)
         fkLayout.addWidget(dVBox)
         fkBox.setLayout(fkLayout)
         topLayout.addWidget(fkBox)
@@ -486,6 +494,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fkChartView.show()
         self.pPDetailsDock.adjustSize()
 
+    @Slot(int)
+    def linkKillToFeed(self, state):
+        if state == 2:
+            self.feedParamSlider.sliderMoved.connect(self.setKillFromFeed)
+            self.killParamSlider.setEnabled(False)
+        else:
+            self.feedParamSlider.sliderMoved.disconnect(self.setKillFromFeed)
+            self.killParamSlider.setEnabled(True)
+
+    def setKillFromFeed(self, val):
+        feedValue = self.feedParamSlider.value()
+        # killValue = (-1.38 * math.sqrt(1.1 * (feedValue - 0.0017)) * ((1.44 * feedValue) - 0.27))
+        killValue = (-1.21 * math.sqrt(1.36 * (feedValue - 0.001)) * ((1.63 * feedValue) - 0.289))
+        self.killParamSlider.setValue(killValue)
+
+    @Slot(int)
+    def linkDVToDU(self, state):
+        if state == 2:
+            self.dUParamSlider.sliderMoved.connect(self.setDVFromDU)
+            self.dVParamSlider.setEnabled(False)
+        else:
+            self.dUParamSlider.sliderMoved.disconnect(self.setDVFromDU)
+            self.dVParamSlider.setEnabled(True)
+
+    def setDVFromDU(self, val):
+        dUValue = self.dUParamSlider.value()
+        dVValue = 0.5 * dUValue
+        self.dVParamSlider.setValue(dVValue)
+
+    @Slot(str)
     def setFeedKillDials(self):
         """
         Set the values of model parameters slider after change in the model
@@ -520,6 +558,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fkChartView.setDKill(self.dKillParamSlider.value())
         self.fkChartView.show()
 
+    @Slot()
     def updateCycle(self):
         """
         Update label for number of supplementary render cycles per frame
@@ -942,13 +981,6 @@ class View(QChartView):
         """
         self.highlightedSpecie = specie
 
-    def clickPoint(self, point):
-        specie = self.getSpecieOfPoint(point)
-        # self.setSelect(specie)
-        pPComboBox = self.parent().parent().parent().pearsonsPatternsComboBox
-        pPComboBox.setCurrentText(specie)
-        pPComboBox.textActivated[str].emit(pPComboBox.currentText())
-
     def setCurrentFKPoint(self, kill, feed):
         """
         Sets the point to draw a cross on to show the current feed and kill modelled.
@@ -969,12 +1001,24 @@ class View(QChartView):
 
     def hoverPoint(self, point, state):
         """
-        Hovering on a point will change the details shown and will highlight the
+        Hovering a point will change the details shown and will highlight it.
         """
         specie = self.getSpecieOfPoint(point)
         if state and specie is not None:
             # That's so ugly, surely there is a better way to find the method...
             self.parent().parent().parent().setHighlightedPearsonsPatternDetails(specie)
+
+    def clickPoint(self, point):
+        """
+        Clicking a point will select its specie and set it in the model.
+        """
+        specie = self.getSpecieOfPoint(point)
+        pPComboBox = self.parent().parent().parent().pearsonsPatternsComboBox
+        pPComboBox.setCurrentText(specie)
+        pPComboBox.textActivated[str].emit(pPComboBox.currentText())
+
+    def clickChart(self, point):
+        print("Click in chart: %s" % point)
 
     def getSpecieOfPoint(self, point):
         pointIndex = None

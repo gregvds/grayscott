@@ -248,7 +248,7 @@ void main()
 
 
 ################################################################################
-# 3D shaders (used in gs3D.py)
+# 3D shaders (used in gs3D.py and gs3DQt.py)
 
 compute_vertex = """
 precision highp float;

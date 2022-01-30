@@ -332,8 +332,8 @@ class GrayScottModel():
         self.setSpecie(specie=self.specie)
         self.dUMin = 0.2
         self.dUMax = 1.3
-        self.dVMin = 0.2
-        self.dVMax = 1.3
+        self.dVMin = 0.5*self.dUMin
+        self.dVMax = 0.5*self.dUMax
 
         # Define a FrameBuffer to update model state in texture
         # --------------------------------------
@@ -422,19 +422,25 @@ class GrayScottModel():
         else:
             self.dFeed = dFeed or self.dFeed
             self.dKill = dKill or self.dKill
-            if feed is not None or kill is not None:
-                self.updateFK(feed, kill)
+            if feed is not None or kill is not None or dU is not None or dV is not None:
+                self.updateFK(feed, kill, dU, dV)
             if dFeed is not None or dKill is not None:
                 self.modulateFK()
 
-    def updateFK(self, feed=None, kill=None):
+    def updateFK(self, feed=None, kill=None, diffU=None, diffV=None):
         """
-        Updates feed and kill params in texture when not in isotropic mode.
+        Updates feed, kill, dU and dV params in texture when not in isotropic mode.
         """
+        dU = self.P[0, 0, 0]
+        dV = self.P[0, 0, 1]
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
+        diffU = diffU or dU
+        diffV = diffV or dV
         feed = feed or f
         kill = kill or k
+        self.P[:, :, 0] = diffU
+        self.P[:, :, 1] = diffV
         self.P[:, :, 2] -= f
         self.P[:, :, 3] -= k
         self.P[:, :, 2] = np.clip(self.P[:, :, 2] + feed, self.fMin, self.fMax)
