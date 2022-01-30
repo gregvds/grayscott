@@ -304,7 +304,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.feedParamSlider.setValue(self.canvas.grayScottModel.baseParams[2])
         self.feedParamSlider.updateParam(0)
         self.feedParamSlider.valueChanged.connect(self.feedParamSlider.updateParam)
-        self.feedParamSlider.valueChanged.connect(self.setCurrentFKInChart)
+        self.feedParamSlider.sliderMoved.connect(self.setCurrentFKInChart)
         fLayout.addWidget(self.feedParamSlider, 1, 0, 1, 2)
         fLayout.addWidget(QtWidgets.QLabel("∂feed/∂x", fBox), 2, 0)
         dFeedParamLabel = QtWidgets.QLabel("", fBox)
@@ -330,7 +330,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.killParamSlider.setValue(self.canvas.grayScottModel.baseParams[3])
         self.killParamSlider.updateParam(0)
         self.killParamSlider.valueChanged.connect(self.killParamSlider.updateParam)
-        self.killParamSlider.valueChanged.connect(self.setCurrentFKInChart)
+        self.killParamSlider.sliderMoved.connect(self.setCurrentFKInChart)
         kLayout.addWidget(self.killParamSlider, 1, 0, 1, 2)
         kLayout.addWidget(QtWidgets.QLabel("∂kill/∂y", kBox), 2, 0)
         dKillParamLabel = QtWidgets.QLabel("", kBox)
@@ -449,8 +449,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Hide chart so its dimension does not keep those of the label
         # as they where if they should shrink
         self.hideChartAndUpdateDetails(type)
-        # Sets the dimensions of the chart folowing the label width
         self.fkChartView.setSelect(type)
+        # Sets the dimensions of the chart folowing the label width
         self.AdjustChartSizeAndShow()
 
     @Slot()
@@ -462,8 +462,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Hide chart so its dimension does not keep those of the label
         # as they where if they should shrink
         self.hideChartAndUpdateDetails(type)
-        # Sets the dimensions of the chart folowing the label width
         self.fkChartView.setHighlight(type)
+        # Sets the dimensions of the chart folowing the label width
         self.AdjustChartSizeAndShow()
 
     def hideChartAndUpdateDetails(self, type=None):
@@ -496,25 +496,34 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @Slot(int)
     def setCurrentFKInChart(self, val):
+        """
+        Received value is ignored as it is the technical value of the slider.
+        """
         self.fkChartView.hide()
         self.fkChartView.setCurrentFKPoint(self.killParamSlider.value(), self.feedParamSlider.value())
         self.fkChartView.show()
 
     @Slot(int)
     def setDFeedInChart(self, val):
+        """
+        Received value is ignored as it is the technical value of the slider.
+        """
         self.fkChartView.hide()
         self.fkChartView.setDFeed(self.dFeedParamSlider.value())
         self.fkChartView.show()
 
     @Slot(int)
     def setDKillInChart(self, val):
+        """
+        Received value is ignored as it is the technical value of the slider.
+        """
         self.fkChartView.hide()
         self.fkChartView.setDKill(self.dKillParamSlider.value())
         self.fkChartView.show()
 
     def updateCycle(self):
         """
-        Update number of supplementary render cycles per frame
+        Update label for number of supplementary render cycles per frame
         """
         self.cycles.setText(str(2*self.canvas.grayScottModel.cycle))
 
@@ -733,8 +742,9 @@ class FkPoint(QPointF):
 class View(QChartView):
     """
     A QChartView subclass to splot a scatter chart with individual labels that
-    one can be highlighted.
-    # TODO, have a clicked/selected point/symbol to switch the pattern used,
+    one can be highlighted. This also plot a rectangle showing the ranges of
+    kill feed currently modelled.
+    # TODO, have a clicked/selected symbol to switch the pattern used,
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -743,12 +753,17 @@ class View(QChartView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
+        self.selectedColor = QColor(255, 0, 0)
+        self.currentColor = QColor(221, 158, 116)
+        self.highlightedColor = QColor(247, 102, 62)
+
         # Chart
         self.fkChart = QChart()
         self.fkChart.setBackgroundVisible(False)
         self.fkChart.legend().hide()
 
-        # Points
+        # Points (drawn almost invisible, but cannot be hidden or no hover/click
+        # would be possible in the chart)
         self.fkPoints = QScatterSeries()
         self.fkPoints.setMarkerSize(12)
         self.fkPoints.setColor(QColor(255, 255, 255, 1))
@@ -785,6 +800,7 @@ class View(QChartView):
         self.setRenderHint(QPainter.Antialiasing)
         self.scene().addItem(self.fkChart)
 
+        self.positionCorrectionPoint = QPointF(4.045275,-4.11746)
         self.highlightedSpecie = None
         self.selectedSpecie = None
         self.currentFKPoint = None
@@ -797,111 +813,181 @@ class View(QChartView):
         self.setMouseTracking(True)
 
     def resizeEvent(self, event):
+        QChartView.resizeEvent(self, event)
         if self.scene():
             self.scene().setSceneRect(QRectF(QPointF(0, 0), event.size()))
             self.fkChart.resize(event.size())
-        QtWidgets.QGraphicsView.resizeEvent(self, event)
 
     def paintEvent(self, event):
+        QChartView.paintEvent(self, event)
         self.drawCustomLabels(self.fkPoints, 14)
+        self.drawCurrentFKPoint(self.fkPoints, 14)
         self.drawDFeedDKillBox(self.fkPoints)
-        QtWidgets.QGraphicsView.paintEvent(self, event)
 
     def drawCustomLabels(self, points, pointSize):
+        """
+        Writes each symbol at position of each points. These are intended as the
+        true representations of the points, not labels of them, hence points are
+        drawn almost transparent. Selected and highlighted points are written with
+        different colors.
+        """
         if points.count() == 0:
             return
-        painter = QPainter(self.viewport())
 
+        painter = QPainter(self.viewport())
         # font size
         fm = painter.font()
         fm.setPointSize(pointSize)
         painter.setFont(fm)
-
         # to be restored after highlighted draw
         currentPen = painter.pen()
         currentBrush = painter.brush()
-
         for i in range(points.count()):
             pointLabel = self.fkPointValues[i][2]
             specie = self.fkPointValues[i][3]
             position = points.at(i)
             if self.selectedSpecie == specie:
-                pen = QPen(QColor(255, 0, 0))
-                brush = QBrush(QColor(255, 0, 0))
+                pen = QPen(self.selectedColor)
+                brush = QBrush(self.selectedColor)
                 painter.setPen(pen)
                 painter.setBrush(brush)
             elif self.highlightedSpecie == specie:
-                pen = QPen(QColor(247, 102, 62))
-                brush = QBrush(QColor(247, 102, 62))
+                pen = QPen(self.highlightedColor)
+                brush = QBrush(self.highlightedColor)
                 painter.setPen(pen)
                 painter.setBrush(brush)
-            painter.drawText(self.fkChart.mapToPosition(position, points)-QPointF(4.5,-4.5), pointLabel)
+            painter.drawText(self.fkChart.mapToPosition(position, points)-self.positionCorrectionPoint, pointLabel)
             painter.setPen(currentPen)
             painter.setBrush(currentBrush)
+
+    def drawCurrentFKPoint(self, points, pointSize):
+        """
+        Draws a cross indicating the current Feed and Kill values modelled.
+        This cross is not visible if the values are ones of a selected
+        specie, which has already a symbol shown.
+        """
+        if self.currentFKPoint is None:
+            return
+        currentKill = self.currentFKPoint.x()
+        currentFeed = self.currentFKPoint.y()
+        selectedPoint = self.getPointOfSpecie(self.selectedSpecie)
+        # There should always be a selected specie, but let's stay on the safe side
+        # if there is one, and if current and selected are too close, return
+        if selectedPoint is not None:
+            selectedKill = selectedPoint.x()
+            selectedFeed = selectedPoint.y()
+            dKill = abs(currentKill - selectedKill)
+            dFeed = abs(currentFeed - selectedFeed)
+            if dKill < 1e-04 and dFeed < 1e-04:
+                return
+
+        painter = QPainter(self.viewport())
+        # font size
+        fm = painter.font()
+        fm.setPointSize(pointSize)
+        painter.setFont(fm)
+        # to be restored after highlighted draw
+        currentPen = painter.pen()
+        currentBrush = painter.brush()
+        pen = QPen(self.currentColor)
+        brush = QBrush(self.currentColor)
+        painter.setPen(pen)
+        painter.setBrush(brush)
+        painter.drawText(self.fkChart.mapToPosition(self.currentFKPoint, points)-self.positionCorrectionPoint, "+")
+        painter.setPen(currentPen)
+        painter.setBrush(currentBrush)
 
     def drawDFeedDKillBox(self, points):
-        if self.dKill > 0 or self.dFeed > 0:
-            centerPoint = self.getPointOfSpecie(self.selectedSpecie)
-            if self.currentFKPoint is not None:
-                centerPoint = self.currentFKPoint
-            halves = QPointF(self.dKill, -self.dFeed)
-            topLeft = centerPoint - halves
-            topLeft = self.fkChart.mapToPosition(topLeft, points)
-            bottomRight = centerPoint + halves
-            bottomRight = self.fkChart.mapToPosition(bottomRight, points)
-            painter = QPainter(self.viewport())
-            # to be restored after highlighted draw
-            currentPen = painter.pen()
-            currentBrush = painter.brush()
-            pen = QPen(QColor(221, 158, 116))
-            brush = QBrush(QColor(255, 255, 255, 0))
-            painter.setPen(pen)
-            painter.setBrush(brush)
-            painter.drawRect(QRectF(topLeft, bottomRight))
-            painter.setPen(currentPen)
-            painter.setBrush(currentBrush)
+        """
+        Draws a box showing the ranges of feed and kill currently modelled.
+        This is either plotted around the selected specie, or around the current
+        values of feed and kill. There should always be a selected specie, and
+        this one is to be replaced if a current values are defined, but if
+        something goes wrong, nothing is drawn.
+        """
+        if self.dKill == 0 and self.dFeed == 0:
+            return
+        centerPoint = self.getPointOfSpecie(self.selectedSpecie)
+        if self.currentFKPoint is not None:
+            centerPoint = self.currentFKPoint
+        if centerPoint is None:
+            return
+        halves = QPointF(self.dKill, -self.dFeed)
+        topLeft = centerPoint - halves
+        topLeft = self.fkChart.mapToPosition(topLeft, points)
+        bottomRight = centerPoint + halves
+        bottomRight = self.fkChart.mapToPosition(bottomRight, points)
+        painter = QPainter(self.viewport())
+        # to be restored after highlighted draw
+        currentPen = painter.pen()
+        currentBrush = painter.brush()
+        pen = QPen(self.currentColor)
+        brush = QBrush(QColor(255, 255, 255, 0))
+        painter.setPen(pen)
+        painter.setBrush(brush)
+        painter.drawRect(QRectF(topLeft, bottomRight))
+        painter.setPen(currentPen)
+        painter.setBrush(currentBrush)
 
     def setSelect(self, specie):
+        """
+        Sets the selected specie. If one is selected, it is the modelled one
+        and no current point should be displayed (as a cross)
+        """
         self.selectedSpecie = specie
-        # Here erase fkFreePoint
+        self.currentFKPoint = None
 
     def setHighlight(self, specie):
+        """
+        Sets the specie to highlight.
+        """
         self.highlightedSpecie = specie
 
-    # Currently this produces a segmentationfault...
+    # Currently chart clicking produces a segmentationfault...
     # def clickPoint(self, point):
     #     specie = self.getSpecieOfPoint(point)
     #     self.parent().parent().parent().pearsonsPatternsComboBox.setCurrentText(specie)
     #     self.parent().parent().parent().pearsonsPatternsComboBox.textActivated(specie)
 
     def setCurrentFKPoint(self, kill, feed):
+        """
+        Sets the point to draw a cross on to show the current feed and kill modelled.
+        """
         self.currentFKPoint = QPointF(kill, feed)
 
     def setDKill(self, value):
+        """
+        Sets range of kill currently modelled. Will be the width of the box.
+        """
         self.dKill = value
 
     def setDFeed(self, value):
+        """
+        Sets range of feed currently modelled. Will be the height of the box.
+        """
         self.dFeed = value
 
     def hoverPoint(self, point, state):
+        """
+        Hovering on a point will change the details shown and will highlight the
+        """
         specie = self.getSpecieOfPoint(point)
-        if state:
+        if state and specie is not None:
             # That's so ugly, surely there is a better way to find the method...
             self.parent().parent().parent().setHighlightedPearsonsPatternDetails(specie)
-        else:
-            # That's so ugly, surely there is a better way to find the method...
-            self.parent().parent().parent().setSelectedPearsonsPatternDetails(self.selectedSpecie)
 
     def getSpecieOfPoint(self, point):
         pointIndex = None
         if point in self.fkPointList:
             pointIndex = self.fkPointList.index(point)
-        return self.fkPointValues[pointIndex][3]
+            return self.fkPointValues[pointIndex][3]
+        return None
 
     def getPointOfSpecie(self, specie):
         for i in range(len(self.fkPointValues)):
             if self.fkPointValues[i][3] == specie:
                 return self.fkPoints.at(i)
+        return None
 
 
 ################################################################################
