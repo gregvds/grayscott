@@ -417,6 +417,10 @@ precision highp sampler2D;
 uniform int pingpong;
 uniform float dx;                // horizontal distance between texels
 uniform float dy;                // vertical distance between texels
+uniform float dUMin;
+uniform float dUMax;
+uniform float dVMin;
+uniform float dVMax;
 uniform sampler2D texture; // u:= r or b following pinpong
 uniform sampler2D params;  // rU,rV,f,k := r,g,b,a
 uniform vec2 brush;        // coordinates of mouse down
@@ -478,8 +482,8 @@ void main()
     float uvv = u * v * v;
 
     vec4 rurvfk = texture2D(params, p);
-    float ru = rurvfk.r;
-    float rv = rurvfk.g;
+    float ru = rurvfk.r*(dUMax-dUMin)+dUMin;
+    float rv = rurvfk.g*(dVMax-dVMin)+dVMin;;
     float f = rurvfk.b;
     float k = rurvfk.a;
     // Gray-Scott equation diffusion+-reaction

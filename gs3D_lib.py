@@ -51,7 +51,7 @@ from vispy.gloo import gl, Program, VertexBuffer, IndexBuffer, FrameBuffer
 from vispy.io import read_png, load_data_file
 from vispy.util.transforms import perspective
 
-from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid)
+from gs_lib import (get_colormap, createColormaps, import_pearsons_types, setup_grid, gauss)
 
 from shaders import compute_vertex
 from shaders import compute_fragment_2 as compute_fragment_isotropic
@@ -297,6 +297,20 @@ class GrayScottModel():
         self.vertices = VertexBuffer(V)
         self.faces = IndexBuffer(F)
 
+        # Pearson's patterns related variables
+        # --------------------------------------
+        # defines parameters for du, dv, f, k
+        # and passes them to program
+        self.dFeed = 0.0
+        self.dKill = 0.0
+        self.dU = 1.0
+        self.dV = 0.5
+        self.dDUDV = 0.0
+        self.dUMin = 0.2
+        self.dUMax = 1.3
+        self.dVMin = 0.5*self.dUMin
+        self.dVMax = 0.5*self.dUMax
+
         # Build program to compute Gray-Scott Model according the the isotropic
         # parameter. if True, feed, kill, dU and dV will be the same through all
         # the model, else they will be gridded and can be modulated in the grid.
@@ -309,6 +323,10 @@ class GrayScottModel():
         self.program["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
         self.program["dx"] = 1./self.w
         self.program["dy"] = 1./self.h
+        self.program["dUMin"] = self.dUMin
+        self.program["dUMax"] = self.dUMax
+        self.program["dVMin"] = self.dVMin
+        self.program["dVMax"] = self.dVMax
         self.program['pingpong'] = self.pingpong
         self.program['brush'] = self.brush
         self.program['brushtype'] = self.brushType
@@ -321,19 +339,8 @@ class GrayScottModel():
         # each GPU computation/rendering cycle
         # self.gridReinitialized = False
         self.initializeGrid()
-
-        # Pearson's patterns related variables
-        # --------------------------------------
-        # defines parameters for du, dv, f, k
-        # and passes them to program
-        self.dFeed = 0.0
-        self.dKill = 0.0
         self.baseParams = []
         self.setSpecie(specie=self.specie)
-        self.dUMin = 0.2
-        self.dUMax = 1.3
-        self.dVMin = 0.5*self.dUMin
-        self.dVMax = 0.5*self.dUMax
 
         # Define a FrameBuffer to update model state in texture
         # --------------------------------------
@@ -406,9 +413,10 @@ class GrayScottModel():
             else:
                 self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
                 self.P[:, :] = self.baseParams
-                self.modulateFK()
+                self.modulateParams()
+                self.updateAnisotropicParams()
 
-    def setParams(self, feed=None, kill=None, dU=None, dV=None, dFeed=None, dKill=None):
+    def setParams(self, feed=None, kill=None, dU=None, dV=None, dFeed=None, dKill=None, dDUDV=None):
         """
         set one or more parameters of the model, feed, kill, dU and/or dV
         """
@@ -422,32 +430,38 @@ class GrayScottModel():
         else:
             self.dFeed = dFeed or self.dFeed
             self.dKill = dKill or self.dKill
+            self.dDUDV = dDUDV or self.dDUDV
             if feed is not None or kill is not None or dU is not None or dV is not None:
-                self.updateFK(feed, kill, dU, dV)
+                self.updateParams(feed, kill, dU, dV)
             if dFeed is not None or dKill is not None:
-                self.modulateFK()
+                self.modulateParams()
+            if dDUDV is not None:
+                self.ModulateDUDV(self.dU, self.dDUDV, self.dUMin, self.dUMax, 0)
+                self.ModulateDUDV(self.dV, self.dDUDV, self.dVMin, self.dVMax, 1)
+            self.updateAnisotropicParams()
 
-    def updateFK(self, feed=None, kill=None, diffU=None, diffV=None):
+    def updateParams(self, feed=None, kill=None, diffU=None, diffV=None):
         """
         Updates feed, kill, dU and dV params in texture when not in isotropic mode.
         """
-        dU = self.P[0, 0, 0]
-        dV = self.P[0, 0, 1]
         f = self.P[0, 0, 2]
         k = self.P[0, 0, 3]
-        diffU = diffU or dU
-        diffV = diffV or dV
         feed = feed or f
         kill = kill or k
-        self.P[:, :, 0] = diffU
-        self.P[:, :, 1] = diffV
         self.P[:, :, 2] -= f
         self.P[:, :, 3] -= k
         self.P[:, :, 2] = np.clip(self.P[:, :, 2] + feed, self.fMin, self.fMax)
         self.P[:, :, 3] = np.clip(self.P[:, :, 3] + kill, self.kMin, self.kMax)
-        self.updateAnisotropicParams()
 
-    def modulateFK(self):
+        self.dU = diffU or self.dU
+        self.dV = diffV or self.dV
+        if diffU is not None:
+            self.ModulateDUDV(self.dU, self.dDUDV, self.dUMin, self.dUMax, 0)
+        if diffV is not None:
+            self.ModulateDUDV(self.dV, self.dDUDV, self.dVMin, self.dVMax, 1)
+
+
+    def modulateParams(self):
         """
         Modulates feed and kill with dFeed and dKill when not in isotropic mode.
         """
@@ -460,7 +474,26 @@ class GrayScottModel():
             self.P[i, :, 2] = np.clip(f + self.dFeed*sinsF, self.fMin, self.fMax)
         for i in range(cols):
             self.P[:, i, 3] = np.clip(k + self.dKill*sinsK, self.kMin, self.kMax)
-        self.updateAnisotropicParams()
+
+    def ModulateDUDV(self, dRef, dVar, dMin, dMax, indexInParams):
+        ddPivot = (dRef - dMin) / (dMax - dMin)
+        ddUpperProportion = (dMax - dRef) / (dMax - dMin)
+        ddLowerProportion = ddPivot
+        gaussGrid = gauss(size=[self.h, self.w], sigma = 0.33)
+        if dVar > 0.0:
+            self.P[:, :, indexInParams] = (1 - dVar) * ddPivot \
+                                 + (dVar) * (ddPivot \
+                                             + (gaussGrid * ddUpperProportion) \
+                                             - ((1-gaussGrid) * ddLowerProportion)
+                                              )
+        elif dVar < 0.0:
+            self.P[:, :, indexInParams] = (1 - dVar) * ddPivot \
+                                 + (dVar) * (ddPivot \
+                                             - ((1-gaussGrid) * ddUpperProportion) \
+                                             + (gaussGrid * ddLowerProportion)
+                                              )
+        else:
+            self.P[:, :, indexInParams] = ddPivot
 
     def updateAnisotropicParams(self):
         """

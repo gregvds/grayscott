@@ -487,6 +487,12 @@ def setup_grid(rows, cols, blob_scale=0.1):
     return grid
 
 
+def gauss(size=[100,100], sigma=1, muu=0.000):
+    x, y = np.meshgrid(np.linspace(-1, 1, size[0]), np.linspace(-1, 1, size[1]))
+    dst = np.sqrt(x*x+y*y)
+    return np.exp(-((dst - muu)**2 / (2.0 * sigma**2)))
+
+
 def createLightBox(size=(1024, 1024)):
     """
     DEBUG method that create a lighbox

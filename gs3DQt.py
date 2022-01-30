@@ -378,12 +378,27 @@ class MainWindow(QtWidgets.QMainWindow):
         dVLayout.addWidget(self.dVParamSlider, 1, 0, 1, 2)
         dVBox.setLayout(dVLayout)
 
+        dDUDVBox = QtWidgets.QGroupBox(self.modelDock)
+        dDUDVLayout = QtWidgets.QGridLayout()
+        dDUDVLayout.addWidget(QtWidgets.QLabel("∂dUdV/∂x∂y", dDUDVBox), 0, 0)
+        dDUDVParamLabel = QtWidgets.QLabel("", dDUDVBox)
+        dDUDVLayout.addWidget(dDUDVParamLabel, 0, 1)
+        self.dDUDVParamSlider = ParamSlider(Qt.Horizontal, self, dDUDVParamLabel, "dDUDV", 1000.0)
+        self.dDUDVParamSlider.setMinimum(-1.0)
+        self.dDUDVParamSlider.setMaximum(1.0)
+        self.dDUDVParamSlider.setValue(0.0)
+        self.dDUDVParamSlider.updateParam(0)
+        self.dDUDVParamSlider.valueChanged.connect(self.dDUDVParamSlider.updateParam)
+        dDUDVLayout.addWidget(self.dDUDVParamSlider, 1, 0, 1, 2)
+        dDUDVBox.setLayout(dDUDVLayout)
+
         fkLayout.addWidget(fBox)
         fkLayout.addWidget(self.killAutomationCheckBox)
         fkLayout.addWidget(kBox)
         fkLayout.addWidget(dUBox)
         fkLayout.addWidget(self.dVAutomationCheckBox)
         fkLayout.addWidget(dVBox)
+        fkLayout.addWidget(dDUDVBox)
         fkBox.setLayout(fkLayout)
         topLayout.addWidget(fkBox)
 
@@ -645,7 +660,8 @@ class ParamSlider(QtWidgets.QSlider):
             self.parent.canvas.grayScottModel.setParams(dU=value)
         elif self.param == "dV":
             self.parent.canvas.grayScottModel.setParams(dV=value)
-
+        elif self.param == "dDUDV":
+            self.parent.canvas.grayScottModel.setParams(dDUDV=value)
 
 class LightParamSlider(QtWidgets.QSlider):
     def __init__(self, orientation, parent, outputLabel, lightType, param):
