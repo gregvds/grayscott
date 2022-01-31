@@ -57,6 +57,8 @@ from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
 import sys
 import math
+import os
+import pickle
 
 # from math import pi
 import argparse
@@ -91,6 +93,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.canvas.create_native()
         self.canvas.native.setParent(self)
         self.canvas.measure_fps(1.0, self.show_fps)
+        self.setToolTip("Gray-Scott Reaction-diffusion model Main display\n \
+        Click & drag to move around\n \
+        Ctrl + click & drag to move light\n \
+        Shift + click & drag to modify V concentration\n \
+        left to fill, right to empty")
 
         splitter1 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         splitter1.addWidget(self.canvas.native)
@@ -103,18 +110,45 @@ class MainWindow(QtWidgets.QMainWindow):
         self.createDisplayDock(visible=False)
         self.createLightingDock(visible=False)
 
+        self.createSettingsDialogs()
+
         # FPS message in statusbar:
         self.status = self.statusBar()
         self.status_label = QtWidgets.QLabel('...')
         self.status.addWidget(self.status_label)
+
+        self.loadDefaultGuiSettings()
+
+    ############################################################################
 
     def createMenuBar(self):
         """
         Creates menubar and menus.
         """
         self.menuBar = QtWidgets.QMenuBar()
+        self.settingsMenu = QtWidgets.QMenu("Settings")
         self.panelMenu = QtWidgets.QMenu("Panels")
+        self.menuBar.addMenu(self.settingsMenu)
         self.menuBar.addMenu(self.panelMenu)
+
+    def createSettingsDialogs(self):
+        self.modelSubMenu = self.settingsMenu.addMenu("Model")
+        self.loadModelSettingsDialog = QtWidgets.QFileDialog(self)
+        self.modelSubMenu.addAction("Load", self.loadModelSettings)
+        self.saveModelSettingsDialog = QtWidgets.QFileDialog(self)
+        self.modelSubMenu.addAction("Save", self.saveModelSettings)
+        self.lightSubMenu = self.settingsMenu.addMenu("Light")
+        self.loadLightSettingsDialog = QtWidgets.QFileDialog(self)
+        self.lightSubMenu.addAction("Load", self.loadModelSettings)
+        self.saveLightSettingsDialog = QtWidgets.QFileDialog(self)
+        self.lightSubMenu.addAction("Save", self.saveModelSettings)
+        self.guiSubMenu = self.settingsMenu.addMenu("GUI")
+        self.loadGuiSettingsDialog = QtWidgets.QFileDialog(self)
+        self.guiSubMenu.addAction("Load", self.loadGuiSettings)
+        self.saveGuiSettingsDialog = QtWidgets.QFileDialog(self)
+        self.guiSubMenu.addAction("Save", self.saveGuiSettings)
+        # Currently not implemented...
+        self.lightSubMenu.setEnabled(False)
 
     def createLightingDock(self, visible=True):
         """
@@ -203,6 +237,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.colorsComboBox.setCurrentText(self.canvas.mainRenderer.cmapName)
         self.colorsComboBox.textActivated[str].connect(self.canvas.mainRenderer.setColorMap)
         self.colorsComboBox.textActivated[str].emit(self.colorsComboBox.currentText())
+        self.colorsComboBox.currentTextChanged[str].connect(self.canvas.mainRenderer.setColorMap)
+        self.colorsComboBox.currentTextChanged[str].emit(self.colorsComboBox.currentText())
+        self.colorsComboBox.setToolTip("Colormap used to display reagent concentration")
         colorMapLayout.addWidget(self.colorsComboBox)
         colorMapBox.setLayout(colorMapLayout)
         topLayout.addWidget(colorMapBox)
@@ -216,6 +253,7 @@ class MainWindow(QtWidgets.QMainWindow):
                        canvasColor[1]*255,
                        canvasColor[2]*255)
         colorButton = RoundedButton("background", self, 1, QColor(0,0,0), color)
+        colorButton.setToolTip("Background color behind the model")
         backgroundLayout.addWidget(colorButton, 0, 1)
         backgroundBox.setLayout(backgroundLayout)
         topLayout.addWidget(backgroundBox)
@@ -230,6 +268,7 @@ class MainWindow(QtWidgets.QMainWindow):
         reagentLayout.addWidget(self.uReagentRadioButton)
         reagentLayout.addWidget(self.vReagentRadioButton)
         reagentBox.setLayout(reagentLayout)
+        reagentBox.setToolTip("Reagent to display")
         topLayout.addWidget(reagentBox)
 
         # --------------------------------------
@@ -243,8 +282,10 @@ class MainWindow(QtWidgets.QMainWindow):
         displayLayout.addWidget(self.shadowRadioButton, 0, 1)
         self.resetCameraButton = QtWidgets.QPushButton("Reset camera", self.displayDock)
         self.resetCameraButton.clicked.connect(self.canvas.mainRenderer.resetCamera)
-        self.resetShadowButton = QtWidgets.QPushButton("Reset shadow", self.displayDock)
+        self.resetCameraButton.setToolTip("Reset the main camera to its default position")
+        self.resetShadowButton = QtWidgets.QPushButton("Reset light", self.displayDock)
         self.resetShadowButton.clicked.connect(self.canvas.mainRenderer.resetLight)
+        self.resetShadowButton.setToolTip("Reset Light source to its default position")
         displayLayout.addWidget(self.resetCameraButton, 1, 0)
         displayLayout.addWidget(self.resetShadowButton, 1, 1)
         displayBox.setLayout(displayLayout)
@@ -284,6 +325,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pearsonsPatternsComboBox.textActivated[str].emit(self.pearsonsPatternsComboBox.currentText())
         self.pearsonsPatternsComboBox.textActivated[str].connect(self.setFeedKillDials)
         self.pearsonsPatternsComboBox.textHighlighted[str].connect(self.setHighlightedPearsonsPatternDetails)
+        self.pearsonsPatternsComboBox.setToolTip("Choice of pattern to run")
         pearsonsLayout.addWidget(self.pearsonsPatternsComboBox)
         pearsonsBox.setLayout(pearsonsLayout)
         topLayout.addWidget(pearsonsBox)
@@ -304,6 +346,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.feedParamSlider.updateParam(0)
         self.feedParamSlider.valueChanged.connect(self.feedParamSlider.updateParam)
         self.feedParamSlider.sliderMoved.connect(self.setCurrentFKInChart)
+        self.feedParamSlider.setToolTip("U Feed rate value of the model")
         fLayout.addWidget(self.feedParamSlider, 1, 0, 1, 2)
         fLayout.addWidget(QtWidgets.QLabel("∂feed/∂x", fBox), 2, 0)
         dFeedParamLabel = QtWidgets.QLabel("", fBox)
@@ -315,11 +358,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dFeedParamSlider.updateParam(0)
         self.dFeedParamSlider.valueChanged.connect(self.dFeedParamSlider.updateParam)
         self.dFeedParamSlider.valueChanged.connect(self.setDFeedInChart)
+        self.dFeedParamSlider.setToolTip("Intensity of the spatial variation of U feed rate")
         fLayout.addWidget(self.dFeedParamSlider, 3, 0, 1, 2)
         fBox.setLayout(fLayout)
-
-        self.killAutomationCheckBox = QtWidgets.QCheckBox("Link kill to feed", self.modelDock)
-        self.killAutomationCheckBox.stateChanged.connect(self.linkKillToFeed)
 
         kBox = QtWidgets.QGroupBox(self.modelDock)
         kLayout = QtWidgets.QGridLayout()
@@ -333,6 +374,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.killParamSlider.updateParam(0)
         self.killParamSlider.valueChanged.connect(self.killParamSlider.updateParam)
         self.killParamSlider.sliderMoved.connect(self.setCurrentFKInChart)
+        self.killParamSlider.setToolTip("V Kill rate value of the model")
         kLayout.addWidget(self.killParamSlider, 1, 0, 1, 2)
         kLayout.addWidget(QtWidgets.QLabel("∂kill/∂y", kBox), 2, 0)
         dKillParamLabel = QtWidgets.QLabel("", kBox)
@@ -344,8 +386,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dKillParamSlider.updateParam(0)
         self.dKillParamSlider.valueChanged.connect(self.dKillParamSlider.updateParam)
         self.dKillParamSlider.valueChanged.connect(self.setDKillInChart)
+        self.dKillParamSlider.setToolTip("Intensity of the spatial variation of V kill rate")
         kLayout.addWidget(self.dKillParamSlider, 3, 0, 1, 2)
         kBox.setLayout(kLayout)
+
+        self.killAutomationCheckBox = QtWidgets.QCheckBox("Link kill to feed", self.modelDock)
+        self.killAutomationCheckBox.stateChanged.connect(self.linkKillToFeed)
+        self.killAutomationCheckBox.setToolTip("Infer V kill rate to U feed rate, to stay in interesting ranges")
 
         dUBox = QtWidgets.QGroupBox(self.modelDock)
         dULayout = QtWidgets.QGridLayout()
@@ -358,11 +405,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dUParamSlider.setValue(self.canvas.grayScottModel.baseParams[0])
         self.dUParamSlider.updateParam(0)
         self.dUParamSlider.valueChanged.connect(self.dUParamSlider.updateParam)
+        self.dUParamSlider.setToolTip("U diffusion rate, influences scale of patterns")
         dULayout.addWidget(self.dUParamSlider, 1, 0, 1, 2)
         dUBox.setLayout(dULayout)
-
-        self.dVAutomationCheckBox = QtWidgets.QCheckBox("Link dV to dU", self.modelDock)
-        self.dVAutomationCheckBox.stateChanged.connect(self.linkDVToDU)
 
         dVBox = QtWidgets.QGroupBox(self.modelDock)
         dVLayout = QtWidgets.QGridLayout()
@@ -375,8 +420,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dVParamSlider.setValue(self.canvas.grayScottModel.baseParams[1])
         self.dVParamSlider.updateParam(0)
         self.dVParamSlider.valueChanged.connect(self.dVParamSlider.updateParam)
+        self.dVParamSlider.setToolTip("V diffusion rate, influences scale of patterns")
         dVLayout.addWidget(self.dVParamSlider, 1, 0, 1, 2)
         dVBox.setLayout(dVLayout)
+
+        self.dVAutomationCheckBox = QtWidgets.QCheckBox("Link dV to dU", self.modelDock)
+        self.dVAutomationCheckBox.stateChanged.connect(self.linkDVToDU)
+        self.dVAutomationCheckBox.setChecked(True)
+        self.dVAutomationCheckBox.setToolTip("Couples U and V diffusion rates")
 
         dDUDVBox = QtWidgets.QGroupBox(self.modelDock)
         dDUDVLayout = QtWidgets.QGridLayout()
@@ -389,6 +440,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dDUDVParamSlider.setValue(0.0)
         self.dDUDVParamSlider.updateParam(0)
         self.dDUDVParamSlider.valueChanged.connect(self.dDUDVParamSlider.updateParam)
+        self.dDUDVParamSlider.setToolTip("Intensity of the spatial variation of U and V diffusion rates")
         dDUDVLayout.addWidget(self.dDUDVParamSlider, 1, 0, 1, 2)
         dDUDVBox.setLayout(dDUDVLayout)
 
@@ -407,6 +459,7 @@ class MainWindow(QtWidgets.QMainWindow):
         controlLayout = QtWidgets.QVBoxLayout()
         self.resetButton = QtWidgets.QPushButton("Reset", self.modelDock)
         self.resetButton.clicked.connect(self.canvas.grayScottModel.initializeGrid)
+        self.resetButton.setToolTip("Reinitialize and reseed model")
         controlLayout.addWidget(self.resetButton)
         cyclesBox = QtWidgets.QGroupBox("Additional cycles/frame", self.modelDock)
         cyclesLayout = QtWidgets.QHBoxLayout()
@@ -416,6 +469,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cycles = QtWidgets.QLabel(self.modelDock)
         self.cycles.setText(str(2*self.canvas.grayScottModel.cycle))
         self.cycles.setAlignment(Qt.AlignCenter | Qt.AlignCenter)
+        self.cycles.setToolTip("Number of supplementary computation cycles between two frames")
         self.moreCycles = QtWidgets.QPushButton("+", self.modelDock)
         self.moreCycles.clicked.connect(self.canvas.grayScottModel.increaseCycle)
         self.moreCycles.clicked.connect(self.updateCycle)
@@ -451,9 +505,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # --------------------------------------
         self.pPDetailsLabel = QtWidgets.QLabel(topBox)
         self.pPDetailsLabel.setText(self.canvas.grayScottModel.getPearsonPatternDescription())
+        self.pPDetailsLabel.setToolTip("Brief explanation of the selected/highlighted pattern")
 
         # --------------------------------------
         self.fkChartView = View(topBox)
+        self.fkChartView.setToolTip("'Phase diagram' showing all the patterns\n in red the selected pattern\n in orange the highlighted one\n cross and box show the current\n feed and kill and ranges currently modelled")
         topLayout.addWidget(self.fkChartView)
 
         # --------------------------------------
@@ -461,6 +517,125 @@ class MainWindow(QtWidgets.QMainWindow):
         topBox.setLayout(topLayout)
         self.pPDetailsDock.setWidget(topBox)
         self.panelMenu.addAction(self.pPDetailsDock.toggleViewAction())
+
+    ############################################################################
+
+    @Slot()
+    def saveModelSettings(self):
+        """
+        Saves model parameters to designated file.
+        """
+        fileName = self.saveModelSettingsDialog.getSaveFileName(self,
+                                            caption=str("Save model settings"),
+                                            dir=str("./savedmodel"),
+                                            filter=str("Pickle (*.pkl *.mod)"))
+        with open(fileName[0], "wb") as file:
+            modelSettingsGetter = {
+                "pearsonsPatternsComboBox": self.pearsonsPatternsComboBox.currentText(),
+                "feedParamSlider": self.feedParamSlider.value(),
+                "dFeedParamSlider": self.dFeedParamSlider.value(),
+                "killParamSlider": self.killParamSlider.value(),
+                "dKillParamSlider": self.dKillParamSlider.value(),
+                "killAutomationCheckBox": self.killAutomationCheckBox.isChecked(),
+                "dUParamSlider": self.dUParamSlider.value(),
+                "dVParamSlider": self.dVParamSlider.value(),
+                "dVAutomationCheckBox": self.dVAutomationCheckBox.isChecked(),
+                "dDUDVParamSlider": self.dDUDVParamSlider.value(),
+                "colorsComboBox": self.colorsComboBox.currentText(),
+                "vReagentRadioButton": self.vReagentRadioButton.isChecked(),
+                "uReagentRadioButton": self.uReagentRadioButton.isChecked(),
+            }
+            pickle.dump(modelSettingsGetter, file)
+            print("Save model settings done")
+
+    @Slot()
+    def loadModelSettings(self):
+        """
+        Loads model parameters from choosen file.
+        """
+        modelSettingsSetter = {
+            "pearsonsPatternsComboBox": self.pearsonsPatternsComboBox.setCurrentText,
+            "feedParamSlider": self.feedParamSlider.setValue,
+            "dFeedParamSlider": self.dFeedParamSlider.setValue,
+            "killParamSlider": self.killParamSlider.setValue,
+            "dKillParamSlider": self.dKillParamSlider.setValue,
+            "killAutomationCheckBox": self.killAutomationCheckBox.setChecked,
+            "dUParamSlider": self.dUParamSlider.setValue,
+            "dVParamSlider": self.dVParamSlider.setValue,
+            "dVAutomationCheckBox": self.dVAutomationCheckBox.setChecked,
+            "dDUDVParamSlider": self.dDUDVParamSlider.setValue,
+            "colorsComboBox": self.colorsComboBox.setCurrentText,
+            "vReagentRadioButton": self.vReagentRadioButton.setChecked,
+            "uReagentRadioButton": self.uReagentRadioButton.setChecked,
+        }
+        fileName = self.loadModelSettingsDialog.getOpenFileName(self,
+                                            caption=str("Load model settings"),
+                                            filter=str("Pickle (*.pkl *.mod)"))
+        with open(fileName[0], "rb") as file:
+            modelSettingsGetter = pickle.load(file)
+            for key in modelSettingsSetter.keys():
+                modelSettingsSetter[key](modelSettingsGetter[key])
+            print("Load model settings done")
+
+    @Slot()
+    def saveGuiSettings(self):
+        """
+        Saves current gui settings, positions and visibility of MainWindow and DockWidgets
+        """
+        fileName = self.saveGuiSettingsDialog.getSaveFileName(self,
+                                            caption=str("Save GUI settings"),
+                                            dir=str("./savedgui"),
+                                            filter=str("Pickle (*.pkl *.gui)"))
+        with open(fileName[0], "wb") as file:
+            guiSettingsGetter = {
+                "mainWindowGeom" : self.pos(),
+                "lightingDockVis" : self.lightingDock.isVisible(),
+                "lightingDockPos": self.lightingDock.pos(),
+                "displayDockVis" : self.displayDock.isVisible(),
+                "displayDockPos": self.displayDock.pos(),
+                "modelDockVis" : self.modelDock.isVisible(),
+                "modelDockPos": self.modelDock.pos(),
+                "pPDetailsDockVis" : self.pPDetailsDock.isVisible(),
+                "pPDetailsDockPos": self.pPDetailsDock.pos(),
+            }
+            pickle.dump(guiSettingsGetter, file)
+            print("Save gui settings done")
+
+    @Slot()
+    @Slot(str)
+    def loadGuiSettings(self, fileName = None):
+        """
+        Loads gui settings parameters from file received or choosen.
+        """
+        guiSettingsSetter = {
+            "mainWindowGeom" : self.move,
+            "lightingDockVis" : self.lightingDock.setVisible,
+            "lightingDockPos": self.lightingDock.move,
+            "displayDockVis" : self.displayDock.setVisible,
+            "displayDockPos": self.displayDock.move,
+            "modelDockVis" : self.modelDock.setVisible,
+            "modelDockPos": self.modelDock.move,
+            "pPDetailsDockVis" : self.pPDetailsDock.setVisible,
+            "pPDetailsDockPos": self.pPDetailsDock.move,
+        }
+        fileName = fileName or self.loadGuiSettingsDialog.getOpenFileName(self,
+                                            caption=str("Load GUI settings"),
+                                            filter=str("Pickle (*.pkl *.gui)"))
+        with open(fileName[0], "rb") as file:
+            guiSettingsGetter = pickle.load(file)
+            for key in guiSettingsSetter.keys():
+                guiSettingsSetter[key](guiSettingsGetter[key])
+            print("Load gui settings done")
+
+    def loadDefaultGuiSettings(self):
+        """
+        Loads a default gui settings parameters if present.
+        """
+        defaultgui = "./defaultgui.gui"
+        if os.path.isfile(defaultgui):
+            self.loadGuiSettings((defaultgui, ""))
+
+    ############################################################################
 
     @Slot()
     @Slot(str)
@@ -509,6 +684,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fkChartView.show()
         self.pPDetailsDock.adjustSize()
 
+    ############################################################################
+
     @Slot(int)
     def linkKillToFeed(self, state):
         if state == 2:
@@ -524,6 +701,8 @@ class MainWindow(QtWidgets.QMainWindow):
         killValue = (-1.21 * math.sqrt(1.36 * (feedValue - 0.001)) * ((1.63 * feedValue) - 0.289))
         self.killParamSlider.setValue(killValue)
 
+    ############################################################################
+
     @Slot(int)
     def linkDVToDU(self, state):
         if state == 2:
@@ -537,6 +716,8 @@ class MainWindow(QtWidgets.QMainWindow):
         dUValue = self.dUParamSlider.value()
         dVValue = 0.5 * dUValue
         self.dVParamSlider.setValue(dVValue)
+
+    ############################################################################
 
     @Slot(str)
     def setFeedKillDials(self):
@@ -573,6 +754,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fkChartView.setDKill(self.dKillParamSlider.value())
         self.fkChartView.show()
 
+    ############################################################################
+
     @Slot()
     def updateCycle(self):
         """
@@ -591,6 +774,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status_label.setText(msg)
 
         self.canvas.visible = True
+
+################################################################################
 
 
 class LightTypeGroupBox(QtWidgets.QGroupBox):
@@ -662,6 +847,7 @@ class ParamSlider(QtWidgets.QSlider):
             self.parent.canvas.grayScottModel.setParams(dV=value)
         elif self.param == "dDUDV":
             self.parent.canvas.grayScottModel.setParams(dDUDV=value)
+
 
 class LightParamSlider(QtWidgets.QSlider):
     def __init__(self, orientation, parent, outputLabel, lightType, param):

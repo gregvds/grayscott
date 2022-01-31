@@ -431,6 +431,8 @@ class GrayScottModel():
             self.dFeed = dFeed or self.dFeed
             self.dKill = dKill or self.dKill
             self.dDUDV = dDUDV or self.dDUDV
+            self.dU    = dU or self.dU
+            self.dV    = dV or self.dV
             if feed is not None or kill is not None or dU is not None or dV is not None:
                 self.updateParams(feed, kill, dU, dV)
             if dFeed is not None or dKill is not None:
@@ -440,7 +442,7 @@ class GrayScottModel():
                 self.ModulateDUDV(self.dV, self.dDUDV, self.dVMin, self.dVMax, 1)
             self.updateAnisotropicParams()
 
-    def updateParams(self, feed=None, kill=None, diffU=None, diffV=None):
+    def updateParams(self, feed=None, kill=None, dU=None, dV=None):
         """
         Updates feed, kill, dU and dV params in texture when not in isotropic mode.
         """
@@ -453,13 +455,12 @@ class GrayScottModel():
         self.P[:, :, 2] = np.clip(self.P[:, :, 2] + feed, self.fMin, self.fMax)
         self.P[:, :, 3] = np.clip(self.P[:, :, 3] + kill, self.kMin, self.kMax)
 
-        self.dU = diffU or self.dU
-        self.dV = diffV or self.dV
-        if diffU is not None:
+        self.dU = dU or self.dU
+        self.dV = dV or self.dV
+        if dU is not None:
             self.ModulateDUDV(self.dU, self.dDUDV, self.dUMin, self.dUMax, 0)
-        if diffV is not None:
+        if dV is not None:
             self.ModulateDUDV(self.dV, self.dDUDV, self.dVMin, self.dVMax, 1)
-
 
     def modulateParams(self):
         """
