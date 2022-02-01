@@ -135,16 +135,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.modelSubMenu.addAction("Save", self.saveModelSettings)
         self.lightSubMenu = self.settingsMenu.addMenu("Light")
         self.loadLightSettingsDialog = QtWidgets.QFileDialog(self)
-        self.lightSubMenu.addAction("Load", self.loadModelSettings)
+        self.lightSubMenu.addAction("Load", self.loadLightingSettings)
         self.saveLightSettingsDialog = QtWidgets.QFileDialog(self)
-        self.lightSubMenu.addAction("Save", self.saveModelSettings)
+        self.lightSubMenu.addAction("Save", self.saveLightingSettings)
         self.guiSubMenu = self.settingsMenu.addMenu("GUI")
         self.loadGuiSettingsDialog = QtWidgets.QFileDialog(self)
         self.guiSubMenu.addAction("Load", self.loadGuiSettings)
         self.saveGuiSettingsDialog = QtWidgets.QFileDialog(self)
         self.guiSubMenu.addAction("Save", self.saveGuiSettings)
-        # Currently not implemented...
-        self.lightSubMenu.setEnabled(False)
 
     def createLightingDock(self, visible=True):
         """
@@ -161,7 +159,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # --------------------------------------
         for lightType in MainRenderer.lightingDictionnary.keys():
             paramCount = 0
-            lightTypeBox = LightTypeGroupBox(lightType, self, 'on')
+            lightTypeBox = LightTypeGroupBox(lightType, self.lightingDock, self, 'on')
             lightTypeLayout = QtWidgets.QGridLayout()
             for param in MainRenderer.lightingDictionnary[lightType].keys():
                 lightTypeParam = MainRenderer.lightingDictionnary[lightType][param]
@@ -173,7 +171,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     lightParamValueLabel = QtWidgets.QLabel(str(lightTypeParam[0]), lightTypeBox)
                     lightTypeLayout.addWidget(lightParamValueLabel, paramCount, 1)
                     paramCount += 1
-                    lightParamSlider = LightParamSlider(Qt.Horizontal, self, lightParamValueLabel, lightType, param)
+                    lightParamSlider = LightParamSlider(Qt.Horizontal, lightTypeBox, self, lightParamValueLabel, lightType, param)
                     lightParamSlider.setMinimum(lightTypeParam[2])
                     lightParamSlider.setMaximum(lightTypeParam[3])
                     lightParamSlider.setValue(lightTypeParam[0])
@@ -182,7 +180,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     paramCount += 1
                 elif lightTypeParam[1] == "int":
                     lightTypeLayout.addWidget(QtWidgets.QLabel(param, lightTypeBox), paramCount, 0)
-                    lightSpinBox = LightParamSpinBox(self, lightType, param)
+                    lightSpinBox = LightParamSpinBox(lightTypeBox, self, lightType, param)
                     lightSpinBox.setMinimum(lightTypeParam[2])
                     lightSpinBox.setMaximum(lightTypeParam[3])
                     lightSpinBox.setValue(lightTypeParam[0])
@@ -195,7 +193,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     color = QColor(lightTypeParam[0][0]*255,
                                    lightTypeParam[0][1]*255,
                                    lightTypeParam[0][2]*255)
-                    colorButton = ColorButton(lightType, self, 1, QColor(0,0,0), color)
+                    colorButton = ColorButton(lightType, lightTypeBox, self, 1, QColor(0,0,0), color)
                     lightTypeLayout.addWidget(colorButton, paramCount, 1)
                     paramCount += 1
             lightTypeBox.setLayout(lightTypeLayout)
@@ -248,7 +246,7 @@ class MainWindow(QtWidgets.QMainWindow):
         color = QColor(canvasColor[0]*255,
                        canvasColor[1]*255,
                        canvasColor[2]*255)
-        colorButton = ColorButton("background", self, 1, QColor(0,0,0), color)
+        colorButton = ColorButton("background", backgroundBox, self, 1, QColor(0,0,0), color)
         colorButton.setToolTip("Background color behind the model")
         backgroundLayout.addWidget(colorButton, 0, 1)
         backgroundBox.setLayout(backgroundLayout)
@@ -632,6 +630,50 @@ class MainWindow(QtWidgets.QMainWindow):
         if os.path.isfile(defaultgui):
             self.loadGuiSettings((defaultgui, ""))
 
+    @Slot()
+    def saveLightingSettings(self):
+        fileName = self.saveLightSettingsDialog.getSaveFileName(self,
+                                            caption=str("Save light settings"),
+                                            dir=str("./savedlight"),
+                                            filter=str("Pickle (*.pkl *.lit)"))
+        with open(fileName[0], "wb") as file:
+            topBox = self.lightingDock.findChild(QtWidgets.QGroupBox)
+            lightSettingsGetter = {}
+            for lightTypeBox in topBox.findChildren(LightTypeGroupBox):
+                lightType = lightTypeBox.title()
+                lightSettingsGetter["%s_%s" % (lightType, lightTypeBox.param)] = lightTypeBox.isChecked()
+                for lightTypeParam in lightTypeBox.findChildren(LightParamSlider):
+                    lightSettingsGetter["%s_%s" % (lightType, lightTypeParam.param)] = lightTypeParam.value()
+                for lightTypeParam in lightTypeBox.findChildren(LightParamSpinBox):
+                    lightSettingsGetter["%s_%s" % (lightType, lightTypeParam.param)] = lightTypeParam.value()
+                for lightTypeParam in lightTypeBox.findChildren(ColorButton):
+                    lightSettingsGetter["%s_%s" % (lightType, "color")] = lightTypeParam.color()
+            pickle.dump(lightSettingsGetter, file)
+            print("Save light settings done")
+
+    @Slot()
+    def loadLightingSettings(self):
+        lightSettingsSetter = {}
+        topBox = self.lightingDock.findChild(QtWidgets.QGroupBox)
+        for lightTypeBox in topBox.findChildren(LightTypeGroupBox):
+            lightType = lightTypeBox.title()
+            lightSettingsSetter["%s_%s" % (lightType, lightTypeBox.param)] = lightTypeBox.setChecked
+            for lightTypeParam in lightTypeBox.findChildren(LightParamSlider):
+                lightSettingsSetter["%s_%s" % (lightType, lightTypeParam.param)] = lightTypeParam.setValue
+            for lightTypeParam in lightTypeBox.findChildren(LightParamSpinBox):
+                lightSettingsSetter["%s_%s" % (lightType, lightTypeParam.param)] = lightTypeParam.setValue
+            for lightTypeParam in lightTypeBox.findChildren(ColorButton):
+                lightSettingsSetter["%s_%s" % (lightType, "color")] = lightTypeParam.setColor
+        fileName = self.loadLightSettingsDialog.getOpenFileName(self,
+                                            caption=str("Load light settings"),
+                                            filter=str("Pickle (*.pkl *.lit)"))
+        with open(fileName[0], "rb") as file:
+            lightSettingsGetter = pickle.load(file)
+            for key in lightSettingsSetter.keys():
+                lightSettingsSetter[key](lightSettingsGetter[key])
+            print("Load light settings done")
+
+
     ############################################################################
     # Update of the Diagram/chart in the pPDetailsDock
 
@@ -781,15 +823,16 @@ class LightTypeGroupBox(QtWidgets.QGroupBox):
     Its toggling toggles too the proper lighting parameter in the MainRenderer
     of the model.
     """
-    def __init__(self, title, parent, param):
+    def __init__(self, title, parent, mainWindow, param):
         super(LightTypeGroupBox, self).__init__(title, parent)
         self.param = param
         self.parent = parent
+        self.mainWindow = mainWindow
         self.toggled.connect(self.updateLighting)
 
     @Slot(bool)
     def updateLighting(self, state):
-        self.parent.canvas.mainRenderer.setLighting(self.title(), self.param, state)
+        self.mainWindow.canvas.mainRenderer.setLighting(self.title(), self.param, state)
 
 
 class ParamSlider(QtWidgets.QSlider):
@@ -856,12 +899,13 @@ class LightParamSlider(QtWidgets.QSlider):
     parameters. Slot method different too...
     WIP: try to have this subclassing ParamSlider...
     """
-    def __init__(self, orientation, parent, outputLabel, lightType, param):
+    def __init__(self, orientation, parent, mainWindow, outputLabel, lightType, param):
         super(LightParamSlider, self).__init__(orientation, parent)
         super(LightParamSlider, self).setSingleStep(1)
         self.lightType = lightType
         self.param = param
         self.parent = parent
+        self.mainWindow = mainWindow
         self.outputLabel = outputLabel
         self.outputLabel.setAlignment(Qt.AlignRight | Qt.AlignCenter)
         self.outputFormat = "%3.2f"
@@ -898,19 +942,20 @@ class LightParamSlider(QtWidgets.QSlider):
     def updateLighting(self, value):
         value = self.value()
         self.outputLabel.setText(self.outputFormat % value)
-        self.parent.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
+        self.mainWindow.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
 
 
 class LightParamSpinBox(QtWidgets.QSpinBox):
-    def __init__(self, parent, lightType, param):
+    def __init__(self, parent, mainWindow, lightType, param):
         super(LightParamSpinBox, self).__init__(parent)
         self.lightType = lightType
+        self.mainWindow = mainWindow
         self.param = param
         self.parent = parent
 
     @Slot(int)
     def updateLighting(self, value):
-        self.parent.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
+        self.mainWindow.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
 
 
 class ColorButton(QtWidgets.QPushButton):
@@ -918,24 +963,25 @@ class ColorButton(QtWidgets.QPushButton):
     Button that represents a color and opens a QColorDialog on its click.
     Updates the color of the canvas/mainRenderer according to lightType.
     """
-    def __init__(self, text, parent, bordersize, outlineColor, fillColor):
+    def __init__(self, text, parent, mainWindow, bordersize, outlineColor, fillColor):
         super(ColorButton, self).__init__()
         self.bordersize = bordersize
         self.outlineColor = outlineColor
         self.fillColor = fillColor
         self.lightType = text
         self.parent = parent
+        self.mainWindow = mainWindow
         self.colorDialog = QtWidgets.QColorDialog(fillColor, self)
         self.clicked.connect(self.changeColor)
 
-    def changeColor(self):
-        color = self.colorDialog.getColor(self.fillColor)
+    def changeColor(self, color):
+        color = color or self.colorDialog.getColor(self.fillColor)
         if color.isValid():
             self.fillColor = color
             if self.lightType == 'background':
-                self.parent.canvas.setBackgroundColor(color.getRgbF())
+                self.mainWindow.canvas.setBackgroundColor(color.getRgbF())
             else:
-                self.parent.canvas.mainRenderer.setLighting(self.lightType, 'color', color.getRgbF())
+                self.mainWindow.canvas.mainRenderer.setLighting(self.lightType, 'color', color.getRgbF())
 
     def paintEvent(self, event):
         # Create the painter
@@ -962,6 +1008,11 @@ class ColorButton(QtWidgets.QPushButton):
         painter.strokePath(path, painter.pen())
         painter.drawText(rect, Qt.AlignCenter, self.text())
 
+    def color(self):
+        return self.fillColor
+
+    def setColor(self, color):
+        self.changeColor(color)
 
 class FkPoint(QPointF):
     """
