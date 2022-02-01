@@ -319,14 +319,14 @@ class GrayScottModel():
             self.program = Program(compute_vertex, compute_fragment_isotropic, count=4)
         else:
             self.program = Program(compute_vertex, compute_fragment_anisotropic, count=4)
+            self.program["dUMin"] = self.dUMin
+            self.program["dUMax"] = self.dUMax
+            self.program["dVMin"] = self.dVMin
+            self.program["dVMax"] = self.dVMax
         self.program["position"] = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
         self.program["texcoord"] = [(0, 0), (0, 1), (1, 0), (1, 1)]
         self.program["dx"] = 1./self.w
         self.program["dy"] = 1./self.h
-        self.program["dUMin"] = self.dUMin
-        self.program["dUMax"] = self.dUMax
-        self.program["dVMin"] = self.dVMin
-        self.program["dVMax"] = self.dVMax
         self.program['pingpong'] = self.pingpong
         self.program['brush'] = self.brush
         self.program['brushtype'] = self.brushType
@@ -380,9 +380,9 @@ class GrayScottModel():
                 owner.program["texture"].interpolation = gl.GL_LINEAR
 
     def printPearsonPatternDescription(self):
-        if self.canvas is not None:
+        if self.canvas is not None and self.canvas.native.parent() is None:
             self.canvas.title2 = '3D Gray-Scott Reaction-Diffusion: Pattern %s - GregVDS' % self.specie
-        print(self.getPearsonPatternDescription())
+            print(self.getPearsonPatternDescription())
 
     def getPearsonPatternDescription(self, specie=None):
         """
@@ -413,7 +413,11 @@ class GrayScottModel():
             else:
                 self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
                 self.P[:, :] = self.baseParams
-                self.modulateParams()
+                # self.modulateParams()
+                self.updateParams(feed=self.baseParams[2],
+                                  kill=self.baseParams[3],
+                                  dU=self.baseParams[0],
+                                  dV=self.baseParams[1])
                 self.updateAnisotropicParams()
 
     def setParams(self, feed=None, kill=None, dU=None, dV=None, dFeed=None, dKill=None, dDUDV=None):
@@ -1108,7 +1112,12 @@ class Canvas(app.Canvas):
     NO_ACTION = (None, None)
 
     def on_key_press(self, event):
-        """treats all key event that are defined in keyactionDictionnary"""
+        """
+        treats all key event that are defined in keyactionDictionnary
+        WIP: ONe could avoid this method if self.canvas.native.parent() is not
+        None, meaning there is a GUI outhere (PySide6/PyQT5) that has its own
+        Key mapping...
+        """
         eventKey = ''
         eventModifiers = []
         if len(event.text) > 0:

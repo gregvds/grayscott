@@ -37,7 +37,6 @@
     3D presentation of a model of Reaction-Diffusion.
     Qt GUI to ease the manipulation of all parameters. Still keys should work
     when the main window is active.
-    For more use help, type python3 gs3DQt.py -h.
 """
 
 ################################################################################
@@ -98,11 +97,7 @@ class MainWindow(QtWidgets.QMainWindow):
         Ctrl + click & drag to move light\n \
         Shift + click & drag to modify V concentration\n \
         left to fill, right to empty")
-
-        splitter1 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        splitter1.addWidget(self.canvas.native)
-
-        self.setCentralWidget(splitter1)
+        self.setCentralWidget(self.canvas.native)
 
         self.createMenuBar()
         self.createPearsonPatternDetailDock(visible=True)
@@ -120,6 +115,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loadDefaultGuiSettings()
 
     ############################################################################
+    # Creation methods for Menubar, menus and main dockwidgets
 
     def createMenuBar(self):
         """
@@ -199,7 +195,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     color = QColor(lightTypeParam[0][0]*255,
                                    lightTypeParam[0][1]*255,
                                    lightTypeParam[0][2]*255)
-                    colorButton = RoundedButton(lightType, self, 1, QColor(0,0,0), color)
+                    colorButton = ColorButton(lightType, self, 1, QColor(0,0,0), color)
                     lightTypeLayout.addWidget(colorButton, paramCount, 1)
                     paramCount += 1
             lightTypeBox.setLayout(lightTypeLayout)
@@ -252,7 +248,7 @@ class MainWindow(QtWidgets.QMainWindow):
         color = QColor(canvasColor[0]*255,
                        canvasColor[1]*255,
                        canvasColor[2]*255)
-        colorButton = RoundedButton("background", self, 1, QColor(0,0,0), color)
+        colorButton = ColorButton("background", self, 1, QColor(0,0,0), color)
         colorButton.setToolTip("Background color behind the model")
         backgroundLayout.addWidget(colorButton, 0, 1)
         backgroundBox.setLayout(backgroundLayout)
@@ -339,7 +335,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fLayout.addWidget(QtWidgets.QLabel("feed", fBox), 0, 0)
         feedParamLabel = QtWidgets.QLabel("", fBox)
         fLayout.addWidget(feedParamLabel, 0, 1)
-        self.feedParamSlider = ParamSlider(Qt.Horizontal, self, feedParamLabel, "feed", 1000.0)
+        self.feedParamSlider = ParamSlider(Qt.Horizontal, self, feedParamLabel, "feed", 1.0e6)
         self.feedParamSlider.setMinimum(self.canvas.grayScottModel.fMin)
         self.feedParamSlider.setMaximum(self.canvas.grayScottModel.fMax)
         self.feedParamSlider.setValue(self.canvas.grayScottModel.baseParams[2])
@@ -351,7 +347,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fLayout.addWidget(QtWidgets.QLabel("∂feed/∂x", fBox), 2, 0)
         dFeedParamLabel = QtWidgets.QLabel("", fBox)
         fLayout.addWidget(dFeedParamLabel, 2, 1)
-        self.dFeedParamSlider = ParamSlider(Qt.Horizontal, self, dFeedParamLabel, "dFeed", 1000.0)
+        self.dFeedParamSlider = ParamSlider(Qt.Horizontal, self, dFeedParamLabel, "dFeed", 1.0e6)
         self.dFeedParamSlider.setMinimum(0.0)
         self.dFeedParamSlider.setMaximum(0.008)
         self.dFeedParamSlider.setValue(0.0)
@@ -367,7 +363,7 @@ class MainWindow(QtWidgets.QMainWindow):
         kLayout.addWidget(QtWidgets.QLabel("kill", kBox), 0, 0)
         killParamLabel = QtWidgets.QLabel("", kBox)
         kLayout.addWidget(killParamLabel, 0, 1)
-        self.killParamSlider = ParamSlider(Qt.Horizontal, self, killParamLabel, "kill", 1000.0)
+        self.killParamSlider = ParamSlider(Qt.Horizontal, self, killParamLabel, "kill", 1.0e6)
         self.killParamSlider.setMinimum(self.canvas.grayScottModel.kMin)
         self.killParamSlider.setMaximum(self.canvas.grayScottModel.kMax)
         self.killParamSlider.setValue(self.canvas.grayScottModel.baseParams[3])
@@ -379,7 +375,7 @@ class MainWindow(QtWidgets.QMainWindow):
         kLayout.addWidget(QtWidgets.QLabel("∂kill/∂y", kBox), 2, 0)
         dKillParamLabel = QtWidgets.QLabel("", kBox)
         kLayout.addWidget(dKillParamLabel, 2, 1)
-        self.dKillParamSlider = ParamSlider(Qt.Horizontal, self, dKillParamLabel, "dKill", 1000.0)
+        self.dKillParamSlider = ParamSlider(Qt.Horizontal, self, dKillParamLabel, "dKill", 1.0e6)
         self.dKillParamSlider.setMinimum(0.0)
         self.dKillParamSlider.setMaximum(0.004)
         self.dKillParamSlider.setValue(0.0)
@@ -399,7 +395,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dULayout.addWidget(QtWidgets.QLabel("dU", dUBox), 0, 0)
         dUParamLabel = QtWidgets.QLabel("", dUBox)
         dULayout.addWidget(dUParamLabel, 0, 1)
-        self.dUParamSlider = ParamSlider(Qt.Horizontal, self, dUParamLabel, "dU", 1000.0)
+        self.dUParamSlider = ParamSlider(Qt.Horizontal, self, dUParamLabel, "dU", 1.0e6)
         self.dUParamSlider.setMinimum(self.canvas.grayScottModel.dUMin)
         self.dUParamSlider.setMaximum(self.canvas.grayScottModel.dUMax)
         self.dUParamSlider.setValue(self.canvas.grayScottModel.baseParams[0])
@@ -414,7 +410,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dVLayout.addWidget(QtWidgets.QLabel("dV", dVBox), 0, 0)
         dVParamLabel = QtWidgets.QLabel("", dVBox)
         dVLayout.addWidget(dVParamLabel, 0, 1)
-        self.dVParamSlider = ParamSlider(Qt.Horizontal, self, dVParamLabel, "dV", 1000.0)
+        self.dVParamSlider = ParamSlider(Qt.Horizontal, self, dVParamLabel, "dV", 1.0e6)
         self.dVParamSlider.setMinimum(self.canvas.grayScottModel.dVMin)
         self.dVParamSlider.setMaximum(self.canvas.grayScottModel.dVMax)
         self.dVParamSlider.setValue(self.canvas.grayScottModel.baseParams[1])
@@ -434,7 +430,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dDUDVLayout.addWidget(QtWidgets.QLabel("∂dUdV/∂x∂y", dDUDVBox), 0, 0)
         dDUDVParamLabel = QtWidgets.QLabel("", dDUDVBox)
         dDUDVLayout.addWidget(dDUDVParamLabel, 0, 1)
-        self.dDUDVParamSlider = ParamSlider(Qt.Horizontal, self, dDUDVParamLabel, "dDUDV", 1000.0)
+        self.dDUDVParamSlider = ParamSlider(Qt.Horizontal, self, dDUDVParamLabel, "dDUDV", 1.0e6)
         self.dDUDVParamSlider.setMinimum(-1.0)
         self.dDUDVParamSlider.setMaximum(1.0)
         self.dDUDVParamSlider.setValue(0.0)
@@ -519,6 +515,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panelMenu.addAction(self.pPDetailsDock.toggleViewAction())
 
     ############################################################################
+    # Saves and loads for parameters of model, gui and (WIP)lighting
 
     @Slot()
     def saveModelSettings(self):
@@ -636,6 +633,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.loadGuiSettings((defaultgui, ""))
 
     ############################################################################
+    # Update of the Diagram/chart in the pPDetailsDock
 
     @Slot()
     @Slot(str)
@@ -685,6 +683,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pPDetailsDock.adjustSize()
 
     ############################################################################
+    # These handle the coupling/decoupling of some model parameters
 
     @Slot(int)
     def linkKillToFeed(self, state):
@@ -700,8 +699,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # killValue = (-1.38 * math.sqrt(1.1 * (feedValue - 0.0017)) * ((1.44 * feedValue) - 0.27))
         killValue = (-1.21 * math.sqrt(1.36 * (feedValue - 0.001)) * ((1.63 * feedValue) - 0.289))
         self.killParamSlider.setValue(killValue)
-
-    ############################################################################
 
     @Slot(int)
     def linkDVToDU(self, state):
@@ -780,7 +777,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 class LightTypeGroupBox(QtWidgets.QGroupBox):
     """
-    Simple GroupBox that keep a reference of the parameter it concerns.
+    Simple GroupBox that keep a reference of the lighting parameter it concerns.
     Its toggling toggles too the proper lighting parameter in the MainRenderer
     of the model.
     """
@@ -798,7 +795,10 @@ class LightTypeGroupBox(QtWidgets.QGroupBox):
 class ParamSlider(QtWidgets.QSlider):
     """
     Simple slider that handles floating values and has a slot to update the
-    corresponding parameter in the canvas grayScottModel.
+    corresponding parameter in the canvas grayScottModel according to its param.
+    Sets its resolution, and knows and handles the printing of the real value in
+    a given label. value() and setValue() are surcharged to cope with real values
+    of the parameter.
     """
     def __init__(self, orientation, parent, outputLabel, param, resolution):
         super(ParamSlider, self).__init__(orientation, parent)
@@ -850,6 +850,12 @@ class ParamSlider(QtWidgets.QSlider):
 
 
 class LightParamSlider(QtWidgets.QSlider):
+    """
+    Similar class as ParamSlider but different in several points, to be able to
+    have geometric range instead of linear range, according to given range of
+    parameters. Slot method different too...
+    WIP: try to have this subclassing ParamSlider...
+    """
     def __init__(self, orientation, parent, outputLabel, lightType, param):
         super(LightParamSlider, self).__init__(orientation, parent)
         super(LightParamSlider, self).setSingleStep(1)
@@ -895,18 +901,6 @@ class LightParamSlider(QtWidgets.QSlider):
         self.parent.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
 
 
-class LightParamDoubleSpinBox(QtWidgets.QDoubleSpinBox):
-    def __init__(self, parent, lightType, param):
-        super(LightParamDoubleSpinBox, self).__init__(parent)
-        self.lightType = lightType
-        self.param = param
-        self.parent = parent
-
-    @Slot(float)
-    def updateLighting(self, value):
-        self.parent.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
-
-
 class LightParamSpinBox(QtWidgets.QSpinBox):
     def __init__(self, parent, lightType, param):
         super(LightParamSpinBox, self).__init__(parent)
@@ -919,13 +913,13 @@ class LightParamSpinBox(QtWidgets.QSpinBox):
         self.parent.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
 
 
-class RoundedButton(QtWidgets.QPushButton):
+class ColorButton(QtWidgets.QPushButton):
     """
     Button that represents a color and opens a QColorDialog on its click.
     Updates the color of the canvas/mainRenderer according to lightType.
     """
     def __init__(self, text, parent, bordersize, outlineColor, fillColor):
-        super(RoundedButton, self).__init__()
+        super(ColorButton, self).__init__()
         self.bordersize = bordersize
         self.outlineColor = outlineColor
         self.fillColor = fillColor
@@ -982,9 +976,10 @@ class FkPoint(QPointF):
 class View(QChartView):
     """
     A QChartView subclass to splot a scatter chart with individual labels that
-    one can be highlighted. This also plot a rectangle showing the ranges of
-    kill feed currently modelled.
-    # TODO, have a clicked/selected symbol to switch the pattern used,
+    can be highlighted. This also plots a rectangle showing the ranges of
+    kill feed currently modelled if so. If feed and kill adjusted, a cross is
+    plotted to show these. Symbols can be hovered to obtain explanation, and
+    clicked to be modelled.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1068,7 +1063,7 @@ class View(QChartView):
         """
         Writes each symbol at position of each points. These are intended as the
         true representations of the points, not labels of them, hence points are
-        drawn almost transparent. Selected and highlighted points are written with
+        drawn almost transparent. Selected and highlighted points are drawn with
         different colors.
         """
         if points.count() == 0:
@@ -1083,20 +1078,21 @@ class View(QChartView):
         currentPen = painter.pen()
         currentBrush = painter.brush()
         for i in range(points.count()):
-            pointLabel = self.fkPointValues[i][2]
+            pointSymbol = self.fkPointValues[i][2]
             specie = self.fkPointValues[i][3]
             position = points.at(i)
-            if self.selectedSpecie == specie:
+            if specie == self.selectedSpecie:
                 pen = QPen(self.selectedColor)
                 brush = QBrush(self.selectedColor)
                 painter.setPen(pen)
                 painter.setBrush(brush)
-            elif self.highlightedSpecie == specie:
+            elif specie == self.highlightedSpecie:
                 pen = QPen(self.highlightedColor)
                 brush = QBrush(self.highlightedColor)
                 painter.setPen(pen)
                 painter.setBrush(brush)
-            painter.drawText(self.fkChart.mapToPosition(position, points)-self.positionCorrectionPoint, pointLabel)
+            pointPosition = self.fkChart.mapToPosition(position, points) - self.positionCorrectionPoint
+            painter.drawText(pointPosition, pointSymbol)
             painter.setPen(currentPen)
             painter.setBrush(currentBrush)
 
@@ -1133,7 +1129,8 @@ class View(QChartView):
         brush = QBrush(self.currentColor)
         painter.setPen(pen)
         painter.setBrush(brush)
-        painter.drawText(self.fkChart.mapToPosition(self.currentFKPoint, points)-self.positionCorrectionPoint, "+")
+        currentFKPosition = self.fkChart.mapToPosition(self.currentFKPoint, points) - self.positionCorrectionPoint
+        painter.drawText(currentFKPosition, "+")
         painter.setPen(currentPen)
         painter.setBrush(currentBrush)
 
@@ -1141,8 +1138,8 @@ class View(QChartView):
         """
         Draws a box showing the ranges of feed and kill currently modelled.
         This is either plotted around the selected specie, or around the current
-        values of feed and kill. There should always be a selected specie, and
-        this one is to be replaced if a current values are defined, but if
+        values of feed and kill (+). There should always be a selected specie, and
+        this one is to be replaced if current values are defined, but if
         something goes wrong, nothing is drawn.
         """
         if self.dKill == 0 and self.dFeed == 0:
@@ -1172,7 +1169,7 @@ class View(QChartView):
     def setSelect(self, specie):
         """
         Sets the selected specie. If one is selected, it is the modelled one
-        and no current point should be displayed (as a cross)
+        and no current point should be displayed (as a +)
         """
         self.selectedSpecie = specie
         self.currentFKPoint = None
@@ -1185,7 +1182,7 @@ class View(QChartView):
 
     def setCurrentFKPoint(self, kill, feed):
         """
-        Sets the point to draw a cross on to show the current feed and kill modelled.
+        Sets the point to draw as a + to show the current feed and kill modelled.
         """
         self.currentFKPoint = QPointF(kill, feed)
 
@@ -1201,6 +1198,7 @@ class View(QChartView):
         """
         self.dFeed = value
 
+    @Slot(QPointF, int)
     def hoverPoint(self, point, state):
         """
         Hovering a point will change the details shown and will highlight it.
@@ -1210,6 +1208,7 @@ class View(QChartView):
             # That's so ugly, surely there is a better way to find the method...
             self.parent().parent().parent().setHighlightedPearsonsPatternDetails(specie)
 
+    @Slot(QPointF)
     def clickPoint(self, point):
         """
         Clicking a point will select its specie and set it in the model.
@@ -1220,6 +1219,9 @@ class View(QChartView):
         pPComboBox.textActivated[str].emit(pPComboBox.currentText())
 
     def clickChart(self, point):
+        """
+        WIP, could set clicked feed and kill values to the model...
+        """
         print("Click in chart: %s" % point)
 
     def getSpecieOfPoint(self, point):
