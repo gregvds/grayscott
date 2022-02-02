@@ -590,7 +590,7 @@ class Renderer():
     def draw(self, drawingType='triangles'):
         self.program.draw(drawingType, self.grayScottModel.faces)
 
-    def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
+    def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0, dFov=0.0):
         """
         Moves the camera according to inputs. Compute view Matrix.
         """
@@ -598,6 +598,8 @@ class Renderer():
         elevation = self.camera.elevation - dElevation/self.camera.sensitivity
         distance = self.camera.distance - dDistance
         self.camera.move(azimuth=azimuth, elevation=elevation, distance=distance)
+        fov = self.camera.fov - dFov / self.camera.sensitivity
+        self.camera.setProjection(fov=fov)
         self.program["u_vm"]  = self.camera.vm
         self.program["u_pvm"] = self.camera.pvm
 
@@ -803,11 +805,11 @@ class MainRenderer(Renderer):
             for second in self.lightingDictionnary[first].keys():
                 self.program["u_%s_%s"%(first, second)] = self.lightingDictionnary[first][second][0]
 
-    def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0):
+    def moveCamera(self, dAzimuth=0.0, dElevation=0.0, dDistance=0.0, dFov=0.0):
         """
         Moves the camera according to inputs.
         """
-        super().moveCamera(dAzimuth, dElevation, dDistance)
+        super().moveCamera(dAzimuth, dElevation, dDistance, dFov)
         self.adjustShadowMapFrustum()
 
     def resetCamera(self):

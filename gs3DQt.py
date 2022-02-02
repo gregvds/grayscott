@@ -51,13 +51,14 @@ except ImportError:
 from PySide6 import QtCore, QtWidgets
 
 from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
-from PySide6.QtCore import Qt, QRectF, QPointF, Slot
+from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QPropertyAnimation, QTimer
 from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
 import sys
 import math
 import os
 import pickle
+import time
 
 # from math import pi
 import argparse
@@ -92,11 +93,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.canvas.create_native()
         self.canvas.native.setParent(self)
         self.canvas.measure_fps(1.0, self.show_fps)
-        self.setToolTip("Gray-Scott Reaction-diffusion model Main display\n \
-        Click & drag to move around\n \
-        Ctrl + click & drag to move light\n \
-        Shift + click & drag to modify V concentration\n \
-        left to fill, right to empty")
+        # self.setToolTip("Gray-Scott Reaction-diffusion model Main display\n \
+        # Click & drag to move around\n \
+        # Ctrl + click & drag to move light\n \
+        # Shift + click & drag to modify V concentration\n \
+        # left to fill, right to empty")
         self.setCentralWidget(self.canvas.native)
 
         self.createMenuBar()
@@ -112,7 +113,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status_label = QtWidgets.QLabel('...')
         self.status.addWidget(self.status_label)
 
+        # If a file ./defaultgui.gui exists, it will be loaded at the start
         self.loadDefaultGuiSettings()
+        # If a file ./defaultlight.lit exists, it will be loaded at the start
+        self.loadDefaultLightSettings()
 
     ############################################################################
     # Creation methods for Menubar, menus and main dockwidgets
@@ -128,6 +132,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.menuBar.addMenu(self.panelMenu)
 
     def createSettingsDialogs(self):
+        """
+        Creates the settings menu and its submenus
+        """
         self.modelSubMenu = self.settingsMenu.addMenu("Model")
         self.loadModelSettingsDialog = QtWidgets.QFileDialog(self)
         self.modelSubMenu.addAction("Load", self.loadModelSettings)
@@ -266,7 +273,7 @@ class MainWindow(QtWidgets.QMainWindow):
         topLayout.addWidget(reagentBox)
 
         # --------------------------------------
-        displayBox = QtWidgets.QGroupBox("Camera", self.displayDock)
+        displayBox = QtWidgets.QGroupBox("Point of view", self.displayDock)
         displayLayout = QtWidgets.QGridLayout(displayBox)
         self.normalRadioButton = QtWidgets.QRadioButton('Normal', self.displayDock)
         self.shadowRadioButton = QtWidgets.QRadioButton('Shadowmap', self.displayDock)
@@ -284,6 +291,72 @@ class MainWindow(QtWidgets.QMainWindow):
         displayLayout.addWidget(self.resetShadowButton, 1, 1)
         displayBox.setLayout(displayLayout)
         topLayout.addWidget(displayBox)
+
+        # --------------------------------------
+        cameraBox = QtWidgets.QGroupBox("Main Camera", self.displayDock)
+        cameraLayout = QtWidgets.QGridLayout(cameraBox)
+        camera = self.canvas.mainRenderer.camera
+        self.cameraModTimer = QTimer(self)
+        self.cameraModTimer.timeout.connect(self.updateCamera)
+        cameraLayout.addWidget(QtWidgets.QLabel("FoV", cameraBox), 0, 0, 1, 1, Qt.AlignCenter )
+        fovLabel = QtWidgets.QLabel("0", cameraBox)
+        cameraLayout.addWidget(fovLabel, 0, 1, 1, 1, Qt.AlignCenter )
+        cameraLayout.addWidget(QtWidgets.QLabel("Elev", cameraBox), 0, 2, 1, 1, Qt.AlignCenter )
+        elevLabel = QtWidgets.QLabel("0", cameraBox)
+        cameraLayout.addWidget(elevLabel, 0, 3, 1, 1, Qt.AlignCenter )
+        cameraLayout.addWidget(QtWidgets.QLabel("Dist", cameraBox), 0, 4, 1, 1, Qt.AlignCenter )
+        distLabel = QtWidgets.QLabel("0", cameraBox)
+        cameraLayout.addWidget(distLabel, 0, 5, 1, 1, Qt.AlignCenter )
+
+        self.fovSlider = CameraParamSlider(Qt.Vertical, self, fovLabel, "fov", 1.0e3)
+        self.fovSlider.setMinimum(-.2)
+        self.fovSlider.setMaximum(.2)
+        self.fovSlider.setValue(0.0)
+        self.fovSlider.updateParam(0)
+        self.fovSlider.sliderPressed.connect(self.startCameraUpdate)
+        self.fovSlider.sliderReleased.connect(self.stopCameraUpdate)
+        self.fovSlider.setToolTip("Field of view of main camera")
+        self.resetCameraButton.clicked.connect(self.fovSlider.updateParam)
+        cameraLayout.addWidget(self.fovSlider, 2, 0, 5, 2, Qt.AlignCenter )
+
+        self.elevSlider = CameraParamSlider(Qt.Vertical, self, elevLabel, "elev", 1.0e3)
+        self.elevSlider.setMinimum(-.01)
+        self.elevSlider.setMaximum(.01)
+        self.elevSlider.setValue(0.0)
+        self.elevSlider.updateParam(0)
+        self.elevSlider.sliderPressed.connect(self.startCameraUpdate)
+        self.elevSlider.sliderReleased.connect(self.stopCameraUpdate)
+        self.elevSlider.setToolTip("Elevation of main camera")
+        self.resetCameraButton.clicked.connect(self.elevSlider.updateParam)
+        cameraLayout.addWidget(self.elevSlider, 2, 2, 5, 2, Qt.AlignCenter )
+
+        self.distSlider = CameraParamSlider(Qt.Vertical, self, distLabel, "dist", 1.0e3)
+        self.distSlider.setMinimum(-.01)
+        self.distSlider.setMaximum(.01)
+        self.distSlider.setValue(0.0)
+        self.distSlider.updateParam(0)
+        self.distSlider.sliderPressed.connect(self.startCameraUpdate)
+        self.distSlider.sliderReleased.connect(self.stopCameraUpdate)
+        self.distSlider.setToolTip("Distance of main camera")
+        self.resetCameraButton.clicked.connect(self.distSlider.updateParam)
+        cameraLayout.addWidget(self.distSlider, 2, 4, 5, 2, Qt.AlignCenter )
+
+        cameraLayout.addWidget(QtWidgets.QLabel("Azimuth", cameraBox), 7, 0, 1, 3, Qt.AlignCenter )
+        aziLabel = QtWidgets.QLabel("0", cameraBox)
+        cameraLayout.addWidget(aziLabel, 7, 4, 1, 3, Qt.AlignCenter )
+        self.aziSlider = CameraParamSlider(Qt.Horizontal, self, aziLabel, "azi", 1.0e3)
+        self.aziSlider.setMinimum(-.01)
+        self.aziSlider.setMaximum(.01)
+        self.aziSlider.setValue(0.0)
+        self.aziSlider.updateParam(0)
+        self.aziSlider.sliderPressed.connect(self.startCameraUpdate)
+        self.aziSlider.sliderReleased.connect(self.stopCameraUpdate)
+        self.aziSlider.setToolTip("Azimuth of main camera")
+        self.resetCameraButton.clicked.connect(self.aziSlider.updateParam)
+        cameraLayout.addWidget(self.aziSlider, 8, 0, 1, 6, Qt.AlignCenter )
+
+        cameraBox.setLayout(cameraLayout)
+        topLayout.addWidget(cameraBox)
 
         # --------------------------------------
         topLayout.addStretch(1)
@@ -651,8 +724,16 @@ class MainWindow(QtWidgets.QMainWindow):
             pickle.dump(lightSettingsGetter, file)
             print("Save light settings done")
 
+    def loadDefaultLightSettings(self):
+        """
+        Loads a default light settings parameters if present.
+        """
+        defaultlight = "./defaultlight.lit"
+        if os.path.isfile(defaultlight):
+            self.loadLightingSettings((defaultlight, ""))
+
     @Slot()
-    def loadLightingSettings(self):
+    def loadLightingSettings(self, fileName = None):
         lightSettingsSetter = {}
         topBox = self.lightingDock.findChild(QtWidgets.QGroupBox)
         for lightTypeBox in topBox.findChildren(LightTypeGroupBox):
@@ -664,7 +745,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 lightSettingsSetter["%s_%s" % (lightType, lightTypeParam.param)] = lightTypeParam.setValue
             for lightTypeParam in lightTypeBox.findChildren(ColorButton):
                 lightSettingsSetter["%s_%s" % (lightType, "color")] = lightTypeParam.setColor
-        fileName = self.loadLightSettingsDialog.getOpenFileName(self,
+        fileName = fileName or self.loadLightSettingsDialog.getOpenFileName(self,
                                             caption=str("Load light settings"),
                                             filter=str("Pickle (*.pkl *.lit)"))
         with open(fileName[0], "rb") as file:
@@ -731,6 +812,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def linkKillToFeed(self, state):
         if state == 2:
             self.feedParamSlider.sliderMoved.connect(self.setKillFromFeed)
+            # killAnimation = QPropertyAnimation(self.killParamSlider, b"value")
+            # killAnimation.setStartValue(self.killParamSlider.value())
+            # feedValue = self.feedParamSlider.value()
+            # killValue = (-1.21 * math.sqrt(1.36 * (feedValue - 0.001)) * ((1.63 * feedValue) - 0.289))
+            # print(killValue)
+            # killAnimation.setEndValue(killValue)
+            # killAnimation.setDuration(500)
+            # killAnimation.start()
             self.killParamSlider.setEnabled(False)
         else:
             self.feedParamSlider.sliderMoved.disconnect(self.setKillFromFeed)
@@ -802,6 +891,45 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         self.cycles.setText(str(2*self.canvas.grayScottModel.cycle))
 
+    @Slot()
+    def startCameraUpdate(self):
+        """
+        Start the QTimer that will trigger updateParam as long as it's not stopped
+        """
+        self.cameraModTimer.start()
+
+    @Slot()
+    def stopCameraUpdate(self):
+        """
+        Stop the QTimer that triggered updateParam. This also sets back the sliders
+        to their default position and calls a last time updateParam to refresh
+        sliders labels after having been reset.
+        """
+        self.cameraModTimer.stop()
+        self.fovSlider.setValue(0.0)
+        self.fovSlider.updateParam()
+        self.elevSlider.setValue(0.0)
+        self.elevSlider.updateParam()
+        self.distSlider.setValue(0.0)
+        self.distSlider.updateParam()
+        self.aziSlider.setValue(0.0)
+        self.aziSlider.updateParam()
+
+    @Slot()
+    def updateCamera(self):
+        """
+        This is what the QTimer loops on. It check what slider is down and calls
+        its updateParam if needed
+        """
+        if self.fovSlider.isSliderDown() is True:
+            self.fovSlider.updateParam()
+        if self.elevSlider.isSliderDown() is True:
+            self.elevSlider.updateParam()
+        if self.distSlider.isSliderDown() is True:
+            self.distSlider.updateParam()
+        if self.aziSlider.isSliderDown() is True:
+            self.aziSlider.updateParam()
+
     def show_fps(self, fps):
         """
         Shows FPS in status bar.
@@ -863,14 +991,14 @@ class ParamSlider(QtWidgets.QSlider):
             self.outputFormat = "%1.4f"
         super(ParamSlider, self).setMaximum(self.resolution)
 
+    def value(self):
+        val = super(ParamSlider, self).value()
+        return ((float(val) / self.resolution) * (self.vMax - self.vMin)) + self.vMin
+
     def setValue(self, val):
         self.outputLabel.setText(self.outputFormat % val)
-        value = int(self.resolution * (val - self.vMin)/(self.vMax - self.vMin))
-        super(ParamSlider, self).setValue(value)
-
-    def value(self):
-        value = super(ParamSlider, self).value()
-        return ((float(value) / self.resolution) * (self.vMax - self.vMin)) + self.vMin
+        val = int(self.resolution * (val - self.vMin)/(self.vMax - self.vMin))
+        super(ParamSlider, self).setValue(val)
 
     @Slot(int)
     def updateParam(self, val):
@@ -958,6 +1086,41 @@ class LightParamSpinBox(QtWidgets.QSpinBox):
         self.mainWindow.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
 
 
+class CameraParamSlider(ParamSlider):
+    """
+    Simple slider that handles floating values and has a slot to update the
+    corresponding parameter in the canvas grayScottModel according to its param.
+    Sets its resolution, and knows and handles the printing of the real value in
+    a given label. value() and setValue() are surcharged to cope with real values
+    of the parameter.
+    """
+    def __init__(self, orientation, parent, outputLabel, param, resolution):
+        super(CameraParamSlider, self).__init__(orientation, parent, outputLabel, param, resolution)
+        self.outputFormat = "%1.2f"
+        if self.param in ("elev", "fov", "azi"):
+            self.outputFormat = "%3.1f°"
+
+    def outputFormula(self, value):
+        return 180.0/math.pi*value
+
+    @Slot()
+    @Slot(int)
+    def updateParam(self, val=None):
+        value = self.value()
+        if self.param == "fov":
+            self.parent.canvas.mainRenderer.moveCamera(dFov=value)
+            self.outputLabel.setText(self.outputFormat % (self.parent.canvas.mainRenderer.camera.fov))
+        elif self.param == "elev":
+            self.parent.canvas.mainRenderer.moveCamera(dElevation=value)
+            self.outputLabel.setText(self.outputFormat % self.outputFormula(self.parent.canvas.mainRenderer.camera.elevation))
+        elif self.param == "dist":
+            self.parent.canvas.mainRenderer.moveCamera(dDistance=value)
+            self.outputLabel.setText(self.outputFormat % (self.parent.canvas.mainRenderer.camera.distance))
+        elif self.param == "azi":
+            self.parent.canvas.mainRenderer.moveCamera(dAzimuth=value)
+            self.outputLabel.setText(self.outputFormat % self.outputFormula(self.parent.canvas.mainRenderer.camera.azimuth))
+
+
 class ColorButton(QtWidgets.QPushButton):
     """
     Button that represents a color and opens a QColorDialog on its click.
@@ -1013,6 +1176,7 @@ class ColorButton(QtWidgets.QPushButton):
 
     def setColor(self, color):
         self.changeColor(color)
+
 
 class FkPoint(QPointF):
     """
