@@ -178,7 +178,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     lightParamValueLabel = QtWidgets.QLabel(str(lightTypeParam[0]), lightTypeBox)
                     lightTypeLayout.addWidget(lightParamValueLabel, paramCount, 1)
                     paramCount += 1
-                    lightParamSlider = LightParamSlider(Qt.Horizontal, lightTypeBox, self, lightParamValueLabel, lightType, param)
+                    lightParamSlider = LightParamSlider(Qt.Horizontal, lightTypeBox, self, lightParamValueLabel, lightType, param, 1000)
                     lightParamSlider.setMinimum(lightTypeParam[2])
                     lightParamSlider.setMaximum(lightTypeParam[3])
                     lightParamSlider.setValue(lightTypeParam[0])
@@ -406,7 +406,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fLayout.addWidget(QtWidgets.QLabel("feed", fBox), 0, 0)
         feedParamLabel = QtWidgets.QLabel("", fBox)
         fLayout.addWidget(feedParamLabel, 0, 1)
-        self.feedParamSlider = ParamSlider(Qt.Horizontal, self, feedParamLabel, "feed", 1.0e6)
+        self.feedParamSlider = ModelParamSlider(Qt.Horizontal, self, feedParamLabel, "feed", 1.0e6)
         self.feedParamSlider.setMinimum(self.canvas.grayScottModel.fMin)
         self.feedParamSlider.setMaximum(self.canvas.grayScottModel.fMax)
         self.feedParamSlider.setValue(self.canvas.grayScottModel.baseParams[2])
@@ -418,7 +418,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fLayout.addWidget(QtWidgets.QLabel("∂feed/∂x", fBox), 2, 0)
         dFeedParamLabel = QtWidgets.QLabel("", fBox)
         fLayout.addWidget(dFeedParamLabel, 2, 1)
-        self.dFeedParamSlider = ParamSlider(Qt.Horizontal, self, dFeedParamLabel, "dFeed", 1.0e6)
+        self.dFeedParamSlider = ModelParamSlider(Qt.Horizontal, self, dFeedParamLabel, "dFeed", 1.0e6)
         self.dFeedParamSlider.setMinimum(0.0)
         self.dFeedParamSlider.setMaximum(0.008)
         self.dFeedParamSlider.setValue(0.0)
@@ -434,7 +434,7 @@ class MainWindow(QtWidgets.QMainWindow):
         kLayout.addWidget(QtWidgets.QLabel("kill", kBox), 0, 0)
         killParamLabel = QtWidgets.QLabel("", kBox)
         kLayout.addWidget(killParamLabel, 0, 1)
-        self.killParamSlider = ParamSlider(Qt.Horizontal, self, killParamLabel, "kill", 1.0e6)
+        self.killParamSlider = ModelParamSlider(Qt.Horizontal, self, killParamLabel, "kill", 1.0e6)
         self.killParamSlider.setMinimum(self.canvas.grayScottModel.kMin)
         self.killParamSlider.setMaximum(self.canvas.grayScottModel.kMax)
         self.killParamSlider.setValue(self.canvas.grayScottModel.baseParams[3])
@@ -446,7 +446,7 @@ class MainWindow(QtWidgets.QMainWindow):
         kLayout.addWidget(QtWidgets.QLabel("∂kill/∂y", kBox), 2, 0)
         dKillParamLabel = QtWidgets.QLabel("", kBox)
         kLayout.addWidget(dKillParamLabel, 2, 1)
-        self.dKillParamSlider = ParamSlider(Qt.Horizontal, self, dKillParamLabel, "dKill", 1.0e6)
+        self.dKillParamSlider = ModelParamSlider(Qt.Horizontal, self, dKillParamLabel, "dKill", 1.0e6)
         self.dKillParamSlider.setMinimum(0.0)
         self.dKillParamSlider.setMaximum(0.004)
         self.dKillParamSlider.setValue(0.0)
@@ -466,7 +466,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dULayout.addWidget(QtWidgets.QLabel("dU", dUBox), 0, 0)
         dUParamLabel = QtWidgets.QLabel("", dUBox)
         dULayout.addWidget(dUParamLabel, 0, 1)
-        self.dUParamSlider = ParamSlider(Qt.Horizontal, self, dUParamLabel, "dU", 1.0e6)
+        self.dUParamSlider = ModelParamSlider(Qt.Horizontal, self, dUParamLabel, "dU", 1.0e6)
         self.dUParamSlider.setMinimum(self.canvas.grayScottModel.dUMin)
         self.dUParamSlider.setMaximum(self.canvas.grayScottModel.dUMax)
         self.dUParamSlider.setValue(self.canvas.grayScottModel.baseParams[0])
@@ -481,7 +481,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dVLayout.addWidget(QtWidgets.QLabel("dV", dVBox), 0, 0)
         dVParamLabel = QtWidgets.QLabel("", dVBox)
         dVLayout.addWidget(dVParamLabel, 0, 1)
-        self.dVParamSlider = ParamSlider(Qt.Horizontal, self, dVParamLabel, "dV", 1.0e6)
+        self.dVParamSlider = ModelParamSlider(Qt.Horizontal, self, dVParamLabel, "dV", 1.0e6)
         self.dVParamSlider.setMinimum(self.canvas.grayScottModel.dVMin)
         self.dVParamSlider.setMaximum(self.canvas.grayScottModel.dVMax)
         self.dVParamSlider.setValue(self.canvas.grayScottModel.baseParams[1])
@@ -501,7 +501,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dDUDVLayout.addWidget(QtWidgets.QLabel("∂dUdV/∂x∂y", dDUDVBox), 0, 0)
         dDUDVParamLabel = QtWidgets.QLabel("", dDUDVBox)
         dDUDVLayout.addWidget(dDUDVParamLabel, 0, 1)
-        self.dDUDVParamSlider = ParamSlider(Qt.Horizontal, self, dDUDVParamLabel, "dDUDV", 1.0e6)
+        self.dDUDVParamSlider = ModelParamSlider(Qt.Horizontal, self, dDUDVParamLabel, "dDUDV", 1.0e6)
         self.dDUDVParamSlider.setMinimum(-1.0)
         self.dDUDVParamSlider.setMaximum(1.0)
         self.dDUDVParamSlider.setValue(0.0)
@@ -965,8 +965,7 @@ class LightTypeGroupBox(QtWidgets.QGroupBox):
 
 class ParamSlider(QtWidgets.QSlider):
     """
-    Simple slider that handles floating values and has a slot to update the
-    corresponding parameter in the canvas grayScottModel according to its param.
+    Simple slider that handles floating values.
     Sets its resolution, and knows and handles the printing of the real value in
     a given label. value() and setValue() are surcharged to cope with real values
     of the parameter.
@@ -987,18 +986,32 @@ class ParamSlider(QtWidgets.QSlider):
 
     def setMaximum(self, val):
         self.vMax = val
-        if self.vMax < 1e-2:
-            self.outputFormat = "%1.4f"
         super(ParamSlider, self).setMaximum(self.resolution)
 
     def value(self):
         val = super(ParamSlider, self).value()
-        return ((float(val) / self.resolution) * (self.vMax - self.vMin)) + self.vMin
+        value = float(val)/self.resolution
+        if self.vMin >= 0.0 and (self.vMax + 1)/(self.vMin + 1) > 100:
+            value = value**4
+        return (value * (self.vMax - self.vMin)) + self.vMin
 
     def setValue(self, val):
         self.outputLabel.setText(self.outputFormat % val)
-        val = int(self.resolution * (val - self.vMin)/(self.vMax - self.vMin))
-        super(ParamSlider, self).setValue(val)
+        value = (val - self.vMin)/(self.vMax - self.vMin)
+        if self.vMin >= 0.0 and (self.vMax + 1)/(self.vMin + 1) > 100:
+            value = math.sqrt(math.sqrt(value))
+        super(ParamSlider, self).setValue(int(self.resolution * value))
+
+
+class ModelParamSlider(ParamSlider):
+    """
+    ParamSlider tailored to handle model settings.
+    """
+    def __init__(self, orientation, parent, outputLabel, param, resolution):
+        super(ModelParamSlider, self).__init__(orientation, parent, outputLabel, param, resolution)
+        self.outputFormat = "%1.3f"
+        if self.param in ("dFeed", "dKill"):
+            self.outputFormat = "%1.4f"
 
     @Slot(int)
     def updateParam(self, val):
@@ -1020,51 +1033,19 @@ class ParamSlider(QtWidgets.QSlider):
             self.parent.canvas.grayScottModel.setParams(dDUDV=value)
 
 
-class LightParamSlider(QtWidgets.QSlider):
+class LightParamSlider(ParamSlider):
     """
-    Similar class as ParamSlider but different in several points, to be able to
-    have geometric range instead of linear range, according to given range of
-    parameters. Slot method different too...
-    WIP: try to have this subclassing ParamSlider...
+    ParamSlider tailored to handle light settings.
     """
-    def __init__(self, orientation, parent, mainWindow, outputLabel, lightType, param):
-        super(LightParamSlider, self).__init__(orientation, parent)
-        super(LightParamSlider, self).setSingleStep(1)
+    def __init__(self, orientation, parent, mainWindow, outputLabel, lightType, param, resolution):
+        super(LightParamSlider, self).__init__(orientation, parent, outputLabel, param, resolution)
         self.lightType = lightType
-        self.param = param
-        self.parent = parent
         self.mainWindow = mainWindow
-        self.outputLabel = outputLabel
-        self.outputLabel.setAlignment(Qt.AlignRight | Qt.AlignCenter)
-        self.outputFormat = "%3.2f"
-
-    def setMinimum(self, val):
-        self.vMin = val
-        super(LightParamSlider, self).setMinimum(0)
-
-    def setMaximum(self, val):
-        self.vMax = val
-        if self.vMax < 1.0:
-            self.outputFormat = "%1.5f"
-        elif self.vMax < 10.0:
+        self.outputFormat = "%1.5f"
+        if self.param in ("intensity", "c1", "c2", "c3", "fresnelexponant"):
             self.outputFormat = "%1.2f"
-        else:
+        elif self.param in ("shininess", "pcfspreading"):
             self.outputFormat = "%3.0f"
-        super(LightParamSlider, self).setMaximum(1000)
-
-    def setValue(self, val):
-        self.outputLabel.setText(self.outputFormat % val)
-        value = (val - self.vMin)/(self.vMax - self.vMin)
-        if (self.vMax + 1)/(self.vMin + 1) > 100:
-            value = math.sqrt(math.sqrt(value))
-        super(LightParamSlider, self).setValue(int(1000 * value))
-
-    def value(self):
-        val = super(LightParamSlider, self).value()
-        value = float(val)/1000.0
-        if (self.vMax + 1)/(self.vMin + 1) > 100:
-            value = value**4
-        return (value * (self.vMax - self.vMin)) + self.vMin
 
     @Slot(int)
     def updateLighting(self, value):
@@ -1073,26 +1054,9 @@ class LightParamSlider(QtWidgets.QSlider):
         self.mainWindow.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
 
 
-class LightParamSpinBox(QtWidgets.QSpinBox):
-    def __init__(self, parent, mainWindow, lightType, param):
-        super(LightParamSpinBox, self).__init__(parent)
-        self.lightType = lightType
-        self.mainWindow = mainWindow
-        self.param = param
-        self.parent = parent
-
-    @Slot(int)
-    def updateLighting(self, value):
-        self.mainWindow.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
-
-
 class CameraParamSlider(ParamSlider):
     """
-    Simple slider that handles floating values and has a slot to update the
-    corresponding parameter in the canvas grayScottModel according to its param.
-    Sets its resolution, and knows and handles the printing of the real value in
-    a given label. value() and setValue() are surcharged to cope with real values
-    of the parameter.
+    ParamSlider tailored to handle camera settings.
     """
     def __init__(self, orientation, parent, outputLabel, param, resolution):
         super(CameraParamSlider, self).__init__(orientation, parent, outputLabel, param, resolution)
@@ -1119,6 +1083,19 @@ class CameraParamSlider(ParamSlider):
         elif self.param == "azi":
             self.parent.canvas.mainRenderer.moveCamera(dAzimuth=value)
             self.outputLabel.setText(self.outputFormat % self.outputFormula(self.parent.canvas.mainRenderer.camera.azimuth))
+
+
+class LightParamSpinBox(QtWidgets.QSpinBox):
+    def __init__(self, parent, mainWindow, lightType, param):
+        super(LightParamSpinBox, self).__init__(parent)
+        self.lightType = lightType
+        self.mainWindow = mainWindow
+        self.param = param
+        self.parent = parent
+
+    @Slot(int)
+    def updateLighting(self, value):
+        self.mainWindow.canvas.mainRenderer.setLighting(self.lightType, self.param, value)
 
 
 class ColorButton(QtWidgets.QPushButton):
