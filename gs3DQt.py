@@ -54,6 +54,8 @@ from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
 from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QPropertyAnimation, QTimer
 from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
+# from qt_material import apply_stylesheet, QtStyleTools
+
 import sys
 import math
 import os
@@ -316,8 +318,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fovSlider.sliderPressed.connect(self.startCameraUpdate)
         self.fovSlider.sliderReleased.connect(self.stopCameraUpdate)
         self.fovSlider.setToolTip("Field of view of main camera")
+        self.fovSlider.setMinimumHeight(200)
         self.resetCameraButton.clicked.connect(self.fovSlider.updateParam)
-        cameraLayout.addWidget(self.fovSlider, 2, 0, 5, 2, Qt.AlignCenter )
+        cameraLayout.addWidget(self.fovSlider, 1, 0, 1, 2, Qt.AlignCenter )
 
         self.elevSlider = CameraParamSlider(Qt.Vertical, self, elevLabel, "elev", 1.0e3)
         self.elevSlider.setMinimum(-.01)
@@ -327,8 +330,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.elevSlider.sliderPressed.connect(self.startCameraUpdate)
         self.elevSlider.sliderReleased.connect(self.stopCameraUpdate)
         self.elevSlider.setToolTip("Elevation of main camera")
+        self.elevSlider.setMinimumHeight(200)
         self.resetCameraButton.clicked.connect(self.elevSlider.updateParam)
-        cameraLayout.addWidget(self.elevSlider, 2, 2, 5, 2, Qt.AlignCenter )
+        cameraLayout.addWidget(self.elevSlider, 1, 2, 1, 2, Qt.AlignCenter )
 
         self.distSlider = CameraParamSlider(Qt.Vertical, self, distLabel, "dist", 1.0e3)
         self.distSlider.setMinimum(-.01)
@@ -338,12 +342,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.distSlider.sliderPressed.connect(self.startCameraUpdate)
         self.distSlider.sliderReleased.connect(self.stopCameraUpdate)
         self.distSlider.setToolTip("Distance of main camera")
+        self.distSlider.setMinimumHeight(200)
         self.resetCameraButton.clicked.connect(self.distSlider.updateParam)
-        cameraLayout.addWidget(self.distSlider, 2, 4, 5, 2, Qt.AlignCenter )
+        cameraLayout.addWidget(self.distSlider, 1, 4, 1, 2, Qt.AlignCenter )
 
-        cameraLayout.addWidget(QtWidgets.QLabel("Azimuth", cameraBox), 7, 0, 1, 3, Qt.AlignCenter )
+        cameraLayout.addWidget(QtWidgets.QLabel("Azimuth", cameraBox), 3, 0, 1, 3, Qt.AlignCenter )
         aziLabel = QtWidgets.QLabel("0", cameraBox)
-        cameraLayout.addWidget(aziLabel, 7, 4, 1, 3, Qt.AlignCenter )
+        cameraLayout.addWidget(aziLabel, 3, 3, 1, 3, Qt.AlignCenter )
         self.aziSlider = CameraParamSlider(Qt.Horizontal, self, aziLabel, "azi", 1.0e3)
         self.aziSlider.setMinimum(-.01)
         self.aziSlider.setMaximum(.01)
@@ -352,8 +357,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.aziSlider.sliderPressed.connect(self.startCameraUpdate)
         self.aziSlider.sliderReleased.connect(self.stopCameraUpdate)
         self.aziSlider.setToolTip("Azimuth of main camera")
+        self.aziSlider.setMinimumWidth(270)
+        # self.aziSlider.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         self.resetCameraButton.clicked.connect(self.aziSlider.updateParam)
-        cameraLayout.addWidget(self.aziSlider, 8, 0, 1, 6, Qt.AlignCenter )
+        cameraLayout.addWidget(self.aziSlider, 4, 0, 1, 6)
 
         cameraBox.setLayout(cameraLayout)
         topLayout.addWidget(cameraBox)
@@ -586,7 +593,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.panelMenu.addAction(self.pPDetailsDock.toggleViewAction())
 
     ############################################################################
-    # Saves and loads for parameters of model, gui and (WIP)lighting
+    # Saves and loads for parameters of model, gui and lighting
 
     @Slot()
     def saveModelSettings(self):

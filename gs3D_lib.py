@@ -97,8 +97,8 @@ class Camera():
         self.fovRange = self.fovMax - self.fovMin
         self.distanceMin = 0.5
         self.distanceMax = 10.0
-        self.elevationMin = pi/2.0*.01
-        self.elevationMax = pi/2.0*.99
+        self.elevationMin = pi/2.0*.001
+        self.elevationMax = pi/2.0*.999
         self.elevationRange = self.elevationMax - self.elevationMin
 
         (self.azimuth, self.elevation, self.distance) = self.InitializeAzElDi()
