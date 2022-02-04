@@ -51,7 +51,8 @@ except ImportError:
 from PySide6 import QtCore, QtWidgets
 
 from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
-from PySide6.QtCore import Qt, QRectF, QPointF, Slot, QPropertyAnimation, QTimer
+from PySide6.QtCore import Qt, QRectF, QPointF, Slot, Property
+from PySide6.QtCore import QPropertyAnimation, QTimer, QEasingCurve
 from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
 # from qt_material import apply_stylesheet, QtStyleTools
@@ -320,7 +321,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fovSlider.setToolTip("Field of view of main camera")
         self.fovSlider.setMinimumHeight(200)
         self.resetCameraButton.clicked.connect(self.fovSlider.updateParam)
-        cameraLayout.addWidget(self.fovSlider, 1, 0, 1, 2, Qt.AlignCenter )
+        cameraLayout.addWidget(self.fovSlider, 1, 0, 1, 2, Qt.AlignCenter)
 
         self.elevSlider = CameraParamSlider(Qt.Vertical, self, elevLabel, "elev", 1.0e3)
         self.elevSlider.setMinimum(-.01)
@@ -332,7 +333,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.elevSlider.setToolTip("Elevation of main camera")
         self.elevSlider.setMinimumHeight(200)
         self.resetCameraButton.clicked.connect(self.elevSlider.updateParam)
-        cameraLayout.addWidget(self.elevSlider, 1, 2, 1, 2, Qt.AlignCenter )
+        cameraLayout.addWidget(self.elevSlider, 1, 2, 1, 2, Qt.AlignCenter)
 
         self.distSlider = CameraParamSlider(Qt.Vertical, self, distLabel, "dist", 1.0e3)
         self.distSlider.setMinimum(-.01)
@@ -344,7 +345,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.distSlider.setToolTip("Distance of main camera")
         self.distSlider.setMinimumHeight(200)
         self.resetCameraButton.clicked.connect(self.distSlider.updateParam)
-        cameraLayout.addWidget(self.distSlider, 1, 4, 1, 2, Qt.AlignCenter )
+        cameraLayout.addWidget(self.distSlider, 1, 4, 1, 2, Qt.AlignCenter)
 
         cameraLayout.addWidget(QtWidgets.QLabel("Azimuth", cameraBox), 3, 0, 1, 3, Qt.AlignCenter )
         aziLabel = QtWidgets.QLabel("0", cameraBox)
@@ -447,6 +448,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.killParamSlider.setValue(self.canvas.grayScottModel.baseParams[3])
         self.killParamSlider.updateParam(0)
         self.killParamSlider.valueChanged.connect(self.killParamSlider.updateParam)
+        self.killParamSlider.valueChanged.connect(self.setCurrentFKInChart)
         self.killParamSlider.sliderMoved.connect(self.setCurrentFKInChart)
         self.killParamSlider.setToolTip("V Kill rate value of the model")
         kLayout.addWidget(self.killParamSlider, 1, 0, 1, 2)
@@ -819,14 +821,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def linkKillToFeed(self, state):
         if state == 2:
             self.feedParamSlider.sliderMoved.connect(self.setKillFromFeed)
-            # killAnimation = QPropertyAnimation(self.killParamSlider, b"value")
-            # killAnimation.setStartValue(self.killParamSlider.value())
-            # feedValue = self.feedParamSlider.value()
-            # killValue = (-1.21 * math.sqrt(1.36 * (feedValue - 0.001)) * ((1.63 * feedValue) - 0.289))
-            # print(killValue)
-            # killAnimation.setEndValue(killValue)
-            # killAnimation.setDuration(500)
-            # killAnimation.start()
+            self.killAnimation = QPropertyAnimation(self.killParamSlider, b"animValue")
+            feedValue = self.feedParamSlider.value()
+            killValue = (-1.21 * math.sqrt(1.36 * (feedValue - 0.001)) * ((1.63 * feedValue) - 0.289))
+            self.killAnimation.setEndValue(killValue)
+            self.killAnimation.setDuration(1000)
+            self.killAnimation.setEasingCurve(QEasingCurve.InOutCubic)
+            self.killAnimation.start()
             self.killParamSlider.setEnabled(False)
         else:
             self.feedParamSlider.sliderMoved.disconnect(self.setKillFromFeed)
@@ -858,7 +859,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def setFeedKillDials(self):
         """
         Set the values of model parameters slider after change in the model
+        Unset also the link between feed and kill is set
         """
+        self.killAutomationCheckBox.setChecked(False)
         self.feedParamSlider.setValue(self.canvas.grayScottModel.baseParams[2])
         self.killParamSlider.setValue(self.canvas.grayScottModel.baseParams[3])
 
@@ -930,10 +933,10 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if self.fovSlider.isSliderDown() is True:
             self.fovSlider.updateParam()
-        if self.elevSlider.isSliderDown() is True:
-            self.elevSlider.updateParam()
         if self.distSlider.isSliderDown() is True:
             self.distSlider.updateParam()
+        if self.elevSlider.isSliderDown() is True:
+            self.elevSlider.updateParam()
         if self.aziSlider.isSliderDown() is True:
             self.aziSlider.updateParam()
 
@@ -1008,6 +1011,14 @@ class ParamSlider(QtWidgets.QSlider):
         if self.vMin >= 0.0 and (self.vMax + 1)/(self.vMin + 1) > 100:
             value = math.sqrt(math.sqrt(value))
         super(ParamSlider, self).setValue(int(self.resolution * value))
+
+    def getRawValue(self):
+        return super(ParamSlider, self).value()
+
+    def valueFromOutToIn(self, val):
+        return int(self.resolution * (val - self.vMin)/(self.vMax - self.vMin))
+
+    animValue = Property(float, value, setValue)
 
 
 class ModelParamSlider(ParamSlider):
