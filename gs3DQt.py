@@ -359,7 +359,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.aziSlider.sliderReleased.connect(self.stopCameraUpdate)
         self.aziSlider.setToolTip("Azimuth of main camera")
         self.aziSlider.setMinimumWidth(270)
-        # self.aziSlider.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         self.resetCameraButton.clicked.connect(self.aziSlider.updateParam)
         cameraLayout.addWidget(self.aziSlider, 4, 0, 1, 6)
 
@@ -762,7 +761,6 @@ class MainWindow(QtWidgets.QMainWindow):
             for key in lightSettingsSetter.keys():
                 lightSettingsSetter[key](lightSettingsGetter[key])
             print("Load light settings done")
-
 
     ############################################################################
     # Update of the Diagram/chart in the pPDetailsDock

@@ -413,12 +413,12 @@ class GrayScottModel():
             else:
                 self.P = np.zeros((self.h, self.w, 4), dtype=np.float32)
                 self.P[:, :] = self.baseParams
-                # self.modulateParams()
+                # self.modulateFK()
                 self.updateParams(feed=self.baseParams[2],
                                   kill=self.baseParams[3],
                                   dU=self.baseParams[0],
                                   dV=self.baseParams[1])
-                self.updateAnisotropicParams()
+                self.setProgramParams()
 
     def setParams(self, feed=None, kill=None, dU=None, dV=None, dFeed=None, dKill=None, dDUDV=None):
         """
@@ -440,11 +440,11 @@ class GrayScottModel():
             if feed is not None or kill is not None or dU is not None or dV is not None:
                 self.updateParams(feed, kill, dU, dV)
             if dFeed is not None or dKill is not None:
-                self.modulateParams()
+                self.modulateFK()
             if dDUDV is not None:
                 self.ModulateDUDV(self.dU, self.dDUDV, self.dUMin, self.dUMax, 0)
                 self.ModulateDUDV(self.dV, self.dDUDV, self.dVMin, self.dVMax, 1)
-            self.updateAnisotropicParams()
+            self.setProgramParams()
 
     def updateParams(self, feed=None, kill=None, dU=None, dV=None):
         """
@@ -466,7 +466,7 @@ class GrayScottModel():
         if dV is not None:
             self.ModulateDUDV(self.dV, self.dDUDV, self.dVMin, self.dVMax, 1)
 
-    def modulateParams(self):
+    def modulateFK(self):
         """
         Modulates feed and kill with dFeed and dKill when not in isotropic mode.
         """
@@ -500,7 +500,7 @@ class GrayScottModel():
         else:
             self.P[:, :, indexInParams] = ddPivot
 
-    def updateAnisotropicParams(self):
+    def setProgramParams(self):
         """
         Updates the parameters of the model when not in isotropic mode.
         """
@@ -867,7 +867,7 @@ class MainRenderer(Renderer):
 
     def updateAspect(self, aspect):
         """
-        Compute projection Matrix for new Wndow aspect.
+        Compute projection Matrix for new Window aspect.
         """
         self.camera.setProjection(aspect=aspect)
         self.program["u_vm"]                  = self.camera.vm
@@ -880,20 +880,14 @@ class MainRenderer(Renderer):
         Others increase/decrease a value, such as the shininess exponant
         WIP One day could be entirely replaced by setLighting...
         """
-        if lightType in ('ambient', 'diffuse', 'specular', 'lightbox', 'attenuation', 'shadow'):
-            secondKey = 'on'
-            vals = self.lightingDictionnary[lightType][secondKey]
-            vals[0] = not vals[0]
-            self.program["u_%s_%s" % (lightType, secondKey)] = vals[0]
-            print(' %s light: %s        ' % (lightType, vals[0]), end="\r")
-
-        elif lightType == 'shadow':
+        if lightType == 'shadow':
             secondKey = 'type'
             vals = self.lightingDictionnary[lightType][secondKey]
             vals[0] = (vals[0] + 1) % 3
-            print("shadowType = %s" % vals[0])
-            self.program["u_%s_%s" % (lightType, secondKey)] = vals[0]
-            print(' Shadows: %s              ' % self.SHADOW_TYPE[vals[0]], end="\r")
+            self.setLighting(lightType, 'type', vals[0])
+            # print("shadowType = %s" % vals[0])
+            # self.program["u_%s_%s" % (lightType, secondKey)] = vals[0]
+            # print(' Shadows: %s              ' % self.SHADOW_TYPE[vals[0]], end="\r")
 
         elif lightType == 'shininess':
             mod = sqrt(2)
@@ -903,8 +897,9 @@ class MainRenderer(Renderer):
             vals = self.lightingDictionnary[first][lightType]
             vals[0] *= mod
             vals[0] = np.clip(vals[0], vals[2], vals[3])
-            self.program["u_%s_%s" % (first, lightType)] = vals[0]
-            print(' Shininess exponant: %3.0f' % vals[0], end="\r")
+            self.setLighting(lightType, first, vals[0])
+            # self.program["u_%s_%s" % (first, lightType)] = vals[0]
+            # print(' Shininess exponant: %3.0f' % vals[0], end="\r")
 
         elif lightType == 'fresnelexponant':
             mod = 1.0/sqrt(2)
@@ -914,8 +909,9 @@ class MainRenderer(Renderer):
             vals = self.lightingDictionnary[first][lightType]
             vals[0] *= mod
             vals[0] = np.clip(vals[0], vals[2], vals[3])
-            self.program["u_%s_%s" % (first, lightType)] = vals[0]
-            print(' Fresnel exponant: %3.0f' % vals[0], end="\r")
+            self.setLighting(lightType, first, vals[0])
+            # self.program["u_%s_%s" % (first, lightType)] = vals[0]
+            # print(' Fresnel exponant: %3.0f' % vals[0], end="\r")
 
     def setColorMap(self, name=''):
         """
@@ -923,7 +919,7 @@ class MainRenderer(Renderer):
         """
         if name != '':
             self.cmapName = name
-            self.program["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 1024)).astype('float32')
+            self.program["cmap"] = get_colormap(self.cmapName).map(np.linspace(0.0, 1.0, 4096)).astype('float32')
             print(' Using colormap %s.              ' % name, end="\r")
 
     def switchReagent(self):
@@ -1199,15 +1195,15 @@ class Canvas(app.Canvas):
         ('@', ()): (MainRenderer.resetCamera, ()),
         ('<', ()): (MainRenderer.resetLight, ()),
         (',', ('Control',)): (MainRenderer.setLighting, ('ambient', 'on')),
-        (';', ('Control',)): (MainRenderer.setLighting, ('diffuse','on')),
-        (':', ('Control',)): (MainRenderer.setLighting, ('specular','on')),
-        ('=', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shadow',)),
-        ('N', ('Control',)): (MainRenderer.setLighting, ('attenuation','on')),
+        (';', ('Control',)): (MainRenderer.setLighting, ('diffuse', 'on')),
+        (':', ('Control',)): (MainRenderer.setLighting, ('specular', 'on')),
+        ('=', ('Control',)): (MainRenderer.setLighting, ('shadow', 'on')),
+        ('N', ('Control',)): (MainRenderer.setLighting, ('attenuation', 'on')),
         ('L', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shininess', '-')),
         ('M', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('shininess', '+')),
         ('J', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('fresnelexponant', '-')),
         ('K', ('Control',)): (MainRenderer.modifyLightCharacteristic, ('fresnelexponant', '+')),
-        ('I', ('Control',)): (MainRenderer.setLighting, ('lightbox','on'))
+        ('I', ('Control',)): (MainRenderer.setLighting, ('lightbox', 'on'))
     }
     for key in MainRenderer.colormapDictionnary.keys():
         keyactionDictionnary[(key, ())] = (MainRenderer.setColorMap, (MainRenderer.colormapDictionnary[key],))
