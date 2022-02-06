@@ -52,7 +52,7 @@ from PySide6 import QtCore, QtWidgets
 
 from PySide6.QtGui import QPainter, QPainterPath, QBrush, QPen, QColor
 from PySide6.QtCore import Qt, QRectF, QPointF, Slot, Property
-from PySide6.QtCore import QPropertyAnimation, QTimer, QEasingCurve
+from PySide6.QtCore import QPropertyAnimation, QParallelAnimationGroup, QTimer, QEasingCurve
 from PySide6.QtCharts import QChartView, QChart, QScatterSeries
 
 # from qt_material import apply_stylesheet, QtStyleTools
@@ -914,14 +914,30 @@ class MainWindow(QtWidgets.QMainWindow):
         sliders labels after having been reset.
         """
         self.cameraModTimer.stop()
-        self.fovSlider.setValue(0.0)
-        self.fovSlider.updateParam()
-        self.elevSlider.setValue(0.0)
-        self.elevSlider.updateParam()
-        self.distSlider.setValue(0.0)
-        self.distSlider.updateParam()
-        self.aziSlider.setValue(0.0)
-        self.aziSlider.updateParam()
+        slidersList = (self.fovSlider, self.elevSlider, self.distSlider, self.aziSlider)
+        # self.fovSlider.setValue(0.0)
+        # self.fovSlider.updateParam()
+        # self.elevSlider.setValue(0.0)
+        # self.elevSlider.updateParam()
+        # self.distSlider.setValue(0.0)
+        # self.distSlider.updateParam()
+        # self.aziSlider.setValue(0.0)
+        # self.aziSlider.updateParam()
+        parallelAnimationGroup = QParallelAnimationGroup(self)
+        for slider in slidersList:
+            animation = QPropertyAnimation(slider, b"animValue")
+            animation.setEndValue(0.0)
+            animation.setDuration(1000)
+            animation.setEasingCurve(QEasingCurve.OutElastic)
+            # curve = self.animation.easingCurve()
+            # curve.setPeriod(.25)
+            # curve.setAmplitude(.3)
+            # self.animation.setEasingCurve(curve)
+            # self.animation.start()
+            parallelAnimationGroup.addAnimation(animation)
+        parallelAnimationGroup.start()
+        for slider in slidersList:
+            slider.updateParam()
 
     @Slot()
     def updateCamera(self):
