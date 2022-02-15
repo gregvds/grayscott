@@ -819,13 +819,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def linkKillToFeed(self, state):
         if state == 2:
             self.feedParamSlider.sliderMoved.connect(self.setKillFromFeed)
-            self.killAnimation = QPropertyAnimation(self.killParamSlider, b"animValue")
+            animation = QPropertyAnimation(self.killParamSlider, b"animValue")
             feedValue = self.feedParamSlider.value()
-            killValue = (-1.21 * math.sqrt(1.36 * (feedValue - 0.001)) * ((1.63 * feedValue) - 0.289))
-            self.killAnimation.setEndValue(killValue)
-            self.killAnimation.setDuration(1000)
-            self.killAnimation.setEasingCurve(QEasingCurve.InOutCubic)
-            self.killAnimation.start()
+            killValue = self.getKillFromFeed(feedValue)
+            animation.setEndValue(killValue)
+            animation.setDuration(1000)
+            animation.setEasingCurve(QEasingCurve.InOutCubic)
+            animation.start()
             self.killParamSlider.setEnabled(False)
         else:
             self.feedParamSlider.sliderMoved.disconnect(self.setKillFromFeed)
@@ -833,9 +833,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def setKillFromFeed(self, val):
         feedValue = self.feedParamSlider.value()
-        # killValue = (-1.38 * math.sqrt(1.1 * (feedValue - 0.0017)) * ((1.44 * feedValue) - 0.27))
-        killValue = (-1.21 * math.sqrt(1.36 * (feedValue - 0.001)) * ((1.63 * feedValue) - 0.289))
+        killValue = self.getKillFromFeed(feedValue)
         self.killParamSlider.setValue(killValue)
+
+    def getKillFromFeed(self, val):
+        # killValue = (-1.38 * math.sqrt(1.1 * (feedValue - 0.0017)) * ((1.44 * feedValue) - 0.27))
+        return (-1.21 * math.sqrt(1.36 * (val - 0.001)) * ((1.63 * val) - 0.289))
 
     @Slot(int)
     def linkDVToDU(self, state):
@@ -911,29 +914,16 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         Stop the QTimer that triggered updateParam. This also sets back the sliders
         to their default position and calls a last time updateParam to refresh
-        sliders labels after having been reset.
+        sliders labels after having been reset. Reset is done with an animation.
         """
         self.cameraModTimer.stop()
         slidersList = (self.fovSlider, self.elevSlider, self.distSlider, self.aziSlider)
-        # self.fovSlider.setValue(0.0)
-        # self.fovSlider.updateParam()
-        # self.elevSlider.setValue(0.0)
-        # self.elevSlider.updateParam()
-        # self.distSlider.setValue(0.0)
-        # self.distSlider.updateParam()
-        # self.aziSlider.setValue(0.0)
-        # self.aziSlider.updateParam()
         parallelAnimationGroup = QParallelAnimationGroup(self)
         for slider in slidersList:
             animation = QPropertyAnimation(slider, b"animValue")
             animation.setEndValue(0.0)
             animation.setDuration(1000)
             animation.setEasingCurve(QEasingCurve.OutElastic)
-            # curve = self.animation.easingCurve()
-            # curve.setPeriod(.25)
-            # curve.setAmplitude(.3)
-            # self.animation.setEasingCurve(curve)
-            # self.animation.start()
             parallelAnimationGroup.addAnimation(animation)
         parallelAnimationGroup.start()
         for slider in slidersList:
