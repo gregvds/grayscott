@@ -92,7 +92,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(size[0], size[1])
         self.setWindowTitle('3D Gray-Scott Reaction-Diffusion - GregVDS')
 
-        self.canvas = Canvas(size, modelSize, specie, cmap, verbose, isotropic=False)
+        self.canvas = Canvas(size, modelSize, specie, cmap, verbose, isotropic=False, mainAppAccess = self)
         self.canvas.create_native()
         self.canvas.native.setParent(self)
         self.canvas.measure_fps(1.0, self.show_fps)
@@ -298,18 +298,18 @@ class MainWindow(QtWidgets.QMainWindow):
         # --------------------------------------
         cameraBox = QtWidgets.QGroupBox("Main Camera", self.displayDock)
         cameraLayout = QtWidgets.QGridLayout(cameraBox)
-        camera = self.canvas.mainRenderer.camera
+        #camera = self.canvas.mainRenderer.camera
         self.cameraModTimer = QTimer(self)
         self.cameraModTimer.timeout.connect(self.updateCamera)
         cameraLayout.addWidget(QtWidgets.QLabel("FoV", cameraBox), 0, 0, 1, 1, Qt.AlignCenter )
         fovLabel = QtWidgets.QLabel("0", cameraBox)
-        cameraLayout.addWidget(fovLabel, 0, 1, 1, 1, Qt.AlignCenter )
+        cameraLayout.addWidget(fovLabel, 0, 1, 1, 1, Qt.AlignCenter)
         cameraLayout.addWidget(QtWidgets.QLabel("Elev", cameraBox), 0, 2, 1, 1, Qt.AlignCenter )
         elevLabel = QtWidgets.QLabel("0", cameraBox)
-        cameraLayout.addWidget(elevLabel, 0, 3, 1, 1, Qt.AlignCenter )
+        cameraLayout.addWidget(elevLabel, 0, 3, 1, 1, Qt.AlignCenter)
         cameraLayout.addWidget(QtWidgets.QLabel("Dist", cameraBox), 0, 4, 1, 1, Qt.AlignCenter )
         distLabel = QtWidgets.QLabel("0", cameraBox)
-        cameraLayout.addWidget(distLabel, 0, 5, 1, 1, Qt.AlignCenter )
+        cameraLayout.addWidget(distLabel, 0, 5, 1, 1, Qt.AlignCenter)
 
         self.fovSlider = CameraParamSlider(Qt.Vertical, self, fovLabel, "fov", 1.0e3)
         self.fovSlider.setMinimum(-.2)
@@ -925,9 +925,8 @@ class MainWindow(QtWidgets.QMainWindow):
             animation.setDuration(1000)
             animation.setEasingCurve(QEasingCurve.OutElastic)
             parallelAnimationGroup.addAnimation(animation)
+            parallelAnimationGroup.finished.connect(slider.updateParam)
         parallelAnimationGroup.start()
-        for slider in slidersList:
-            slider.updateParam()
 
     @Slot()
     def updateCamera(self):
@@ -1010,6 +1009,7 @@ class ParamSlider(QtWidgets.QSlider):
         return (value * (self.vMax - self.vMin)) + self.vMin
 
     def setValue(self, val):
+        #print("In ParamSlider.setValue val=%s" % val)
         self.outputLabel.setText(self.outputFormat % val)
         value = (val - self.vMin)/(self.vMax - self.vMin)
         if self.vMin >= 0.0 and (self.vMax + 1)/(self.vMin + 1) > 100:

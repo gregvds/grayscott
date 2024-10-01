@@ -5,7 +5,7 @@
 import vispy.color as color
 
 import matplotlib.pyplot as plt
-from matplotlib import cm
+from matplotlib import colormaps as cm
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
 import numpy as np
@@ -388,21 +388,22 @@ def createAndRegisterCmap(name, cmapNameList, proportions=None):
         proportions = 32 * np.ones(1, len(cmapNameList))
 
     for cmapName, proportion in zip(cmapNameList, proportions):
-        newColors.append(cm.get_cmap(cmapName, proportion)
+        newColors.append(cm.get_cmap(cmapName)
                          (np.linspace(0, 1, proportion)))
     newcmp = ListedColormap(np.vstack(newColors), name=name)
     cmapNameList.reverse()
     proportions.reverse()
     for cmapName, proportion in zip(cmapNameList, proportions):
         newColors_r.append(cm.get_cmap(invertCmapName(
-            cmapName), proportion)(np.linspace(0, 1, proportion)))
+            cmapName))(np.linspace(0, 1, proportion)))
     newcmp_r = ListedColormap(np.vstack(newColors_r),
                               name=invertCmapName(name))
     try:
         _ = cm.get_cmap(name)
     except:
-        cm.register_cmap(name=name, cmap=newcmp)
-        cm.register_cmap(name=invertCmapName(name), cmap=newcmp_r)
+        #print('registering colormaps')
+        cm.register(name=name, cmap=newcmp)
+        cm.register(name=invertCmapName(name), cmap=newcmp_r)
 
 
 def createAndRegisterLinearSegmentedCmap(name, colors, nodes=None):
@@ -422,8 +423,9 @@ def createAndRegisterLinearSegmentedCmap(name, colors, nodes=None):
     try:
         _ = cm.get_cmap(name)
     except:
-        cm.register_cmap(name=name, cmap=newcmp)
-        cm.register_cmap(name=invertCmapName(name), cmap=newcmp_r)
+        #print('registering colormaps')
+        cm.register(name=name, cmap=newcmp)
+        cm.register(name=invertCmapName(name), cmap=newcmp_r)
 
 
 def createColormaps():

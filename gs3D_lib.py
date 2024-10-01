@@ -484,7 +484,7 @@ class GrayScottModel():
         ddPivot = (dRef - dMin) / (dMax - dMin)
         ddUpperProportion = (dMax - dRef) / (dMax - dMin)
         ddLowerProportion = ddPivot
-        gaussGrid = gauss(size=[self.h, self.w], sigma = 0.33)
+        gaussGrid = gauss(size=[self.h, self.w], sigma=0.33)
         if dVar > 0.0:
             self.P[:, :, indexInParams] = (1 - dVar) * ddPivot \
                                  + (dVar) * (ddPivot \
@@ -939,7 +939,8 @@ class Canvas(app.Canvas):
                  specie='alpha_left',
                  cmap='honolulu_r',
                  verbose=False,
-                 isotropic=True):
+                 isotropic=True,
+                 mainAppAccess=False):
         app.Canvas.__init__(self,
                             size=size,
                             title='3D Gray-Scott Reaction-Diffusion - GregVDS',
@@ -947,6 +948,10 @@ class Canvas(app.Canvas):
 
         if not verbose:
             sys.stdout = open(os.devnull, 'w')
+
+        # Link towards QMainWindow app if provided
+        # --------------------------------------
+        self.mainAppAccess = mainAppAccess
 
         # Create the Gray-Scott model
         # --------------------------------------
@@ -1070,6 +1075,13 @@ class Canvas(app.Canvas):
         self.mainRenderer.moveCamera(dDistance=(event.delta[1])/3.0)
         # Shift modifier key: zoom in out
         self.mainRenderer.zoomCamera((event.delta[0])/3.0)
+        # trying to update shown Field of View and Distance in Main App UI
+        if self.mainAppAccess:
+            try:
+                self.mainAppAccess.fovSlider.updateParam()
+                self.mainAppAccess.distSlider.updateParam()
+            except Exception as e:
+                print(e)
 
     def on_mouse_press(self, event):
         self.pressed = True
@@ -1106,6 +1118,13 @@ class Canvas(app.Canvas):
                 delevation = (event.pos[1] - self.mousePos[1]) * (2*pi) / self.size[1]
                 self.mousePos = event.pos
                 self.mainRenderer.moveLight(dAzimuth=dazimuth, dElevation=delevation)
+            # trying to update shown elevation and azimuth in Main App UI
+            if self.mainAppAccess:
+                try:
+                    self.mainAppAccess.elevSlider.updateParam()
+                    self.mainAppAccess.aziSlider.updateParam()
+                except Exception as e:
+                    print(e)
 
     NO_ACTION = (None, None)
 
@@ -1129,10 +1148,25 @@ class Canvas(app.Canvas):
         if func is not None:
             if hasattr(self, func.__name__):
                 func(self, *args)
+                if self.mainAppAccess:
+                    try:
+                        self.mainAppAccess.normalRadioButton.toggle()
+                    except Exception as e:
+                        print(e)
             elif hasattr(self.grayScottModel, func.__name__):
                 func(self.grayScottModel, *args)
+                if self.mainAppAccess:
+                    try:
+                        self.mainAppAccess.pearsonsPatternsComboBox.setCurrentText(self.grayScottModel.specie)
+                    except Exception as e:
+                        print(e)
             elif hasattr(self.mainRenderer, func.__name__):
                 func(self.mainRenderer, *args)
+                if self.mainAppAccess:
+                    try:
+                        self.mainAppAccess.colorsComboBox.setCurrentText(self.mainRenderer.cmapName)
+                    except Exception as e:
+                        print(e)
             # elif hasattr(self.shadowRenderer, func.__name__):
             #     func(self.shadowRenderer, event, *args)
             else:
